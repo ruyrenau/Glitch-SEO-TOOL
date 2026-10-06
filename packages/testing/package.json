@@ -1,0 +1,7 @@
+{
+  "name": "@glitch/testing",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "node run_all_tests.js"
+  }
+}

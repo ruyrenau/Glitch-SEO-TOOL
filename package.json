@@ -1,0 +1,26 @@
+{
+  "name": "glitch-seo-ops-engine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Enterprise Technical SEO, Log Intelligence, Structured Data, Programmatic Content & GSC Ops Engine",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "pnpm --filter @glitch/db generate",
+    "db:migrate": "pnpm --filter @glitch/db migrate",
+    "db:seed": "pnpm --filter @glitch/db seed",
+    "demo:seed": "pnpm --filter @glitch/db seed:demo",
+    "cli": "pnpm --filter @glitch/cli run start"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.4",
+    "typescript": "^5.8.2",
+    "prettier": "^3.5.3",
+    "eslint": "^9.22.0",
+    "@types/node": "^22.13.10"
+  },
+  "packageManager": "pnpm@12.9.1"
+}

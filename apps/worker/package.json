@@ -1,0 +1,23 @@
+{
+  "name": "@glitch/worker",
+  "version": "1.0.0",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@glitch/config": "workspace:*",
+    "@glitch/core": "workspace:*",
+    "@glitch/db": "workspace:*",
+    "@glitch/log-parser": "workspace:*",
+    "@glitch/crawler": "workspace:*",
+    "@glitch/content-engine": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "@types/node": "^22.13.10"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "name": "@glitch/api",
+  "version": "1.0.0",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@glitch/config": "workspace:*",
+    "@glitch/core": "workspace:*",
+    "@glitch/db": "workspace:*",
+    "@glitch/log-parser": "workspace:*",
+    "@glitch/crawler": "workspace:*",
+    "@glitch/schema-engine": "workspace:*",
+    "@glitch/content-engine": "workspace:*",
+    "@glitch/connectors": "workspace:*",
+    "fastify": "^5.2.1",
+    "@fastify/cors": "^10.0.2",
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/swagger": "^9.4.2",
+    "@fastify/swagger-ui": "^5.2.1",
+    "bcryptjs": "^3.0.2",
+    "jsonwebtoken": "^9.0.2",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "@types/node": "^22.13.10",
+    "@types/jsonwebtoken": "^9.0.8",
+    "@types/bcryptjs": "^2.4.6"
+  }
+}

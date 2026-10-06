@@ -1,0 +1,343 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  SEO_MANAGER
+  EDITOR
+  VIEWER
+}
+
+enum Severity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  RETRYING
+}
+
+enum PageStatus {
+  BLOCKED
+  NEEDS_REVIEW
+  READY_FOR_APPROVAL
+  APPROVED
+  PUBLISHED
+  FAILED
+  ARCHIVED
+}
+
+model User {
+  id           String            @id @default(uuid())
+  email        String            @unique
+  name         String
+  passwordHash String
+  avatarUrl    String?
+  mustChangePassword Boolean     @default(false)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  memberships  WorkspaceMember[]
+  auditEvents  AuditEvent[]
+  approvals    Approval[]
+}
+
+model Workspace {
+  id          String            @id @default(uuid())
+  name        String
+  slug        String            @unique
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  members     WorkspaceMember[]
+  sites       Site[]
+  auditEvents AuditEvent[]
+}
+
+model WorkspaceMember {
+  id          String    @id @default(uuid())
+  role        Role      @default(VIEWER)
+  workspaceId String
+  userId      String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([workspaceId, userId])
+}
+
+model Site {
+  id                 String           @id @default(uuid())
+  workspaceId        String
+  workspace          Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name               String
+  domain             String
+  canonicalUrl       String
+  environment        String           @default("production") // production, staging, development
+  language           String           @default("en")
+  targetCountry      String           @default("US")
+  timezone           String           @default("UTC")
+  cms                String           @default("wordpress")
+  sitemapUrl         String?
+  robotsUrl          String?
+  logFormat          String           @default("nginx_combined")
+  maxRps             Float            @default(5.0)
+  userAgent          String           @default("GlitchSeoOpsBot/1.0")
+  status             String           @default("active")
+  isVerified         Boolean          @default(false)
+  lastAuditAt        DateTime?
+  lastLogImportAt    DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  logImports         LogImport[]
+  crawls             CrawlRun[]
+  issues             Issue[]
+  wpConnections      WordPressConnection[]
+  gscConnections     SearchConsoleConnection[]
+  geoPrompts         GeoPrompt[]
+}
+
+model LogImport {
+  id              String        @id @default(uuid())
+  siteId          String
+  site            Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  fileName        String
+  checksum        String
+  status          String        @default("completed") // pending, processing, completed, failed
+  totalLines      Int           @default(0)
+  validLines      Int           @default(0)
+  invalidLines    Int           @default(0)
+  skippedLines    Int           @default(0)
+  fileSizeBytes   BigInt        @default(0)
+  startDate       DateTime?
+  endDate         DateTime?
+  crawledPagesCount Int         @default(0)
+  googlebotRequests Int         @default(0)
+  aiBotRequests     Int         @default(0)
+  errorsSummary   Json?
+  createdAt       DateTime      @default(now())
+  aggregates      LogAggregate[]
+}
+
+model LogAggregate {
+  id            String    @id @default(uuid())
+  logImportId   String
+  logImport     LogImport @relation(fields: [logImportId], references: [id], onDelete: Cascade)
+  date          DateTime
+  botName       String
+  botCategory   String
+  statusCode    Int
+  path          String
+  hits          Int       @default(1)
+  bytes         BigInt    @default(0)
+  avgDurationMs Float     @default(0)
+}
+
+model CrawlRun {
+  id            String        @id @default(uuid())
+  siteId        String
+  site          Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  status        String        @default("completed")
+  urlsCrawled   Int           @default(0)
+  maxDepth      Int           @default(3)
+  startedAt     DateTime      @default(now())
+  completedAt   DateTime?
+  pages         CrawledPage[]
+}
+
+model CrawledPage {
+  id              String    @id @default(uuid())
+  crawlRunId      String
+  crawlRun        CrawlRun  @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
+  url             String
+  finalUrl        String
+  statusCode      Int
+  responseTimeMs  Int
+  mimeType        String    @default("text/html")
+  title           String?
+  metaDescription String?
+  canonical       String?
+  h1              String?
+  inSitemap       Boolean   @default(false)
+  inLogs          Boolean   @default(false)
+  isIndexable     Boolean   @default(true)
+  indexabilityReason String?
+  wordCount       Int       @default(0)
+  depth           Int       @default(0)
+  createdAt       DateTime  @default(now())
+}
+
+model Issue {
+  id               String       @id @default(uuid())
+  siteId           String
+  site             Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  code             String
+  category         String
+  title            String
+  description      String
+  severity         Severity     @default(MEDIUM)
+  priorityScore    Float        @default(5.0)
+  affectedUrlsCount Int         @default(1)
+  affectedUrls     Json?        // List of sample URLs
+  recommendation   String
+  status           String       @default("open") // open, in_progress, resolved, ignored
+  createdAt        DateTime     @default(now())
+  resolvedAt       DateTime?
+}
+
+model Dataset {
+  id          String          @id @default(uuid())
+  name        String
+  filename    String
+  rowCount    Int             @default(0)
+  columns     Json            // list of column names
+  data        Json            // array of records
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  templates   ContentTemplate[]
+}
+
+model ContentTemplate {
+  id            String          @id @default(uuid())
+  datasetId     String
+  dataset       Dataset         @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  name          String
+  titleTemplate String
+  descTemplate  String
+  bodyTemplate  String
+  slugTemplate  String
+  schemaType    String          @default("Article")
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  generatedPages GeneratedPage[]
+}
+
+model GeneratedPage {
+  id                String       @id @default(uuid())
+  templateId        String
+  template          ContentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  slug              String
+  title             String
+  metaDescription   String
+  content           String
+  schemaJson        Json?
+  status            PageStatus   @default(READY_FOR_APPROVAL)
+  similarityScore   Float        @default(0.0)
+  qualityChecks     Json?
+  publishedWpPostId Int?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  approvals         Approval[]
+}
+
+model Approval {
+  id              String        @id @default(uuid())
+  generatedPageId String
+  generatedPage   GeneratedPage @relation(fields: [generatedPageId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  action          String        // approved, rejected, edited
+  notes           String?
+  createdAt       DateTime      @default(now())
+}
+
+model WordPressConnection {
+  id             String    @id @default(uuid())
+  siteId         String
+  site           Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  endpointUrl    String
+  username       String
+  appPasswordEnc String
+  status         String    @default("connected")
+  lastSyncAt     DateTime?
+  createdAt      DateTime  @default(now())
+}
+
+model SearchConsoleConnection {
+  id             String    @id @default(uuid())
+  siteId         String
+  site           Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  propertyUrl    String
+  refreshTokenEnc String?
+  status         String    @default("connected")
+  createdAt      DateTime  @default(now())
+  metrics        SearchMetric[]
+}
+
+model SearchMetric {
+  id           String                  @id @default(uuid())
+  connectionId String
+  connection   SearchConsoleConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  date         DateTime
+  query        String?
+  page         String
+  clicks       Int                     @default(0)
+  impressions  Int                     @default(0)
+  ctr          Float                   @default(0)
+  position     Float                   @default(0)
+}
+
+model GeoPrompt {
+  id           String           @id @default(uuid())
+  siteId       String
+  site         Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  prompt       String
+  entity       String
+  brand        String
+  market       String           @default("US")
+  createdAt    DateTime         @default(now())
+  observations GeoObservation[]
+}
+
+model GeoObservation {
+  id             String    @id @default(uuid())
+  geoPromptId    String
+  geoPrompt      GeoPrompt @relation(fields: [geoPromptId], references: [id], onDelete: Cascade)
+  modelName      String    @default("gpt-4o")
+  brandMentioned Boolean   @default(false)
+  positionInText Int?
+  citations      Json?
+  sentiment      String    @default("neutral")
+  responseSample String
+  observedAt     DateTime  @default(now())
+}
+
+model Job {
+  id          String     @id @default(uuid())
+  type        String
+  status      JobStatus  @default(QUEUED)
+  progress    Int        @default(0)
+  payload     Json?
+  result      Json?
+  error       String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime   @default(now())
+}
+
+model AuditEvent {
+  id          String     @id @default(uuid())
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action      String
+  entity      String
+  entityId    String
+  details     Json?
+  ipAddress   String?
+  createdAt   DateTime   @default(now())
+}

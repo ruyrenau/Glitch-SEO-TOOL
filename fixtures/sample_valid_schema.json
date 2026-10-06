@@ -1,0 +1,11 @@
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Comprehensive Technical SEO and Log Intelligence Guide",
+  "description": "How to monitor search engine crawlers with streaming log parsers and JSON-LD schema automation.",
+  "author": {
+    "@type": "Person",
+    "name": "James Vance"
+  },
+  "datePublished": "2026-10-05T12:00:00Z"
+}

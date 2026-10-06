@@ -1,0 +1,26 @@
+{
+  "name": "@glitch/db",
+  "version": "1.0.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "seed": "tsx src/seed.ts",
+    "seed:demo": "tsx src/seed.ts --demo",
+    "build": "tsc",
+    "dev": "tsc -w"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.4.1",
+    "bcryptjs": "^3.0.2"
+  },
+  "devDependencies": {
+    "prisma": "^6.4.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "@types/node": "^22.13.10",
+    "@types/bcryptjs": "^2.4.6"
+  }
+}
