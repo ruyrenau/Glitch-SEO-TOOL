@@ -1,0 +1,41 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 12.9.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Prisma Generate
+        run: pnpm --filter @glitch/db generate
+
+      - name: Compile TypeScript packages
+        run: |
+          pnpm --filter @glitch/config build
+          pnpm --filter @glitch/core build
+          pnpm --filter @glitch/log-parser build
+          pnpm --filter @glitch/crawler build
+          pnpm --filter @glitch/schema-engine build
+          pnpm --filter @glitch/content-engine build
+          pnpm --filter @glitch/connectors build
+          pnpm --filter @glitch/api build
+          pnpm --filter @glitch/cli build
+
+      - name: Run Automated Test Suite
+        run: node packages/testing/run_all_tests.js
