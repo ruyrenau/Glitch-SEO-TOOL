@@ -77,16 +77,35 @@ export function CrawlView({ siteId, onFinished }: { siteId: string; onFinished: 
     </label>
   );
 
+  const URL_LIMITS = [500, 1000, 2500, 5000, 10000, 50000, 100000];
+  const estMinutes = Math.ceil(form.maxUrls / Math.max(form.rps, 0.1) / 60);
+  const estTime = estMinutes >= 90 ? `${(estMinutes / 60).toFixed(1)} horas` : `${estMinutes} min`;
+  const estDisk = form.maxUrls * 26 * 1024 >= 1024 ** 3 ? `${((form.maxUrls * 26) / 1024 ** 2).toFixed(1)} GB` : `${Math.ceil((form.maxUrls * 26) / 1024)} MB`;
+
   return (
     <div className="space-y-6">
       <Card title="Nuevo crawl">
         <form onSubmit={start} className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {num('maxUrls', 'Máx. URLs (≤ 100,000)', 1, 100000)}
+            <label className="text-xs font-semibold space-y-1">
+              <span>Máx. URLs</span>
+              <select aria-label="Máx. URLs" className={inputCls} value={form.maxUrls} onChange={e => setForm({ ...form, maxUrls: Number(e.target.value) })}>
+                {URL_LIMITS.map(n => <option key={n} value={n}>{n.toLocaleString('es-MX')}{n === 100000 ? ' (máximo)' : ''}</option>)}
+              </select>
+            </label>
             {num('maxDepth', 'Profundidad máx.', 0, 20)}
             {num('concurrency', 'Concurrencia', 1, 8)}
             {num('rps', 'Solicitudes / segundo', 0.1, 20, 0.1)}
           </div>
+          {form.maxUrls >= 10000 && (
+            <div role={form.maxUrls >= 100000 ? 'alert' : 'status'} className={`flex gap-2 p-3 rounded-xl border text-xs ${form.maxUrls >= 100000 ? 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300'}`}>
+              <span>
+                {form.maxUrls >= 100000 && <strong>Crawl muy grande. </strong>}
+                Si el sitio tiene {form.maxUrls.toLocaleString('es-MX')} URLs, a {form.rps} solicitudes por segundo tardará unos <strong>{estTime}</strong>{form.renderJs ? ' (bastante más con JavaScript)' : ''} y ocupará cerca de <strong>{estDisk}</strong> en disco.
+                {form.maxUrls >= 100000 && ' Usa una velocidad que el servidor aguante, de preferencia en un sitio propio o con permiso, y en horario de poco tráfico.'}
+              </span>
+            </div>
+          )}
           <div className="flex flex-wrap gap-4 text-xs">
             <label className="flex items-center gap-2"><input type="checkbox" checked={form.respectRobots} onChange={e => setForm({ ...form, respectRobots: e.target.checked })} /> Respetar robots.txt</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={form.seedFromSitemap} onChange={e => setForm({ ...form, seedFromSitemap: e.target.checked })} /> Usar URLs del sitemap como semillas</label>
@@ -98,7 +117,7 @@ export function CrawlView({ siteId, onFinished }: { siteId: string; onFinished: 
           </label>
           <div className="flex gap-2 items-center">
             <Button type="submit" disabled={!!job || !can('seo:operate')}><Play className="w-3.5 h-3.5" aria-hidden /> Iniciar crawl</Button>
-            <span className="text-[11px] text-slate-500">Lo ejecuta el worker en segundo plano: puedes cerrar esta página. User agent identificable, sin JavaScript.</span>
+            <span className="text-[11px] text-slate-500">Lo ejecuta el worker en segundo plano: puedes cerrar esta página. User agent identificable, {form.renderJs ? 'ejecutando JavaScript' : 'sin JavaScript'}.</span>
           </div>
           <ErrorBox error={error} />
         </form>
