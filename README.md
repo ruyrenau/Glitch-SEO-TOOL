@@ -24,6 +24,8 @@ Internal SEO operations tool in TypeScript. It streams Nginx/Apache access logs,
 | Batch generation | Up to 500 rows per run. Each page goes through the quality gate: title and description length, slug, H1, thin content, **missing data for a variable**, leftover `{{ }}`, risky claims ("garantizado", "#1", "100 %"...), words specific to the row, and similarity to every other page of the site. Similarity is measured on the content each row adds (shingles minus the template boilerplate), so pages are not flagged just for sharing a template, while a row that repeats another row's data is blocked as a near-duplicate. Slug collisions are skipped and reported. Exact hash, shingle/Jaccard and a 64-bit SimHash are available. States: blocked, needs review, ready, approved, draft in WordPress. |
 | Human approval | Sending is impossible until a named reviewer approves the page; blocked pages cannot be approved. Every review is stored. Bulk approve/reject/send report a result per page (blocked or unapproved pages are refused, conflicts are never overwritten in bulk). |
 | WordPress | REST API + Application Passwords. Credentials encrypted at rest (AES-256-GCM, `CREDENTIALS_KEY`) and never returned. HTTPS required (local hosts only via `CRAWL_ALLOW_PRIVATE_HOSTS`). Connection test checks the user can edit posts; lists categories. **Drafts only**: never publishes, never deletes, refuses to touch a post that is no longer a draft. Dry run with title and line diff. Detects edits made in wp-admin since the last send (`modified_gmt`) and asks before overwriting. Keeps a copy of the remote post before each update and can restore it. `Idempotency-Key` on send. Retries 429/503 honoring `Retry-After`. Every attempt (including conflicts and refusals) is logged. |
+| SEO explorer | Screaming Frog-style view of a crawl: 18 tabs (internal, response codes, URI, titles, meta description, keywords, H1, H2, images, canonicals, directives, hreflang, structured data, Open Graph/Twitter, links, pagination, resources and files, external) with filters and counts, file-type overview, search, sort, resizable and selectable columns, CSV export. Per-URL detail: inlinks with anchors, outlinks with status, images, SERP preview, source, headers, issues. The crawler checks every CSS, JS, image, font, PDF and external link used by the pages (status, content type, size, where it is used) without downloading bodies. |
+| SEO edits on live WordPress | Title, slug, Yoast/Rank Math SEO title and meta description, and media alt text of published posts and pages, through propose → approve → apply → verify → revert. Conflict check against the value read at proposal time, old value kept for revert, the change is checked on the public page (caches reported), every step audited. Content and status are never sent. See [ADR 012](docs/adr/012-seo-edits-on-live-wordpress.md). |
 | Tools | JSON-LD validator. |
 | Core Web Vitals | Lab data from Lighthouse run locally in headless Chrome/Edge (no account needed), or PageSpeed Insights with `PSI_API_KEY`, which adds real-user CrUX field data (p75 LCP, INP, CLS, FCP, TTFB, URL or origin level, collection period). Field and lab are stored and shown separately; "insufficient data" is explicit. Diagnostics: render-blocking resources, unsized images, offscreen images, unused JS/CSS, cache policy, font-display, byte weight, request count and more. Mobile/desktop, history per URL, runs as a queued job (one browser at a time), URLs restricted to the site's host. |
 | Job queue | BullMQ on Redis with a separate worker process (`apps/worker`). Log imports and crawls are queued by the API and survive API restarts. Every job has a database record (status, progress, last log lines, attempts, result, error, who/what triggered it). Exponential-backoff retries; final failures stay in the BullMQ failed set (dead letter) and can be retried by hand; non-recoverable errors are not retried. Queued jobs can be cancelled immediately, running ones cooperatively. Per-site scheduled crawls (cron, site timezone, at most hourly) and a daily retention job (old log imports, expired sessions, temp files, old job history; audited). Worker heartbeat shown in `/health/ready` and the dashboard. |
@@ -100,7 +102,7 @@ pnpm cli schema:validate ./schema.json         # exit 1 when invalid
 
 ```bash
 pnpm test        # Vitest (151 tests; needs Redis, started automatically; runs real Lighthouse when Chrome/Edge is installed): parser, bots, robots.txt, extraction, crawler vs a local fixture site, SSRF, API integration on a throwaway SQLite DB
-pnpm test:e2e    # Playwright (7 flows): login/logout; logs; crawl and issue triage; bad deploy raises alerts; single page to WordPress with a conflict; CSV → batch → bulk approve → bulk send
+pnpm test:e2e    # Playwright (8 flows): login/logout; logs; crawl and issue triage; bad deploy raises alerts; single page to WordPress with a conflict; CSV → batch → bulk approve → bulk send; edit a live SEO title from the explorer, approve, apply, verify and revert
 pnpm typecheck
 pnpm bench:logs [lines]
 ```
@@ -125,7 +127,7 @@ packages/schema-engine, content-engine, connectors, config
 ## Known limitations
 
 - No password recovery by email yet (an Admin resets passwords). Login throttling is in memory (per API process).
-- WordPress: posts only (no pages, media upload, featured images or Yoast/Rank Math fields yet). Reviewer identity is a typed name until authentication exists.
+- WordPress drafts: posts only (no pages, media upload or featured images). SEO edits on live content cover posts and pages, but not the home page or archives; Yoast/Rank Math fields need the mu-plugin in `docs/wordpress/`. Changing a media alt does not update images already inserted in a post's HTML.
 - There is no JavaScript rendering, so client-rendered content is invisible to the crawler.
 - SQLite is shared by the API and worker processes on one machine; several machines need PostgreSQL (switch the Prisma provider) and a shared upload store.
 - Retrying a failed log import requires uploading the file again (temp files are deleted after a final failure).
@@ -139,7 +141,7 @@ packages/schema-engine, content-engine, connectors, config
 
 ## Roadmap
 
-1. **WordPress extras**: media and featured images, pages as well as posts, Yoast/Rank Math fields, JSON-LD per page.
+1. **WordPress extras**: media upload and featured images for drafts, JSON-LD per page, inline image alt inside post content.
 2. **Search Console**: OAuth, Search Analytics, cross-reference with logs.
 3. GEO monitoring, log-based alerts (5xx spikes, Googlebot drops).
 

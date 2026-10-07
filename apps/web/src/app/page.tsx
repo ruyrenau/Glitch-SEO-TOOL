@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   LayoutDashboard, Globe, FileText, ShieldAlert, Gauge, Code2, Layers, Send, Search, Sparkles, Cpu, History, Sun, Moon, AlertTriangle, Menu, Bell, BookOpen, Users, LogOut, UserCircle, ScanSearch,
   PanelLeftClose,
+  PencilLine,
   PanelLeftOpen,
 } from 'lucide-react';
 import { API_URL, ApiRequestError, UNAUTHORIZED_EVENT, apiGet, apiSend } from '@/lib/api';
@@ -14,6 +15,8 @@ import { UsersView, AccountView } from '@/components/UsersView';
 import { JobsView } from '@/components/JobsView';
 import { PerformanceView } from '@/components/PerformanceView';
 import { ExplorerView } from '@/components/ExplorerView';
+import { SeoEditPanel } from '@/components/SeoEditPanel';
+import { SeoChangesView } from '@/components/SeoChangesView';
 import type { Site } from '@/lib/types';
 import { ErrorBox, Roadmap, Skeleton } from '@/components/ui';
 import { OverviewView } from '@/components/OverviewView';
@@ -27,7 +30,7 @@ import { SchemaView, AuditView } from '@/components/ToolsViews';
 import { WordPressView } from '@/components/WordPressView';
 import { ContentView } from '@/components/ContentView';
 
-type NavId = 'overview' | 'sites' | 'logs' | 'crawler' | 'explorer' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'programmatic' | 'wordpress' | 'gsc' | 'geo' | 'automations' | 'audit' | 'manual' | 'users' | 'account';
+type NavId = 'overview' | 'sites' | 'logs' | 'crawler' | 'explorer' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'programmatic' | 'wordpress' | 'seochanges' | 'gsc' | 'geo' | 'automations' | 'audit' | 'manual' | 'users' | 'account';
 
 const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ className?: string }>; ready: boolean; perm?: Permission }> = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard, ready: true },
@@ -35,6 +38,7 @@ const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ classNa
   { id: 'logs', label: 'Logs y sitemap', icon: FileText, ready: true },
   { id: 'crawler', label: 'Crawl y auditoría', icon: ShieldAlert, ready: true },
   { id: 'explorer', label: 'Explorador SEO', icon: ScanSearch, ready: true },
+  { id: 'seochanges', label: 'Cambios SEO', icon: PencilLine, ready: true },
   { id: 'issues', label: 'Issues técnicos', icon: AlertTriangle, ready: true },
   { id: 'alerts', label: 'Alertas', icon: Bell, ready: true },
   { id: 'vitals', label: 'Core Web Vitals', icon: Gauge, ready: true },
@@ -127,7 +131,7 @@ function Dashboard() {
 
   const current = nav === 'manual' ? { label: 'Manual de uso' } : nav === 'account' ? { label: 'Mi cuenta' } : NAV.find(n => n.id === nav)!;
   const visibleNav = NAV.filter(n => !n.perm || can(n.perm));
-  const needsSite = ['overview', 'logs', 'crawler', 'explorer', 'issues', 'alerts', 'programmatic', 'wordpress', 'vitals'].includes(nav);
+  const needsSite = ['overview', 'logs', 'crawler', 'explorer', 'seochanges', 'issues', 'alerts', 'programmatic', 'wordpress', 'vitals'].includes(nav);
 
   return (
     <div className={dark ? 'dark' : ''}>
@@ -253,7 +257,8 @@ function Dashboard() {
                 {nav === 'schema' && <SchemaView />}
                 {nav === 'programmatic' && <ContentView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'wordpress' && <WordPressView key={siteId} siteId={siteId} go={go} />}
-                {nav === 'explorer' && <ExplorerView key={siteId} siteId={siteId} />}
+                {nav === 'explorer' && <ExplorerView key={siteId} siteId={siteId} detailExtra={d => <SeoEditPanel siteId={siteId} detail={d} goChanges={() => go('seochanges')} />} />}
+                {nav === 'seochanges' && <SeoChangesView key={siteId} siteId={siteId} />}
                 {nav === 'vitals' && <PerformanceView key={siteId} siteId={siteId} />}
                 {nav === 'automations' && <JobsView sites={sites} />}
                 {nav === 'audit' && <AuditView />}

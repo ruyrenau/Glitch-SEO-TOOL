@@ -121,6 +121,8 @@ export async function runCrawl(opts: RunCrawlOptions) {
     for (let i = 0; i < rows.length; i += BATCH) await prisma.crawledPage.createMany({ data: rows.slice(i, i + BATCH) });
     const links = result.pages.flatMap(p => (p.extracted?.links ?? []).map(l => ({ crawlRunId: run.id, sourceUrl: p.finalUrl, targetUrl: l.url, anchor: l.anchor, internal: l.internal, nofollow: l.nofollow })));
     for (let i = 0; i < links.length; i += BATCH) await prisma.crawledLink.createMany({ data: links.slice(i, i + BATCH) });
+    const resources = result.resources.map(r => ({ crawlRunId: run.id, url: r.url, kind: r.kind, internal: r.internal, isLink: r.isLink, statusCode: r.statusCode, finalUrl: r.finalUrl, redirected: r.redirected, contentType: r.contentType, sizeBytes: r.sizeBytes, responseTimeMs: r.responseTimeMs, error: r.error, foundOn: r.foundOn, foundOnCount: r.foundOnCount }));
+    for (let i = 0; i < resources.length; i += BATCH) await prisma.crawledResource.createMany({ data: resources.slice(i, i + BATCH) });
 
     const detected = auditCrawl(result, { environment: site.environment, sitemapUrls });
     await syncIssues(site.id, run.id, detected);

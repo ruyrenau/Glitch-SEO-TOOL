@@ -31,7 +31,36 @@ export interface ExtractedPage {
   relPrev: string | null;
   imageList: ExtractedImage[];
   links: ExtractedLink[];
+  /** Files the page loads or links to: CSS, JS, images, fonts, PDFs, media… */
+  resources: ExtractedResource[];
 }
+
+export type ResourceKind = 'css' | 'js' | 'image' | 'font' | 'pdf' | 'media' | 'document' | 'other';
+export interface ExtractedResource {
+  url: string;
+  kind: ResourceKind;
+}
+
+const EXT_KIND: Array<[RegExp, ResourceKind]> = [
+  [/\.css$/i, 'css'],
+  [/\.(m?js)$/i, 'js'],
+  [/\.(png|jpe?g|gif|webp|avif|svg|ico|bmp|tiff?)$/i, 'image'],
+  [/\.(woff2?|ttf|otf|eot)$/i, 'font'],
+  [/\.pdf$/i, 'pdf'],
+  [/\.(mp4|webm|ogg|mp3|wav|mov|m4a)$/i, 'media'],
+  [/\.(docx?|xlsx?|pptx?|csv|zip|rar|7z|txt|xml|json)$/i, 'document']
+];
+/** File type from the URL extension; null when it looks like a page. */
+export function resourceKindFromUrl(u: string): ResourceKind | null {
+  let pathname: string;
+  try {
+    pathname = new URL(u).pathname;
+  } catch {
+    return null;
+  }
+  return EXT_KIND.find(([re]) => re.test(pathname))?.[1] ?? null;
+}
+export const MAX_RESOURCES_PER_PAGE = 300;
 
 export interface ExtractedImage {
   src: string;
@@ -117,6 +146,36 @@ export function extractPage(html: string, pageUrl: string): ExtractedPage {
     }
   });
 
+  // Resources (collected before any DOM clean-up).
+  const resMap = new Map<string, ResourceKind>();
+  const addRes = (raw: string | undefined, kind: ResourceKind | null) => {
+    if (!raw || raw.startsWith('data:') || resMap.size >= MAX_RESOURCES_PER_PAGE) return;
+    const abs = normalizeUrl(raw.trim(), base);
+    if (abs && !resMap.has(abs)) resMap.set(abs, kind ?? resourceKindFromUrl(abs) ?? 'other');
+  };
+  $('link[href]').each((_, el) => {
+    const rel = ($(el).attr('rel') ?? '').toLowerCase();
+    const as = ($(el).attr('as') ?? '').toLowerCase();
+    if (/\bstylesheet\b/.test(rel)) addRes($(el).attr('href'), 'css');
+    else if (/\bicon\b/.test(rel)) addRes($(el).attr('href'), 'image');
+    else if (/\b(preload|modulepreload)\b/.test(rel)) addRes($(el).attr('href'), as === 'style' ? 'css' : as === 'script' || rel.includes('modulepreload') ? 'js' : as === 'font' ? 'font' : as === 'image' ? 'image' : null);
+  });
+  $('script[src]').each((_, el) => addRes($(el).attr('src'), 'js'));
+  $('img').each((_, el) => {
+    addRes($(el).attr('src') ?? $(el).attr('data-src'), 'image');
+    const srcset = $(el).attr('srcset');
+    if (srcset) for (const part of srcset.split(',')) addRes(part.trim().split(/\s+/)[0], 'image');
+  });
+  $('picture source[srcset]').each((_, el) => addRes(($(el).attr('srcset') ?? '').split(',')[0]?.trim().split(/\s+/)[0], 'image'));
+  $('video[src], audio[src], video source[src], audio source[src]').each((_, el) => addRes($(el).attr('src'), 'media'));
+  $('video[poster]').each((_, el) => addRes($(el).attr('poster'), 'image'));
+  $('iframe[src]').each((_, el) => addRes($(el).attr('src'), null));
+  for (const l of links) {
+    const k = resourceKindFromUrl(l.url);
+    if (k) addRes(l.url, k);
+  }
+  const resources: ExtractedResource[] = [...resMap].map(([url, kind]) => ({ url, kind }));
+
   const imgs = $('img');
   const missingAlt = imgs.filter((_, el) => $(el).attr('alt') === undefined).length;
   const imageList: ExtractedImage[] = imgs
@@ -173,6 +232,7 @@ export function extractPage(html: string, pageUrl: string): ExtractedPage {
     relNext: linkRel('next'),
     relPrev: linkRel('prev'),
     imageList,
-    links
+    links,
+    resources
   };
 }

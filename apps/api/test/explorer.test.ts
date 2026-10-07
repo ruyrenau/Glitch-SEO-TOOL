@@ -29,14 +29,14 @@ afterAll(async () => {
 describe('SEO explorer', () => {
   it('summarises every tab filter with counts from the crawl', async () => {
     const s = (await app.inject(`/api/v1/crawls/${crawlId}/explorer/summary`)).json() as Summary;
-    expect(s.totals.images).toBe(2);
+    expect(s.totals.images).toBe(3);
     expect(count(s, 'titles', 'duplicate')).toBe(2);
     expect(count(s, 'titles', 'over-60')).toBe(1);
     expect(count(s, 'titles', 'below-30')).toBe(1);
     expect(count(s, 'meta', 'missing')).toBe(1);
     expect(count(s, 'h1', 'multiple')).toBe(1);
     expect(count(s, 'images', 'missing-alt')).toBe(1);
-    expect(count(s, 'images', 'missing-dimensions')).toBe(2);
+    expect(count(s, 'images', 'missing-dimensions')).toBe(3);
     expect(count(s, 'canonicals', 'canonicalised')).toBe(1);
     expect(count(s, 'canonicals', 'non-200')).toBe(1); // /canonical-to-redirect -> /old (301)
     expect(count(s, 'response', '4xx')).toBe(1);
@@ -78,6 +78,25 @@ describe('SEO explorer', () => {
     const da = (await app.inject(`/api/v1/crawls/${crawlId}/explorer/pages/${about.id}`)).json();
     expect(da.inlinks.length).toBeGreaterThan(5);
     expect(da.inlinks.map((l: { anchor: string }) => l.anchor)).toContain('Nosotros');
+  });
+
+  it('checks resources (CSS, JS, images, PDFs) and external links with status, type and size', async () => {
+    const s = (await app.inject(`/api/v1/crawls/${crawlId}/explorer/summary`)).json() as Summary & { fileTypes: Array<{ kind: string; count: number }> };
+    expect(count(s, 'resources', 'css')).toBe(1);
+    expect(count(s, 'resources', 'js')).toBe(2);
+    expect(count(s, 'resources', 'pdf')).toBe(1);
+    expect(count(s, 'resources', 'broken')).toBe(1); // /missing.js
+    expect(count(s, 'resources', 'heavy-image')).toBe(1); // /a.png, 300 KB
+    expect(count(s, 'resources', 'type-mismatch')).toBe(1); // /b.png served as text/html
+    expect(count(s, 'external', 'links')).toBe(1);
+    expect(s.fileTypes.map(f => f.kind)).toEqual(expect.arrayContaining(['html', 'css', 'js', 'image', 'pdf']));
+
+    const broken = (await app.inject(`/api/v1/crawls/${crawlId}/explorer?tab=resources&filter=broken`)).json();
+    expect(broken.rows[0]).toMatchObject({ url: `${site.origin}/missing.js`, type: 'JavaScript', status: 404, foundOnCount: 1, foundOn: `${site.origin}/about` });
+    const img = (await app.inject(`/api/v1/crawls/${crawlId}/explorer?tab=resources&filter=heavy-image`)).json();
+    expect(img.rows[0]).toMatchObject({ contentType: 'image/png', sizeKb: 300 });
+    // A linked PDF is checked as a file, not crawled as a page.
+    expect(await prisma.crawledPage.count({ where: { crawlRunId: crawlId, url: `${site.origin}/guia.pdf` } })).toBe(0);
   });
 
   it('exports the current tab and filter as CSV', async () => {

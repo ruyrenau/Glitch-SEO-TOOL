@@ -8,7 +8,7 @@ import { Badge, Button, Card, Empty, ErrorBox, Skeleton, inputCls } from './ui';
 
 interface Column { key: string; label: string; type?: 'number' | 'text' | 'url' }
 interface Rows { tab: { id: string; label: string; columns: Column[] }; total: number; page: number; pageSize: number; rows: Array<Record<string, unknown> & { pageId?: string; url?: string }> }
-interface Summary { totals: { urls: number; html: number; images: number }; tabs: Array<{ id: string; label: string; filters: Array<{ id: string; label: string; count: number }> }> }
+interface Summary { totals: { urls: number; html: number; images: number; resources?: number; external?: number }; fileTypes?: Array<{ kind: string; label: string; count: number }>; tabs: Array<{ id: string; label: string; filters: Array<{ id: string; label: string; count: number }> }> }
 interface Detail {
   page: Record<string, unknown> & { url: string; finalUrl: string; title: string | null; metaDescription: string | null; statusCode: number; images: Array<{ src: string; alt: string | null; width: string | null; height: string | null }> | null; headers: Record<string, string> | null; h1All: string[] | null; h2: string[] | null; og: Record<string, string | null> | null; redirectChain: Array<{ url: string; status: number }> | null };
   inlinks: Array<{ sourceUrl: string; anchor: string; nofollow: boolean }>;
@@ -62,7 +62,8 @@ const DETAIL_TABS = [
   ['serp', 'Vista en Google'],
   ['source', 'Código fuente'],
   ['headers', 'Cabeceras'],
-  ['issues', 'Issues']
+  ['issues', 'Issues'],
+  ['edit', 'Editar en WordPress']
 ] as const;
 
 function DetailPanel({ crawlId, pageId, extra }: { crawlId: string; pageId: string; extra?: (d: Detail) => React.ReactNode }) {
@@ -105,7 +106,7 @@ function DetailPanel({ crawlId, pageId, extra }: { crawlId: string; pageId: stri
   return (
     <div className="space-y-3">
       <div role="tablist" aria-label="Detalle de la URL" className="flex flex-wrap gap-1">
-        {DETAIL_TABS.map(([id, label]) => {
+        {DETAIL_TABS.filter(([id]) => id !== 'edit' || extra).map(([id, label]) => {
           const n = id === 'inlinks' ? d.inlinks.length : id === 'outlinks' ? d.outlinks.length : id === 'images' ? p.images?.length ?? 0 : id === 'issues' ? d.issues.length : null;
           return (
             <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`px-2 py-1 rounded-lg text-[11px] border ${tab === id ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-300 dark:border-slate-700'}`}>
@@ -115,7 +116,7 @@ function DetailPanel({ crawlId, pageId, extra }: { crawlId: string; pageId: stri
         })}
         <a href={p.finalUrl} target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 text-[11px] text-indigo-600 dark:text-indigo-400 underline">Abrir <ExternalLink className="w-3 h-3" aria-hidden /></a>
       </div>
-      {extra?.(d)}
+      {tab === 'edit' && extra?.(d)}
       <div className="text-xs max-h-80 overflow-auto">
         {tab === 'info' && (
           <dl className="grid grid-cols-1 md:grid-cols-[14rem_1fr] gap-x-4 gap-y-1">
@@ -262,6 +263,7 @@ export function ExplorerView({ siteId, detailExtra }: { siteId: string; detailEx
   const go = (tab: string, filter = 'all') => {
     setSelected(null);
     setState(s => ({ ...s, tab, filter, page: 1, sort: tab === 'images' ? 'src' : 'url', dir: 'asc' }));
+    setQ('');
   };
   const sortBy = (k: string) => setState(s => ({ ...s, sort: k, dir: s.sort === k && s.dir === 'asc' ? 'desc' : 'asc', page: 1 }));
   const tabSummary = summary?.tabs.find(t => t.id === state.tab);
@@ -280,7 +282,7 @@ export function ExplorerView({ siteId, detailExtra }: { siteId: string; detailEx
             {runs.map(r => <option key={r.id} value={r.id}>{fmtDate(r.startedAt)} · {fmt(r.urlsCrawled)} URLs</option>)}
           </select>
         </label>
-        {summary && <span className="text-slate-500">{fmt(summary.totals.urls)} URLs · {fmt(summary.totals.html)} HTML 200 · {fmt(summary.totals.images)} imágenes</span>}
+        {summary && <span className="text-slate-500">{fmt(summary.totals.urls)} URLs · {fmt(summary.totals.html)} HTML 200 · {fmt(summary.totals.images)} imágenes · {fmt(summary.totals.resources ?? 0)} archivos · {fmt(summary.totals.external ?? 0)} externos</span>}
       </div>
 
       <div role="tablist" aria-label="Pestañas del explorador" className="flex gap-1 overflow-x-auto pb-1">
@@ -386,6 +388,27 @@ export function ExplorerView({ siteId, detailExtra }: { siteId: string; detailEx
             <Skeleton rows={6} />
           ) : (
             <ul className="text-xs space-y-3 max-h-[34rem] overflow-y-auto">
+              {!!summary.fileTypes?.length && (
+                <li>
+                  <span className="font-semibold">Tipos de archivo (internos)</span>
+                  <ul className="mt-1 space-y-0.5">
+                    {summary.fileTypes.map(f => {
+                      const total = summary.fileTypes!.reduce((n, x) => n + x.count, 0) || 1;
+                      return (
+                        <li key={f.kind}>
+                          <button onClick={() => (f.kind === 'html' ? go('internal', 'html') : go('resources', f.kind))} className="w-full px-1.5 py-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800">
+                            <span className="flex justify-between gap-2">
+                              <span className="text-slate-600 dark:text-slate-400">{f.label}</span>
+                              <span className="tabular-nums font-semibold">{fmt(f.count)} <span className="font-normal text-slate-400">({Math.round((f.count / total) * 100)}%)</span></span>
+                            </span>
+                            <span className="block h-1 mt-0.5 rounded bg-slate-100 dark:bg-slate-800"><span className="block h-1 rounded bg-indigo-500" style={{ width: `${(f.count / total) * 100}%` }} /></span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </li>
+              )}
               {summary.tabs.map(t => (
                 <li key={t.id}>
                   <button className={`font-semibold ${state.tab === t.id ? 'text-indigo-600 dark:text-indigo-400' : ''}`} onClick={() => go(t.id)}>{t.label}</button>

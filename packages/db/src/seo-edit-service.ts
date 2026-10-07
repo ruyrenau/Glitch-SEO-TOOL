@@ -138,7 +138,8 @@ async function load(id: string) {
 
 export async function reviewProposal(id: string, decision: 'approved' | 'rejected') {
   const p = await load(id);
-  if (p.status !== 'proposed') throw new WorkflowError('NOT_PROPOSED', `Este cambio está "${p.status}"; solo se revisan cambios propuestos.`);
+  const allowed = decision === 'approved' ? ['proposed'] : ['proposed', 'approved', 'conflict', 'failed'];
+  if (!allowed.includes(p.status)) throw new WorkflowError('NOT_PROPOSED', `Este cambio está "${p.status}" y no se puede ${decision === 'approved' ? 'aprobar' : 'rechazar'}.`);
   const updated = await prisma.seoChangeProposal.update({ where: { id }, data: { status: decision, reviewedById: currentActorId() } });
   await recordAuditEvent({ workspaceId: p.site.workspaceId, userId: null, action: `seo_change.${decision}`, entity: 'SeoChangeProposal', entityId: id });
   return updated;

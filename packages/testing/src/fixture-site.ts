@@ -79,7 +79,8 @@ export async function startFixtureSite(port = 0): Promise<FixtureSite> {
       body: `${longBody('home')}<img src="/a.png" alt="logo"><img src="/b.png">`,
       links: ['/about', '/old', '/missing', '/error', '/noindex-page', '/dup-a', '/dup-b', '/thin', '/canonical-to-redirect', '/bad-schema', '/private/secret', '/loop-a', '/cart', '/products?sort=asc', '/deep/1', 'mailto:hola@example.com', 'https://external.example.org/x']
     })),
-    '/about': html(page({ title: 'Sobre nosotros: equipo de SEO técnico en Puebla', desc: 'Quiénes somos.', canonical: abs('/about'), h1: ['Nosotros'], body: longBody('about'), jsonld: '{"@context":"https://schema.org","@type":"AboutPage"}' })),
+    // Resources: CSS + JS (ok), a missing script, a PDF link, a heavy image and an "image" served as HTML.
+    '/about': html(page({ title: 'Sobre nosotros: equipo de SEO técnico en Puebla', desc: 'Quiénes somos.', canonical: abs('/about'), h1: ['Nosotros'], body: `${longBody('about')}<img src="/a.png" alt="logo">`, links: ['/guia.pdf'], head: '<link rel="stylesheet" href="/style.css"><script src="/app.js"></script><script src="/missing.js"></script>', jsonld: '{"@context":"https://schema.org","@type":"AboutPage"}' })),
     // Redirect chain: /old -> /older -> /about
     '/old': redirect('/older'),
     '/older': redirect('/about', 302),
@@ -116,6 +117,15 @@ export async function startFixtureSite(port = 0): Promise<FixtureSite> {
   const sitemapXml = `<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${['/', '/about', '/noindex-page', '/old', '/orphan', '/missing', '/private/secret']
     .map(p => `<url><loc>${abs(p)}</loc></url>`)
     .join('')}</urlset>`;
+  const file = (type: string, body: string | Buffer) => (res: http.ServerResponse) => {
+    res.writeHead(200, { 'content-type': type, 'content-length': Buffer.byteLength(body) });
+    res.end(body);
+  };
+  routes['/style.css'] = file('text/css', 'body{margin:0}');
+  routes['/app.js'] = file('application/javascript', 'console.log(1)');
+  routes['/guia.pdf'] = file('application/pdf', '%PDF-1.4 demo');
+  routes['/a.png'] = file('image/png', Buffer.alloc(300 * 1024));
+  routes['/b.png'] = file('text/html', '<p>not an image</p>');
   routes['/sitemap.xml'] = res => {
     res.writeHead(200, { 'content-type': 'application/xml' });
     res.end(sitemapXml);

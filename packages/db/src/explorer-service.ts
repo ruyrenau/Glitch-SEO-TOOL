@@ -470,13 +470,97 @@ function imageRows(pages: ExplorerPage[]) {
   return pages.filter(isHtml200).flatMap(p => p.images.map(i => ({ pageId: p.id, url: p.url, src: i.src, alt: i.alt, altLength: len(i.alt), dimensions: i.width && i.height ? `${i.width}×${i.height}` : 'faltan', loading: i.loading ?? '', _img: i })));
 }
 
+// ---- Resources (CSS, JS, images, fonts, PDFs…) and external links ----
+interface Res {
+  url: string;
+  kind: string;
+  internal: boolean;
+  isLink: boolean;
+  statusCode: number;
+  finalUrl: string;
+  redirected: boolean;
+  contentType: string;
+  sizeBytes: number | null;
+  responseTimeMs: number;
+  error: string | null;
+  foundOn: string[];
+  foundOnCount: number;
+}
+const KIND_LABEL: Record<string, string> = { html: 'Página', css: 'CSS', js: 'JavaScript', image: 'Imagen', font: 'Fuente', pdf: 'PDF', media: 'Audio/vídeo', document: 'Documento', other: 'Otro' };
+const resStatus = (r: Res) => (r.statusCode ? (r.redirected ? `${r.statusCode} (tras redirección)` : r.statusCode) : `Sin respuesta${r.error ? `: ${r.error}` : ''}`);
+const bad = (r: Res) => r.statusCode === 0 || r.statusCode >= 400;
+const statusFilters: Array<{ id: string; label: string; test: (r: Res) => boolean }> = [
+  { id: '2xx', label: 'Éxito (2xx)', test: r => r.statusCode >= 200 && r.statusCode < 300 && !r.redirected },
+  { id: '3xx', label: 'Redirigen', test: r => r.redirected },
+  { id: '4xx', label: 'Error de cliente (4xx)', test: r => r.statusCode >= 400 && r.statusCode < 500 },
+  { id: '5xx', label: 'Error de servidor (5xx)', test: r => r.statusCode >= 500 },
+  { id: 'no-response', label: 'Sin respuesta', test: r => r.statusCode === 0 }
+];
+const RES_COLUMNS: Column[] = [
+  { key: 'url', label: 'Dirección', type: 'url' },
+  { key: 'type', label: 'Tipo' },
+  { key: 'contentType', label: 'Tipo de contenido' },
+  { key: 'status', label: 'Estado' },
+  { key: 'sizeKb', label: 'Tamaño (KB)', type: 'number' },
+  { key: 'responseMs', label: 'Respuesta (ms)', type: 'number' },
+  { key: 'foundOnCount', label: 'Usado en (páginas)', type: 'number' },
+  { key: 'foundOn', label: 'Ejemplo de página', type: 'url' }
+];
+const RESOURCE_TABS: Array<{ id: string; label: string; columns: Column[]; base: (r: Res) => boolean; filters: Array<{ id: string; label: string; test: (r: Res) => boolean }> }> = [
+  {
+    id: 'resources',
+    label: 'Recursos y archivos',
+    columns: RES_COLUMNS,
+    base: r => r.internal && !(r.isLink && r.kind === 'html'),
+    filters: [
+      { id: 'all', label: 'Todos', test: () => true },
+      ...['css', 'js', 'image', 'font', 'pdf', 'media', 'document', 'other'].map(k => ({ id: k, label: KIND_LABEL[k], test: (r: Res) => r.kind === k })),
+      { id: 'broken', label: 'Rotos (4xx, 5xx o sin respuesta)', test: bad },
+      { id: 'heavy-image', label: 'Imágenes de más de 200 KB', test: r => r.kind === 'image' && (r.sizeBytes ?? 0) > 200 * 1024 },
+      { id: 'heavy', label: 'Archivos de más de 1 MB', test: r => (r.sizeBytes ?? 0) > 1024 * 1024 },
+      { id: 'type-mismatch', label: 'Tipo de contenido inesperado', test: r => !!r.contentType && r.statusCode === 200 && ((r.kind === 'css' && !/css/i.test(r.contentType)) || (r.kind === 'js' && !/javascript|ecmascript/i.test(r.contentType)) || (r.kind === 'image' && !/^image\//i.test(r.contentType))) },
+      ...statusFilters
+    ]
+  },
+  {
+    id: 'external',
+    label: 'Externos',
+    columns: RES_COLUMNS,
+    base: r => !r.internal,
+    filters: [
+      { id: 'all', label: 'Todos', test: () => true },
+      { id: 'links', label: 'Enlaces a otros sitios', test: r => r.isLink },
+      { id: 'files', label: 'Recursos de terceros (CDN, scripts…)', test: r => !r.isLink },
+      { id: 'broken', label: 'Rotos (4xx, 5xx o sin respuesta)', test: bad },
+      { id: 'http', label: 'Enlaces a http:// (no seguro)', test: r => r.url.startsWith('http://') },
+      ...statusFilters
+    ]
+  }
+];
+const resCache = new Map<string, { at: number; rows: Res[] }>();
+async function loadResources(crawlRunId: string): Promise<Res[]> {
+  const hit = resCache.get(crawlRunId);
+  if (hit && Date.now() - hit.at < 60_000) return hit.rows;
+  const rows = (await prisma.crawledResource.findMany({ where: { crawlRunId } })).map(r => ({ ...r, foundOn: (r.foundOn as string[]) ?? [] }));
+  resCache.set(crawlRunId, { at: Date.now(), rows });
+  if (resCache.size > 20) resCache.delete(resCache.keys().next().value!);
+  return rows;
+}
+const resRow = (r: Res) => ({ url: r.url, type: KIND_LABEL[r.kind] ?? r.kind, contentType: r.contentType || '—', status: resStatus(r), sizeKb: r.sizeBytes === null ? null : Math.round(r.sizeBytes / 102.4) / 10, responseMs: r.responseTimeMs, foundOnCount: r.foundOnCount, foundOn: r.foundOn[0] ?? '', finalUrl: r.finalUrl !== r.url ? r.finalUrl : '' });
+
 export async function explorerSummary(crawlRunId: string) {
   const pages = await loadPages(crawlRunId);
   const ctx = context(pages);
   const images = imageRows(pages);
+  const res = await loadResources(crawlRunId);
+  const byKind: Record<string, number> = { html: pages.filter(p => /html/i.test(p.mimeType)).length };
+  for (const r of res) if (r.internal && !(r.isLink && r.kind === 'html')) byKind[r.kind] = (byKind[r.kind] ?? 0) + 1;
   return {
-    totals: { urls: pages.length, html: pages.filter(isHtml200).length, images: images.length },
-    tabs: TABS.map(t => ({
+    totals: { urls: pages.length, html: pages.filter(isHtml200).length, images: images.length, resources: res.filter(r => r.internal).length, external: res.filter(r => !r.internal).length },
+    /** Internal URLs by file type, like Screaming Frog's Overview. */
+    fileTypes: Object.entries(byKind).map(([kind, count]) => ({ kind, label: KIND_LABEL[kind] ?? kind, count })).sort((a, b) => b.count - a.count),
+    tabs: [
+      ...TABS.map(t => ({
       id: t.id,
       label: t.label,
       filters:
@@ -486,7 +570,12 @@ export async function explorerSummary(crawlRunId: string) {
               const base = pages.filter(t.base ?? isHtml200);
               return { id: f.id, label: f.label, count: base.filter(p => f.test(p, ctx)).length };
             })
-    }))
+      })),
+      ...RESOURCE_TABS.map(t => {
+        const base = res.filter(t.base);
+        return { id: t.id, label: t.label, filters: t.filters.map(f => ({ id: f.id, label: f.label, count: base.filter(f.test).length })) };
+      })
+    ]
   };
 }
 
@@ -501,12 +590,16 @@ export interface ExplorerQuery {
 }
 
 export async function explorerRows(crawlRunId: string, query: ExplorerQuery, opts: { all?: boolean } = {}) {
-  const tab = TABS.find(t => t.id === query.tab);
+  const rtab = RESOURCE_TABS.find(t => t.id === query.tab);
+  const tab = TABS.find(t => t.id === query.tab) ?? (rtab && { id: rtab.id, label: rtab.label, columns: rtab.columns, filters: [] as Filter[] });
   if (!tab) throw new WorkflowError('UNKNOWN_TAB', `Unknown tab ${query.tab}`, 400);
-  const pages = await loadPages(crawlRunId);
+  const pages = rtab ? [] : await loadPages(crawlRunId);
   const ctx = context(pages);
   let rows: Array<Record<string, unknown>>;
-  if (tab.id === 'images') {
+  if (rtab) {
+    const f = rtab.filters.find(x => x.id === (query.filter ?? 'all')) ?? rtab.filters[0];
+    rows = (await loadResources(crawlRunId)).filter(rtab.base).filter(f.test).map(resRow);
+  } else if (tab.id === 'images') {
     const f = IMAGE_FILTERS.find(x => x.id === (query.filter ?? 'all')) ?? IMAGE_FILTERS[0];
     rows = imageRows(pages)
       .filter(r => f.test(r._img))
@@ -514,9 +607,9 @@ export async function explorerRows(crawlRunId: string, query: ExplorerQuery, opt
   } else {
     const f = tab.filters.find(x => x.id === (query.filter ?? 'all')) ?? tab.filters[0];
     rows = pages
-      .filter(tab.base ?? isHtml200)
+      .filter((tab as Tab).base ?? isHtml200)
       .filter(p => f.test(p, ctx))
-      .map(p => ({ pageId: p.id, url: p.url, ...tab.row(p, ctx) }));
+      .map(p => ({ pageId: p.id, url: p.url, ...(tab as Tab).row(p, ctx) }));
   }
   if (query.q) {
     const q = query.q.toLowerCase();

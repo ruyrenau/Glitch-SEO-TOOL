@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import net from 'net';
 import { assertSafeUrl } from './ssrf';
 import { parseRobotsTxt, isAllowedByRobots, crawlDelayFor, RobotsTxt } from './robots';
-import { extractPage, normalizeUrl, ExtractedPage } from './extract';
+import { extractPage, normalizeUrl, ExtractedPage, ResourceKind, resourceKindFromUrl } from './extract';
 
 export interface CrawlOptions {
   startUrl: string;
@@ -23,6 +23,29 @@ export interface CrawlOptions {
   maxBodyBytes?: number;
   signal?: AbortSignal;
   onProgress?: (p: { crawled: number; queued: number; current: string }) => void;
+  /** Check status, type and size of CSS/JS/images/fonts/PDFs used by the pages (default true). */
+  checkResources?: boolean;
+  /** Check that external links answer (default true). */
+  checkExternalLinks?: boolean;
+  /** Cap on resources + external URLs checked (default 2000). */
+  maxResources?: number;
+}
+
+export interface CrawledResource {
+  url: string;
+  kind: ResourceKind | 'html';
+  internal: boolean;
+  /** true = found as an <a href> link, false = loaded by the page (src/href of a resource tag). */
+  isLink: boolean;
+  statusCode: number;
+  finalUrl: string;
+  redirected: boolean;
+  contentType: string;
+  sizeBytes: number | null;
+  responseTimeMs: number;
+  error: string | null;
+  foundOn: string[];
+  foundOnCount: number;
 }
 
 export interface RedirectHop {
@@ -60,6 +83,7 @@ export interface HostVariantCheck {
 
 export interface CrawlResult {
   pages: CrawledPageData[];
+  resources: CrawledResource[];
   robots: { found: boolean; status: number | null; sitemaps: string[]; crawlDelay: number | null; hash: string | null };
   hostVariants: HostVariantCheck[];
   discovered: number;
@@ -281,7 +305,8 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
       for (const link of extracted.internalLinks) {
         if (!linkGraph.has(link)) linkGraph.set(link, new Set());
         linkGraph.get(link)!.add(url);
-        enqueue(link, depth + 1);
+        // Files (PDF, images, docs…) are checked as resources, not crawled as pages.
+        if (!resourceKindFromUrl(link)) enqueue(link, depth + 1);
       }
     }
     pages.push({
@@ -328,7 +353,80 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
   });
 
   for (const p of pages) p.inlinks = linkGraph.get(p.url)?.size ?? 0;
-  return { pages, robots: robotsInfo, hostVariants, discovered: visited.size, cancelled, limitReached };
+  const resources = cancelled ? [] : await checkResources(pages, host, options, fetchOpts, () => cancelled || !!options.signal?.aborted);
+  return { pages, resources, robots: robotsInfo, hostVariants, discovered: visited.size, cancelled, limitReached };
+}
+
+/**
+ * Checks every file the crawled pages use (CSS, JS, images, fonts, PDFs, media) and every external link:
+ * status, final URL, content type and size. Bodies are never downloaded (the response is cancelled after the headers).
+ * Internal URLs share the site throttle; external hosts get their own polite rate.
+ */
+async function checkResources(
+  pages: CrawledPageData[],
+  host: string,
+  options: CrawlOptions,
+  fetchOpts: Parameters<typeof fetchWithRedirects>[1],
+  stop: () => boolean
+): Promise<CrawledResource[]> {
+  const wantRes = options.checkResources !== false;
+  const wantExt = options.checkExternalLinks !== false;
+  if (!wantRes && !wantExt) return [];
+  const crawled = new Set(pages.map(p => p.url));
+  const found = new Map<string, { kind: CrawledResource['kind']; internal: boolean; isLink: boolean; pages: Set<string> }>();
+  const add = (url: string, kind: CrawledResource['kind'], isLink: boolean, page: string) => {
+    if (crawled.has(url)) return;
+    let internal: boolean;
+    try {
+      internal = new URL(url).hostname === host;
+    } catch {
+      return;
+    }
+    const e = found.get(url) ?? { kind, internal, isLink, pages: new Set<string>() };
+    e.isLink = e.isLink && isLink;
+    e.pages.add(page);
+    found.set(url, e);
+  };
+  for (const p of pages) {
+    if (!p.extracted) continue;
+    if (wantRes) for (const r of p.extracted.resources) add(r.url, r.kind, false, p.url);
+    if (wantExt) for (const l of p.extracted.links) if (!l.internal) add(l.url, resourceKindFromUrl(l.url) ?? 'html', true, p.url);
+  }
+  const max = Math.min(options.maxResources ?? 2000, 10_000);
+  const todo = [...found].slice(0, max);
+  const extThrottles = new Map<string, Throttle>();
+  const throttleFor = (u: string, internal: boolean) => {
+    if (internal) return fetchOpts.throttle;
+    const h = new URL(u).hostname;
+    if (!extThrottles.has(h)) extThrottles.set(h, new Throttle(500));
+    return extThrottles.get(h);
+  };
+  const out: CrawledResource[] = [];
+  let i = 0;
+  const worker = async () => {
+    while (i < todo.length && !stop()) {
+      const [url, e] = todo[i++];
+      const r = await fetchWithRedirects(url, { ...fetchOpts, readBody: false, anyContentType: true, maxHops: 5, timeoutMs: Math.min(fetchOpts.timeoutMs, 10_000), throttle: throttleFor(url, e.internal) });
+      const len = r.headers?.get('content-length');
+      out.push({
+        url,
+        kind: e.kind,
+        internal: e.internal,
+        isLink: e.isLink,
+        statusCode: r.status,
+        finalUrl: r.finalUrl,
+        redirected: r.chain.length > 0,
+        contentType: r.headers?.get('content-type')?.split(';')[0].trim() ?? '',
+        sizeBytes: len ? Number(len) : null,
+        responseTimeMs: r.ms,
+        error: r.error,
+        foundOn: [...e.pages].slice(0, 20),
+        foundOnCount: e.pages.size
+      });
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(6, todo.length) }, worker));
+  return out;
 }
 
 /** Internal links pointing to URLs that returned 4xx/5xx in this crawl (source -> target). */

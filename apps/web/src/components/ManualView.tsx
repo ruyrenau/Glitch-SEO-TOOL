@@ -2,7 +2,7 @@
 
 import React from 'react';
 import {
-  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert
+  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine
 } from 'lucide-react';
 import { Badge, Button, Card } from './ui';
 
@@ -109,6 +109,59 @@ const SECTIONS: Section[] = [
       'Solo se rastrea el mismo dominio. Las direcciones privadas están bloqueadas por seguridad.'
     ],
     limits: ['No ve contenido que se genera con JavaScript en el navegador.', 'Un solo crawl a la vez por sitio.']
+  },
+  {
+    id: 'explorer',
+    nav: 'explorer',
+    icon: ScanSearch,
+    title: 'Explorador SEO',
+    status: 'ready',
+    what: 'Una vista tipo Screaming Frog sobre un crawl: pestañas por elemento (títulos, meta description, H1, H2, imágenes, canonicals, directivas, hreflang, datos estructurados, Open Graph, enlaces, paginación), recursos y archivos, y enlaces externos.',
+    why: 'Revisar URL por URL qué tiene cada página y encontrar rápido los casos con problemas, sin salir de la herramienta. Desde el detalle puedes proponer correcciones en WordPress.',
+    steps: [
+      'Elige el crawl arriba. Se usan los datos guardados; no se vuelve a descargar nada.',
+      'Elige una pestaña y un filtro (por ejemplo Títulos → Más de 60 caracteres). El resumen de la derecha muestra cuántas URLs hay en cada filtro; haz clic para ir directo.',
+      'Ajusta la tabla: arrastra el borde de un encabezado para cambiar el ancho (doble clic lo restablece), elige qué campos ver en "Columnas" y usa "Ajustar texto" para leer títulos completos.',
+      'Haz clic en una URL para ver su detalle: enlaces entrantes y salientes, imágenes, vista en Google, código fuente, cabeceras e issues.',
+      'Exporta a CSV la pestaña y el filtro actuales.'
+    ],
+    read: [
+      ['Recursos y archivos', 'CSS, JavaScript, imágenes, fuentes, PDF y documentos que usan las páginas, con estado, tipo de contenido, peso y en cuántas páginas se usan.'],
+      ['Externos', 'Enlaces a otros sitios y recursos de terceros (CDN, scripts), con su código de respuesta. Útil para encontrar enlaces rotos.'],
+      ['Tipos de archivo', 'En el resumen: cuántas URLs internas hay de cada tipo, como el panel Overview de Screaming Frog.']
+    ],
+    tips: ['Los anchos y columnas se recuerdan por pestaña en este navegador.', 'La barra lateral de la app se contrae con el botón junto al título de la sección.'],
+    limits: [
+      'No ejecuta JavaScript: ve el HTML que entrega el servidor.',
+      'Los archivos se comprueban sin descargarlos; si el servidor no envía el tamaño, aparece vacío.',
+      'Máximo 2,000 recursos y enlaces externos por crawl.'
+    ]
+  },
+  {
+    id: 'seochanges',
+    nav: 'seochanges',
+    icon: PencilLine,
+    title: 'Cambios SEO (editar en WordPress)',
+    status: 'ready',
+    what: 'Corrige título, slug, título SEO, meta description y alt de imágenes de páginas ya publicadas en WordPress, con propuesta, aprobación, verificación y opción de revertir.',
+    why: 'Arreglar lo que encontró el explorador sin entrar a wp-admin página por página, y con registro de quién cambió qué.',
+    steps: [
+      'Conecta WordPress en la sección WordPress (usuario y contraseña de aplicación).',
+      'Para título SEO y meta description: el sitio necesita Yoast SEO o Rank Math, y el archivo docs/wordpress/glitch-seo-meta.php copiado en wp-content/mu-plugins/.',
+      'En el Explorador SEO abre una URL y entra a "Editar en WordPress". Escribe el valor nuevo y pulsa "Proponer cambio". WordPress todavía no cambia.',
+      'En "Cambios SEO", alguien con permiso lo aprueba y pulsa "Aplicar en WordPress".',
+      'Pulsa "Verificar en la página" para comprobar el cambio en la página publicada. Si algo salió mal, "Revertir" regresa al valor anterior.'
+    ],
+    read: [
+      ['Conflicto', 'Alguien cambió ese campo en WordPress después de la propuesta. No se sobrescribe; descártalo y vuelve a proponer.'],
+      ['No coincide en la página', 'WordPress ya tiene el valor nuevo, pero la página publicada todavía no lo muestra. Casi siempre es caché: vacíala y verifica de nuevo.']
+    ],
+    tips: ['Un Editor puede proponer, pero solo un SEO Manager, Admin u Owner puede aprobar y aplicar.', 'Solo se tocan estos campos; nunca el contenido ni el estado de publicación.'],
+    limits: [
+      'El alt de imágenes se cambia en la biblioteca de medios. Las imágenes ya insertadas en el contenido guardan su alt anterior.',
+      'Cambiar el slug cambia la URL. WordPress redirige la URL vieja solo en entradas; en páginas crea una redirección 301.',
+      'La portada y los archivos de categoría no se pueden editar por esta vía.'
+    ]
   },
   {
     id: 'issues',

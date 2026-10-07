@@ -94,6 +94,11 @@ export async function startMockWordPress(): Promise<MockWordPress> {
       // Public HTML of published content (what a visitor or crawler sees).
       if (!route) {
         const slug = u.pathname.split('/').filter(Boolean).pop() ?? '';
+        if (!slug) {
+          const links = [...posts.values()].filter(x => x.status === 'publish').map(x => `<a href="/${x.slug}/">${x.title}</a>`).join(' ');
+          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+          return res.end(`<!doctype html><html lang="es"><head><title>Mock WP</title></head><body><h1>Inicio</h1>${links}</body></html>`);
+        }
         const p = [...posts.values()].find(x => x.status === 'publish' && x.slug === slug);
         if (!p) {
           res.writeHead(404, { 'content-type': 'text/html' });

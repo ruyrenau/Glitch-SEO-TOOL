@@ -210,6 +210,7 @@ model CrawlRun {
   completedAt    DateTime?
   pages          CrawledPage[]
   links          CrawledLink[]
+  resources      CrawledResource[]
   issues         Issue[]
   alerts         Alert[]
 }
@@ -280,6 +281,28 @@ model CrawledLink {
 
   @@index([crawlRunId, targetUrl])
   @@index([crawlRunId, sourceUrl])
+}
+
+/// A file used by crawled pages (CSS, JS, image, font, PDF…) or an external link, with its HTTP check.
+model CrawledResource {
+  id             String   @id @default(uuid())
+  crawlRunId     String
+  crawlRun       CrawlRun @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
+  url            String
+  kind           String
+  internal       Boolean
+  isLink         Boolean
+  statusCode     Int
+  finalUrl       String
+  redirected     Boolean
+  contentType    String
+  sizeBytes      Int?
+  responseTimeMs Int
+  error          String?
+  foundOn        Json
+  foundOnCount   Int
+
+  @@index([crawlRunId, kind])
 }
 
 model Issue {
