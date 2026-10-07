@@ -237,3 +237,19 @@ export interface DryRun {
   warnings: string[];
   remote: { id: number; status: string; modified_gmt: string; link: string } | null;
 }
+
+export type Role = 'OWNER' | 'ADMIN' | 'SEO_MANAGER' | 'EDITOR' | 'VIEWER';
+export type Permission = 'read' | 'content:edit' | 'wordpress:send' | 'seo:operate' | 'site:manage' | 'users:manage';
+
+export interface User {
+  id: string;
+  username: string;
+  name: string;
+  email: string | null;
+  role: Role;
+  roleLabel: string;
+  mustChangePassword: boolean;
+  disabled: boolean;
+  lastLoginAt: string | null;
+  permissions: Permission[];
+}

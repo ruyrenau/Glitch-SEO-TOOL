@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import { Prisma } from '@prisma/client';
 import { prisma } from './client';
 
@@ -10,11 +11,15 @@ export interface AuditInput {
   details?: Prisma.InputJsonValue;
 }
 
+/** The authenticated user of the current request (set by the API per request). */
+export const actorContext = new AsyncLocalStorage<{ userId: string; workspaceId: string }>();
+export const currentActorId = (): string | null => actorContext.getStore()?.userId ?? null;
+
 export async function recordAuditEvent(e: AuditInput): Promise<void> {
   await prisma.auditEvent.create({
     data: {
-      workspaceId: e.workspaceId,
-      userId: e.userId,
+      workspaceId: e.workspaceId ?? actorContext.getStore()?.workspaceId ?? null,
+      userId: e.userId ?? currentActorId(),
       action: e.action,
       entity: e.entity,
       entityId: e.entityId,

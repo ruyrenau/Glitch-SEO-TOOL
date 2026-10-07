@@ -3,7 +3,7 @@ import path from 'path';
 import zlib from 'zlib';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp } from '../src/app';
+import { buildAuthedApp } from './helpers';
 import { prisma } from '@glitch/db';
 
 const fixture = fs.readFileSync(path.resolve(__dirname, '../../../fixtures/sample_nginx.log'));
@@ -11,7 +11,7 @@ let app: FastifyInstance;
 let siteId: string;
 
 beforeAll(async () => {
-  app = await buildApp({ logger: false });
+  ({ app } = await buildAuthedApp());
 });
 afterAll(async () => {
   await app.close();

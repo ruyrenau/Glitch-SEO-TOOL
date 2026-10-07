@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp } from '../src/app';
+import { buildAuthedApp } from './helpers';
 import { prisma } from '@glitch/db';
 import { startMockWordPress, MockWordPress } from '@glitch/testing';
 
@@ -43,7 +43,7 @@ beforeAll(async () => {
     mock = await startMockWordPress();
     wp = { url: mock.url, username: mock.username, appPassword: mock.appPassword };
   }
-  app = await buildApp({ logger: false });
+  ({ app } = await buildAuthedApp());
   siteId = (await app.inject({ method: 'POST', url: '/api/v1/sites', payload: { name: 'WP site', domain: 'wp.example.com', canonicalUrl: 'https://wp.example.com' } })).json().id;
 });
 afterAll(async () => {

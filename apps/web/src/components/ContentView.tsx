@@ -6,6 +6,7 @@ import { ApiRequestError, apiGet, apiSend, fmtDate } from '@/lib/api';
 import type { DryRun, DiffLine, GeneratedPage } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorBox, Skeleton, inputCls } from './ui';
 import { DatasetsPanel } from './DatasetsPanel';
+import { useAuth } from '@/lib/auth';
 
 const STATUS: Record<GeneratedPage['status'], { label: string; tone: 'good' | 'warn' | 'bad' | 'default' }> = {
   BLOCKED: { label: 'Bloqueada', tone: 'bad' },
@@ -64,7 +65,8 @@ export function ContentView({ siteId, go }: { siteId: string; go: (nav: string) 
   const [form, setForm] = useState(DEFAULT);
   const [pages, setPages] = useState<GeneratedPage[] | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const [reviewer, setReviewer] = useState('');
+  const { user, can } = useAuth();
+  const reviewer = user.name;
   const [open, setOpen] = useState<string | null>(null);
   const [dry, setDry] = useState<Record<string, DryRun>>({});
   const [conflict, setConflict] = useState<Record<string, { lastWrite: string; remoteModified: string; diff: DryRun['diff'] }>>({});
@@ -85,11 +87,6 @@ export function ContentView({ siteId, go }: { siteId: string; go: (nav: string) 
   useEffect(() => {
     load();
     apiGet<{ connection: { status: string } | null }>(`/api/v1/sites/${siteId}/wordpress`).then(r => setConnected(r.connection?.status === 'ok')).catch(() => setConnected(false));
-    try {
-      setReviewer(localStorage.getItem('glitch-reviewer') ?? '');
-    } catch {
-      /* ignore */
-    }
   }, [load, siteId]);
 
   const run = async (id: string, fn: () => Promise<void>) => {
@@ -121,13 +118,7 @@ export function ContentView({ siteId, go }: { siteId: string; go: (nav: string) 
 
   const review = (p: GeneratedPage, decision: 'approved' | 'rejected') =>
     run(p.id, async () => {
-      if (!reviewer.trim()) throw new Error('Escribe tu nombre como revisor antes de aprobar o rechazar.');
-      try {
-        localStorage.setItem('glitch-reviewer', reviewer);
-      } catch {
-        /* ignore */
-      }
-      await apiSend('POST', `/api/v1/generated-pages/${p.id}/review`, { decision, reviewer });
+      await apiSend('POST', `/api/v1/generated-pages/${p.id}/review`, { decision });
       await load();
     });
 
@@ -174,11 +165,10 @@ export function ContentView({ siteId, go }: { siteId: string; go: (nav: string) 
       const ids = [...checked];
       if (!ids.length) return;
       setBulkMsg(null);
-      if (kind !== 'push' && !reviewer.trim()) throw new Error('Escribe tu nombre como revisor antes de aprobar o rechazar.');
       if (kind === 'push' && !window.confirm(`¿Enviar ${ids.length} página(s) aprobadas a WordPress como borrador? Las no aprobadas y las que tengan conflictos se omiten.`)) return;
       const r = kind === 'push'
         ? await apiSend<{ results: Array<{ ok: boolean; error?: string }> }>('POST', '/api/v1/generated-pages/bulk-push', { ids })
-        : await apiSend<{ results: Array<{ ok: boolean; error?: string }> }>('POST', '/api/v1/generated-pages/bulk-review', { ids, decision: kind, reviewer });
+        : await apiSend<{ results: Array<{ ok: boolean; error?: string }> }>('POST', '/api/v1/generated-pages/bulk-review', { ids, decision: kind });
       const ok = r.results.filter(x => x.ok).length;
       const errors = [...new Set(r.results.filter(x => !x.ok).map(x => x.error))];
       const verb = kind === 'push' ? 'Enviadas como borrador' : kind === 'approved' ? 'Aprobadas' : 'Rechazadas';
@@ -229,10 +219,7 @@ export function ContentView({ siteId, go }: { siteId: string; go: (nav: string) 
               <option value="">Todos los estados</option>
               {Object.entries(STATUS).filter(([k]) => k !== 'PUBLISHED' && k !== 'FAILED').map(([k, v]) => <option key={k} value={k}>{v.label} ({(pages ?? []).filter(p => p.status === k).length})</option>)}
             </select>
-            <label className="text-xs flex items-center gap-2">
-              <span>Revisor:</span>
-              <input className={`${inputCls} w-40`} placeholder="Tu nombre" value={reviewer} onChange={e => setReviewer(e.target.value)} />
-            </label>
+            <span className="text-xs text-slate-500">Revisas como <strong>{reviewer}</strong>{!can('content:edit') && ' (solo lectura)'}</span>
           </>
         }
       >

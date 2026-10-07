@@ -2,9 +2,13 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  LayoutDashboard, Globe, FileText, ShieldAlert, Gauge, Code2, Layers, Send, Search, Sparkles, Cpu, History, Sun, Moon, AlertTriangle, Menu, Bell, BookOpen
+  LayoutDashboard, Globe, FileText, ShieldAlert, Gauge, Code2, Layers, Send, Search, Sparkles, Cpu, History, Sun, Moon, AlertTriangle, Menu, Bell, BookOpen, Users, LogOut, UserCircle
 } from 'lucide-react';
-import { API_URL, apiGet } from '@/lib/api';
+import { API_URL, ApiRequestError, UNAUTHORIZED_EVENT, apiGet, apiSend } from '@/lib/api';
+import { AuthProvider, useAuth } from '@/lib/auth';
+import type { User, Permission } from '@/lib/types';
+import { LoginView, ForcedPasswordView } from '@/components/AuthViews';
+import { UsersView, AccountView } from '@/components/UsersView';
 import type { Site } from '@/lib/types';
 import { ErrorBox, Roadmap, Skeleton } from '@/components/ui';
 import { OverviewView } from '@/components/OverviewView';
@@ -18,9 +22,9 @@ import { SchemaView, AuditView } from '@/components/ToolsViews';
 import { WordPressView } from '@/components/WordPressView';
 import { ContentView } from '@/components/ContentView';
 
-type NavId = 'overview' | 'sites' | 'logs' | 'crawler' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'programmatic' | 'wordpress' | 'gsc' | 'geo' | 'automations' | 'audit' | 'manual';
+type NavId = 'overview' | 'sites' | 'logs' | 'crawler' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'programmatic' | 'wordpress' | 'gsc' | 'geo' | 'automations' | 'audit' | 'manual' | 'users' | 'account';
 
-const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ className?: string }>; ready: boolean }> = [
+const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ className?: string }>; ready: boolean; perm?: Permission }> = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard, ready: true },
   { id: 'sites', label: 'Sitios', icon: Globe, ready: true },
   { id: 'logs', label: 'Logs y sitemap', icon: FileText, ready: true },
@@ -34,7 +38,8 @@ const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ classNa
   { id: 'gsc', label: 'Search Console', icon: Search, ready: false },
   { id: 'geo', label: 'GEO / motores de IA', icon: Sparkles, ready: false },
   { id: 'automations', label: 'Jobs y automatizaciones', icon: Cpu, ready: false },
-  { id: 'audit', label: 'Audit log', icon: History, ready: true }
+  { id: 'audit', label: 'Audit log', icon: History, ready: true },
+  { id: 'users', label: 'Usuarios', icon: Users, ready: true, perm: 'users:manage' }
 ];
 
 const ROADMAP: Partial<Record<NavId, { status: string; items: string[] }>> = {
@@ -44,7 +49,8 @@ const ROADMAP: Partial<Record<NavId, { status: string; items: string[] }>> = {
   automations: { status: 'La importación corre dentro de la petición HTTP. Aún no hay cola.', items: ['BullMQ + Redis para importaciones grandes', 'Progreso, cancelación y reintentos', 'Retención programada'] }
 };
 
-export default function Dashboard() {
+function Dashboard() {
+  const { user, can, logout } = useAuth();
   const [nav, setNav] = useState<NavId>('overview');
   const [dark, setDark] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -102,7 +108,8 @@ export default function Dashboard() {
     setMenuOpen(false);
   };
 
-  const current = nav === 'manual' ? { label: 'Manual de uso' } : NAV.find(n => n.id === nav)!;
+  const current = nav === 'manual' ? { label: 'Manual de uso' } : nav === 'account' ? { label: 'Mi cuenta' } : NAV.find(n => n.id === nav)!;
+  const visibleNav = NAV.filter(n => !n.perm || can(n.perm));
   const needsSite = ['overview', 'logs', 'crawler', 'issues', 'alerts', 'programmatic', 'wordpress'].includes(nav);
 
   return (
@@ -117,7 +124,7 @@ export default function Dashboard() {
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center font-black text-sm" aria-hidden>G</div>
             <div>
               <div className="font-bold text-sm">Glitch SEO Ops</div>
-              <div className="text-[10px] text-slate-500 font-mono">v0.6 · local</div>
+              <div className="text-[10px] text-slate-500 font-mono">v0.7 · local</div>
             </div>
           </div>
 
@@ -137,7 +144,7 @@ export default function Dashboard() {
           </div>
 
           <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-            {NAV.map(item => {
+            {visibleNav.map(item => {
               const Icon = item.icon;
               const active = nav === item.id;
               return (
@@ -157,7 +164,24 @@ export default function Dashboard() {
             })}
           </nav>
 
-          <div className="p-3 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center">
+          <div className="px-3 pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2">
+            <button
+              onClick={() => go('account')}
+              aria-current={nav === 'account' ? 'page' : undefined}
+              className="flex-1 min-w-0 flex items-center gap-2 text-left rounded-lg p-1 hover:bg-slate-100 dark:hover:bg-slate-800"
+              title="Mi cuenta"
+            >
+              <UserCircle className="w-7 h-7 text-indigo-600 dark:text-indigo-400 shrink-0" aria-hidden />
+              <span className="min-w-0">
+                <span className="block text-[11px] font-semibold truncate">{user.name}</span>
+                <span className="block text-[10px] text-slate-500">{user.roleLabel}</span>
+              </span>
+            </button>
+            <button onClick={logout} aria-label="Cerrar sesión" title="Cerrar sesión" className="p-1.5 rounded-lg border bg-slate-100 border-slate-200 dark:bg-slate-800 dark:border-slate-700 text-slate-600 dark:text-slate-300">
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="p-3 flex justify-between items-center">
             <a href={`${API_URL}/docs`} target="_blank" rel="noreferrer" className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">OpenAPI</a>
             <div className="flex items-center gap-1.5">
             <button
@@ -203,6 +227,8 @@ export default function Dashboard() {
                 {nav === 'programmatic' && <ContentView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'wordpress' && <WordPressView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'audit' && <AuditView />}
+                {nav === 'users' && can('users:manage') && <UsersView />}
+                {nav === 'account' && <AccountView />}
                 {ROADMAP[nav] && <Roadmap title={current.label} status={ROADMAP[nav]!.status} items={ROADMAP[nav]!.items} />}
               </>
             )}
@@ -210,5 +236,59 @@ export default function Dashboard() {
         </main>
       </div>
     </div>
+  );
+}
+
+/** Shows the login screen until there is a valid session, then the dashboard. */
+export default function App() {
+  const [state, setState] = useState<'loading' | 'anon' | 'offline' | User>('loading');
+  const [dark, setDark] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      const r = await apiGet<{ user: User }>('/api/v1/auth/me');
+      setState(r.user);
+    } catch (err) {
+      setState(err instanceof ApiRequestError && err.status === 401 ? 'anon' : 'offline');
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('glitch-theme');
+      setDark(saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches);
+    } catch {
+      /* storage unavailable */
+    }
+    refresh();
+    const onUnauthorized = () => setState('anon');
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+  }, [refresh]);
+
+  const logout = useCallback(async () => {
+    await apiSend('POST', '/api/v1/auth/logout').catch(() => undefined);
+    setState('anon');
+  }, []);
+
+  if (state === 'loading') return <div className={dark ? 'dark' : ''}><div className="min-h-screen bg-[#F4F6FB] dark:bg-[#0F111A]" aria-busy="true" /></div>;
+  if (state === 'offline')
+    return (
+      <div className={dark ? 'dark' : ''}>
+        <main className="min-h-screen flex items-center justify-center p-4 bg-[#F4F6FB] dark:bg-[#0F111A]">
+          <div className="max-w-sm space-y-3 text-center">
+            <ErrorBox error={new Error('fetch failed')} />
+            <button className="text-xs underline text-slate-600 dark:text-slate-300" onClick={refresh}>Reintentar</button>
+          </div>
+        </main>
+      </div>
+    );
+  if (state === 'anon') return <div className={dark ? 'dark' : ''}><LoginView onLoggedIn={u => setState(u)} /></div>;
+  if (state.mustChangePassword) return <div className={dark ? 'dark' : ''}><ForcedPasswordView onDone={refresh} onLogout={logout} /></div>;
+  const user = state;
+  return (
+    <AuthProvider value={{ user, can: p => user.permissions.includes(p), logout, refresh }}>
+      <Dashboard />
+    </AuthProvider>
   );
 }

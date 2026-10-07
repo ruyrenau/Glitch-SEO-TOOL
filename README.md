@@ -2,7 +2,7 @@
 
 Internal SEO operations tool in TypeScript. It streams Nginx/Apache access logs, identifies search-engine and AI crawlers, cross-references bot activity with the XML sitemap, crawls sites to detect and prioritize technical SEO issues, alerts when a deploy breaks something between two crawls, and sends human-approved programmatic pages to WordPress as drafts. A dashboard, a REST API and a CLI sit on top of the same services.
 
-> **Status (v0.6).** Log + sitemap analysis, the technical crawler/auditor, crawl diffs and alerts, and the programmatic content workflow (CSV dataset → template → batch generation with quality gates → human approval → WordPress drafts) are real and tested end to end (WordPress tests also run against a real WordPress). Search Console, GEO monitoring, a job queue and authentication are **not built yet**; the dashboard marks those modules as `PRONTO` and shows no numbers for them. See [Roadmap](#roadmap).
+> **Status (v0.7).** Log + sitemap analysis, the technical crawler/auditor, crawl diffs and alerts, and the programmatic content workflow (CSV dataset → template → batch generation with quality gates → human approval → WordPress drafts) are real and tested end to end (WordPress tests also run against a real WordPress). Search Console, GEO monitoring and a job queue are **not built yet**; the dashboard marks those modules as `PRONTO` and shows no numbers for them. See [Roadmap](#roadmap).
 
 ## What works today
 
@@ -25,6 +25,8 @@ Internal SEO operations tool in TypeScript. It streams Nginx/Apache access logs,
 | Human approval | Sending is impossible until a named reviewer approves the page; blocked pages cannot be approved. Every review is stored. Bulk approve/reject/send report a result per page (blocked or unapproved pages are refused, conflicts are never overwritten in bulk). |
 | WordPress | REST API + Application Passwords. Credentials encrypted at rest (AES-256-GCM, `CREDENTIALS_KEY`) and never returned. HTTPS required (local hosts only via `CRAWL_ALLOW_PRIVATE_HOSTS`). Connection test checks the user can edit posts; lists categories. **Drafts only**: never publishes, never deletes, refuses to touch a post that is no longer a draft. Dry run with title and line diff. Detects edits made in wp-admin since the last send (`modified_gmt`) and asks before overwriting. Keeps a copy of the remote post before each update and can restore it. `Idempotency-Key` on send. Retries 429/503 honoring `Retry-After`. Every attempt (including conflicts and refusals) is logged. |
 | Tools | JSON-LD validator. |
+| Authentication | Username + password (bcrypt, cost 12; constant-time answer for unknown users). Server-side sessions: random 256-bit token in an `httpOnly`, `SameSite=Lax` cookie (`Secure` in production), only its SHA-256 stored, 12 h sliding expiry. Login throttling (5 failures per user+IP, 30 per IP, 15 min) with `Retry-After`. CSRF: state-changing requests from a foreign `Origin` are rejected. Temporary passwords must be changed before anything else. Changing a password ends the user's other sessions; disabling a user ends all of them. |
+| Authorization | Roles per workspace: Owner, Admin, SEO Manager, Editor, Viewer. Every route maps to a permission; unlisted write routes need `site:manage` (deny by default). Every `:id` (site, crawl, issue, alert, import, dataset, template, page, publication, user) is checked against the caller's workspace and answers 404 if it belongs to another one. Only Owners manage Owners; the last Owner cannot be removed; nobody changes their own role. Audit events and content approvals record the signed-in user. |
 | Platform | Fastify API with Zod validation, stable error format with correlation IDs, OpenAPI at `/docs`, readiness check that queries the DB, audit log for every write. Prisma + SQLite with migrations. |
 
 ## Measured performance
@@ -46,7 +48,7 @@ cp .env.example .env          # set SALT_SECRET to a long random string
 pnpm db:generate
 pnpm --filter @glitch/db exec prisma migrate deploy
 pnpm build
-pnpm demo:seed                # admin + [DEMO] sites: synthetic logs + sitemap, two real crawls of a local fixture site, a CSV dataset with generated pages
+pnpm demo:seed                # Owner from SEED_ADMIN_USERNAME/SEED_ADMIN_PASSWORD (or a printed temporary password) + [DEMO] sites: synthetic logs + sitemap, two real crawls of a local fixture site, a CSV dataset with generated pages
 pnpm dev                      # API :4000, dashboard :3000
 ```
 
@@ -65,6 +67,8 @@ Crawling public sites needs no extra configuration. Private and loopback address
 ### CLI
 
 ```bash
+GLITCH_USER_PASSWORD=... pnpm cli users:create --username ana --name "Ana" --role EDITOR [--temporary]
+GLITCH_USER_PASSWORD=... pnpm cli users:reset-password --username ana [--temporary]
 pnpm cli sites:list
 pnpm cli site:create --name "My site" --url https://www.example.com
 pnpm cli logs:analyze ./access.log.gz          # local analysis, saves nothing
@@ -91,8 +95,8 @@ pnpm cli schema:validate ./schema.json         # exit 1 when invalid
 ## Tests
 
 ```bash
-pnpm test        # Vitest (109 tests): parser, bots, robots.txt, extraction, crawler vs a local fixture site, SSRF, API integration on a throwaway SQLite DB
-pnpm test:e2e    # Playwright (6 flows): logs; crawl and issue triage; bad deploy raises alerts; single page to WordPress with a conflict; CSV → batch → bulk approve → bulk send
+pnpm test        # Vitest (123 tests): parser, bots, robots.txt, extraction, crawler vs a local fixture site, SSRF, API integration on a throwaway SQLite DB
+pnpm test:e2e    # Playwright (7 flows): login/logout; logs; crawl and issue triage; bad deploy raises alerts; single page to WordPress with a conflict; CSV → batch → bulk approve → bulk send
 pnpm typecheck
 pnpm bench:logs [lines]
 ```
@@ -116,7 +120,7 @@ packages/schema-engine, content-engine, connectors, config
 
 ## Known limitations
 
-- No authentication or RBAC yet. Do not expose the API publicly.
+- No password recovery by email yet (an Admin resets passwords). Login throttling is in memory (per API process).
 - Imports run inside the HTTP request; very large uploads should use the CLI until the job queue exists.
 - WordPress: posts only (no pages, media upload, featured images or Yoast/Rank Math fields yet). Reviewer identity is a typed name until authentication exists.
 - Crawls run in the API process (one per site). A restart marks running crawls as failed. There is no JavaScript rendering, so client-rendered content is invisible to the crawler.
@@ -132,10 +136,9 @@ packages/schema-engine, content-engine, connectors, config
 
 1. **WordPress extras**: media and featured images, pages as well as posts, Yoast/Rank Math fields, JSON-LD per page.
 2. **Jobs**: BullMQ + Redis for imports and crawls, with progress and cancellation.
-3. **Auth**: sessions, workspaces, roles.
-4. **Search Console**: OAuth, Search Analytics, cross-reference with logs.
-5. **Bot verification**: reverse/forward DNS with caching.
-6. GEO monitoring, log-based alerts (5xx spikes, Googlebot drops).
+3. **Search Console**: OAuth, Search Analytics, cross-reference with logs.
+4. **Bot verification**: reverse/forward DNS with caching.
+5. GEO monitoring, log-based alerts (5xx spikes, Googlebot drops).
 
 ## Ideas worth building (beyond the original spec)
 

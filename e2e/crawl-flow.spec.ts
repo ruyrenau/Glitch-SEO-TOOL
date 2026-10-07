@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { login } from './helpers';
 import { startFixtureSite, FixtureSite } from '../packages/testing/src/fixture-site';
 
 let site: FixtureSite;
@@ -7,9 +8,10 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => site.close());
 
-test('crawl a site from the dashboard and triage an issue', async ({ page, request }) => {
+test('crawl a site from the dashboard and triage an issue', async ({ page }) => {
+  await login(page);
   // Create the site through the API (UI creation is covered by logs-flow).
-  const created = await request.post('http://localhost:4000/api/v1/sites', { data: { name: 'Fixture Crawl', domain: '127.0.0.1', canonicalUrl: site.origin } });
+  const created = await page.request.post('http://localhost:4000/api/v1/sites', { data: { name: 'Fixture Crawl', domain: '127.0.0.1', canonicalUrl: site.origin } });
   const { id } = await created.json();
 
   await page.goto('/');
@@ -36,9 +38,10 @@ test('crawl a site from the dashboard and triage an issue', async ({ page, reque
   await expect(page.getByRole('button', { name: /Internal URLs returning 5xx/ })).toBeVisible();
 });
 
-test('a bad deploy between two crawls raises alerts and shows up in the diff', async ({ page, request }) => {
+test('a bad deploy between two crawls raises alerts and shows up in the diff', async ({ page }) => {
+  await login(page);
   site.setVersion(1);
-  const created = await request.post('http://localhost:4000/api/v1/sites', { data: { name: 'Fixture Regressions', domain: '127.0.0.1', canonicalUrl: site.origin } });
+  const created = await page.request.post('http://localhost:4000/api/v1/sites', { data: { name: 'Fixture Regressions', domain: '127.0.0.1', canonicalUrl: site.origin } });
   const { id } = await created.json();
 
   await page.goto('/');

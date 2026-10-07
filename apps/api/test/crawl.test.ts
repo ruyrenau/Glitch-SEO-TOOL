@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp } from '../src/app';
+import { buildAuthedApp } from './helpers';
 import { prisma } from '@glitch/db';
 import { startFixtureSite, FixtureSite } from '@glitch/testing';
 
@@ -21,7 +21,7 @@ const waitForCrawl = async (runId: string) => {
 beforeAll(async () => {
   process.env.CRAWL_ALLOW_PRIVATE_HOSTS = '127.0.0.1';
   site = await startFixtureSite();
-  app = await buildApp({ logger: false });
+  ({ app } = await buildAuthedApp());
   const res = await app.inject({ method: 'POST', url: '/api/v1/sites', payload: { name: 'Fixture', domain: '127.0.0.1', canonicalUrl: site.origin } });
   siteId = res.json().id;
   await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/sitemap`, headers: { 'content-type': 'application/xml' }, payload: site.sitemapXml });

@@ -60,6 +60,7 @@ import { fetchSitemap, parseSitemapXml } from '@glitch/crawler';
 import { validateJsonLd } from '@glitch/schema-engine';
 import { renderTemplate, computeJaccardSimilarity, evaluateQualityGate } from '@glitch/content-engine';
 import { GoogleSearchConsoleClient } from '@glitch/connectors';
+import { registerAuth } from './auth';
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public details: Record<string, unknown> = {}) {
@@ -102,7 +103,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     bodyLimit: 5 * 1024 * 1024
   });
 
-  await app.register(cors, { origin: process.env.WEB_ORIGIN ?? 'http://localhost:3000', credentials: true });
+  await app.register(cors, { origin: (process.env.WEB_ORIGIN ?? 'http://localhost:3000').split(',').map(s => s.trim()), credentials: true, methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'] });
   await app.register(cookie);
   await app.register(swagger, {
     openapi: { info: { title: 'Glitch SEO Ops Engine API', version: '0.2.0' }, servers: [{ url: `http://localhost:${config.PORT}` }] }
@@ -154,6 +155,8 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     return site;
   };
 
+  await registerAuth(app);
+
   // ------------------------------------------------------------------ health
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
   app.get('/health/live', async () => ({ status: 'live' }));
@@ -167,11 +170,11 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   });
 
   // ------------------------------------------------------------------ sites
-  app.get('/api/v1/sites', async () => jsonSafe(await listSites()));
+  app.get('/api/v1/sites', async req => jsonSafe(await listSites(req.auth!.workspaceId)));
 
   app.post('/api/v1/sites', async (req, reply) => {
     const body = createSiteBody.parse(req.body);
-    const site = await createSite(body);
+    const site = await createSite({ ...body, workspaceId: req.auth!.workspaceId });
     return reply.status(201).send(jsonSafe(site));
   });
 
@@ -420,7 +423,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   // ------------------------------------------------------------------ audit
   app.get('/api/v1/audit-events', async req => {
     const { limit } = z.object({ limit: z.coerce.number().int().min(1).max(500).default(100) }).parse(req.query);
-    return listAuditEvents(undefined, limit);
+    return listAuditEvents(req.auth!.workspaceId, limit);
   });
 
   // ------------------------------------------------------------------ tools (stateless)
@@ -543,8 +546,8 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
 
   const idList = z.array(z.string().uuid()).min(1).max(MAX_BATCH);
   app.post('/api/v1/generated-pages/bulk-review', async req => {
-    const b = z.object({ ids: idList, decision: z.enum(['approved', 'rejected']), reviewer: z.string().min(1).max(100), notes: z.string().max(2000).optional() }).strict().parse(req.body);
-    return { results: await bulkReview(b.ids, b.decision, b.reviewer, b.notes) };
+    const b = z.object({ ids: idList, decision: z.enum(['approved', 'rejected']), reviewer: z.string().max(100).optional(), notes: z.string().max(2000).optional() }).strict().parse(req.body);
+    return { results: await bulkReview(b.ids, b.decision, req.auth!.user.name, b.notes) };
   });
 
   app.post('/api/v1/generated-pages/bulk-push', async req => {
@@ -574,8 +577,9 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
 
   app.post('/api/v1/generated-pages/:id/review', async req => {
     const { id } = idParam.parse(req.params);
-    const b = z.object({ decision: z.enum(['approved', 'rejected']), reviewer: z.string().min(1).max(100), notes: z.string().max(2000).optional() }).strict().parse(req.body);
-    return reviewPage(id, b.decision, b.reviewer, b.notes);
+    const b = z.object({ decision: z.enum(['approved', 'rejected']), reviewer: z.string().max(100).optional(), notes: z.string().max(2000).optional() }).strict().parse(req.body);
+    // The reviewer is the signed-in user; a name in the body is ignored.
+    return reviewPage(id, b.decision, req.auth!.user.name, b.notes);
   });
 
   const sendBody = z.object({ categories: z.array(z.number().int().positive()).max(20).optional(), overwriteRemoteChanges: z.boolean().optional() }).strict();

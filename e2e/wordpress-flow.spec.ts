@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { login } from './helpers';
 import { startMockWordPress, MockWordPress } from '../packages/testing/src/mock-wordpress';
 
 let wp: MockWordPress;
@@ -7,9 +8,10 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => wp.close());
 
-test('generate, approve and send a page to WordPress as a draft, then resolve a conflict', async ({ page, request }) => {
+test('generate, approve and send a page to WordPress as a draft, then resolve a conflict', async ({ page }) => {
+  await login(page);
   page.on('dialog', d => d.accept());
-  const created = await request.post('http://localhost:4000/api/v1/sites', { data: { name: 'WP Flow', domain: 'wpflow.example.com', canonicalUrl: 'https://wpflow.example.com' } });
+  const created = await page.request.post('http://localhost:4000/api/v1/sites', { data: { name: 'WP Flow', domain: 'wpflow.example.com', canonicalUrl: 'https://wpflow.example.com' } });
   const { id } = await created.json();
 
   await page.goto('/');
@@ -32,7 +34,6 @@ test('generate, approve and send a page to WordPress as a draft, then resolve a 
 
   // 3. Sending is impossible before approval; approve as a named reviewer.
   await expect(page.getByRole('button', { name: 'Enviar como borrador' })).toHaveCount(0);
-  await page.getByPlaceholder('Tu nombre').fill('Ana');
   await page.getByRole('button', { name: 'Aprobar', exact: true }).click();
   await expect(page.getByText('Aprobada', { exact: true })).toBeVisible();
 

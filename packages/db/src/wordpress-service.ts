@@ -6,7 +6,6 @@ import { prisma } from './client';
 import { recordAuditEvent } from './audit';
 import { WorkflowError } from './errors';
 
-export { WorkflowError };
 
 const json = (v: unknown) => v as Prisma.InputJsonValue;
 const allowHosts = () => (process.env.CRAWL_ALLOW_PRIVATE_HOSTS ?? '').split(',').map(s => s.trim()).filter(Boolean);

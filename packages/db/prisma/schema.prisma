@@ -44,17 +44,36 @@ enum PageStatus {
 }
 
 model User {
-  id           String            @id @default(uuid())
-  email        String            @unique
-  name         String
-  passwordHash String
-  avatarUrl    String?
-  mustChangePassword Boolean     @default(false)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  memberships  WorkspaceMember[]
-  auditEvents  AuditEvent[]
-  approvals    Approval[]
+  id                 String            @id @default(uuid())
+  username           String            @unique
+  email              String?           @unique
+  name               String
+  passwordHash       String            // bcrypt
+  avatarUrl          String?
+  mustChangePassword Boolean           @default(false)
+  disabled           Boolean           @default(false)
+  lastLoginAt        DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  memberships        WorkspaceMember[]
+  auditEvents        AuditEvent[]
+  approvals          Approval[]
+  sessions           Session[]
+}
+
+/// Server-side session. The cookie holds a random token; only its SHA-256 is stored.
+model Session {
+  id         String   @id @default(uuid())
+  tokenHash  String   @unique
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  lastSeenAt DateTime @default(now())
+  ipHash     String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Workspace {

@@ -2,7 +2,7 @@ import http from 'http';
 import type { AddressInfo } from 'net';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp } from '../src/app';
+import { buildAuthedApp } from './helpers';
 import { prisma } from '@glitch/db';
 import { startFixtureSite, FixtureSite } from '@glitch/testing';
 
@@ -36,7 +36,7 @@ beforeAll(async () => {
   await new Promise<void>(r => hook.listen(0, '127.0.0.1', r));
   process.env.ALERT_WEBHOOK_URL = `http://127.0.0.1:${(hook.address() as AddressInfo).port}/hook`;
   site = await startFixtureSite();
-  app = await buildApp({ logger: false });
+  ({ app } = await buildAuthedApp());
   siteId = (await app.inject({ method: 'POST', url: '/api/v1/sites', payload: { name: 'Alerts', domain: '127.0.0.1', canonicalUrl: site.origin } })).json().id;
 });
 afterAll(async () => {

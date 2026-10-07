@@ -5,7 +5,7 @@ import { Command } from 'commander';
 import { validateJsonLd } from '@glitch/schema-engine';
 import { analyzeLogFile } from '@glitch/log-parser';
 import { fetchSitemap, parseSitemapXml } from '@glitch/crawler';
-import { prisma, createSite, listSites, importLogFile, replaceSitemapUrls, getLogReport, DuplicateImportError, runCrawl, listIssues, listAlerts, listGeneratedPages, dryRunPage, pushPageAsDraft, WorkflowError, saveConnection, testConnection, importDataset, generateFromTemplate, listTemplates } from '@glitch/db';
+import { prisma, createSite, listSites, importLogFile, replaceSitemapUrls, getLogReport, DuplicateImportError, runCrawl, listIssues, listAlerts, listGeneratedPages, dryRunPage, pushPageAsDraft, WorkflowError, saveConnection, testConnection, importDataset, generateFromTemplate, listTemplates, createUser, resetPassword, prisma as db } from '@glitch/db';
 
 const program = new Command();
 program.name('seo-ops').description('Glitch SEO Ops Engine CLI').version('0.2.0');
@@ -19,6 +19,45 @@ const requireFile = (p: string) => {
   return path.resolve(p);
 };
 const n = (v: number) => v.toLocaleString('en-US');
+
+program
+  .command('users:create')
+  .description('Create a user. Reads the password from GLITCH_USER_PASSWORD so it stays out of shell history')
+  .requiredOption('--username <u>', 'Login name')
+  .requiredOption('--name <name>', 'Display name')
+  .option('--role <role>', 'OWNER | ADMIN | SEO_MANAGER | EDITOR | VIEWER', 'VIEWER')
+  .option('--temporary', 'Force a password change at first login')
+  .action(async (o: { username: string; name: string; role: string; temporary?: boolean }) => {
+    const password = process.env.GLITCH_USER_PASSWORD;
+    if (!password) fail('Set GLITCH_USER_PASSWORD.');
+    if (!['OWNER', 'ADMIN', 'SEO_MANAGER', 'EDITOR', 'VIEWER'].includes(o.role)) fail(`Invalid role: ${o.role}`);
+    try {
+      const u = await createUser({ username: o.username, name: o.name, password: password!, role: o.role as 'VIEWER', mustChangePassword: !!o.temporary });
+      console.log(`User "${u.username}" created as ${u.roleLabel}.`);
+    } catch (e) {
+      if (e instanceof WorkflowError) fail(`${e.code}: ${e.message}`);
+      throw e;
+    }
+  });
+
+program
+  .command('users:reset-password')
+  .description('Set a new password for a user (reads GLITCH_USER_PASSWORD) and end their sessions')
+  .requiredOption('--username <u>', 'Login name')
+  .option('--temporary', 'Force a password change at next login')
+  .action(async (o: { username: string; temporary?: boolean }) => {
+    const password = process.env.GLITCH_USER_PASSWORD;
+    if (!password) fail('Set GLITCH_USER_PASSWORD.');
+    const user = await db.user.findUnique({ where: { username: o.username.toLowerCase() } });
+    if (!user) fail(`User "${o.username}" not found.`);
+    try {
+      await resetPassword(user!.id, password!, null, { mustChange: !!o.temporary });
+      console.log(`Password updated for "${user!.username}". Existing sessions were closed.`);
+    } catch (e) {
+      if (e instanceof WorkflowError) fail(`${e.code}: ${e.message}`);
+      throw e;
+    }
+  });
 
 program
   .command('sites:list')

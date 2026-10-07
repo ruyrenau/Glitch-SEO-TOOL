@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import { profileCsv, CsvError, renderTemplate, specificContent, jaccard, evaluateQualityGate, findMissingVariables, templateVariables, TemplateData } from '@glitch/content-engine';
 import { prisma } from './client';
-import { recordAuditEvent } from './audit';
+import { recordAuditEvent, currentActorId } from './audit';
 import { WorkflowError } from './errors';
 
 const json = (v: unknown) => v as Prisma.InputJsonValue;
@@ -242,7 +242,7 @@ export async function reviewPage(pageId: string, decision: 'approved' | 'rejecte
   if (decision === 'approved' && page.status === 'BLOCKED') throw new WorkflowError('PAGE_BLOCKED', 'Blocked pages cannot be approved; fix the data or template and regenerate');
   if (page.status === 'ARCHIVED') throw new WorkflowError('PAGE_ARCHIVED', 'Archived pages cannot be reviewed');
   if (page.status === 'SENT_AS_DRAFT' && decision === 'rejected') throw new WorkflowError('ALREADY_SENT', 'This page already exists as a draft in WordPress; edit or delete it there');
-  await prisma.approval.create({ data: { generatedPageId: pageId, reviewer, action: decision, notes, userId: actorUserId ?? null } });
+  await prisma.approval.create({ data: { generatedPageId: pageId, reviewer, action: decision, notes, userId: actorUserId ?? currentActorId() } });
   const updated = await prisma.generatedPage.update({ where: { id: pageId }, data: { status: decision === 'approved' ? 'APPROVED' : 'NEEDS_REVIEW' } });
   await recordAuditEvent({ workspaceId: page.site?.workspaceId ?? null, userId: actorUserId ?? null, action: `page.${decision}`, entity: 'GeneratedPage', entityId: pageId, details: { reviewer, notes } });
   return updated;

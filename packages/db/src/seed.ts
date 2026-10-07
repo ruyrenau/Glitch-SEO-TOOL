@@ -2,9 +2,9 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
-import bcrypt from 'bcryptjs';
 import { writeSyntheticLog, syntheticSitemapPaths } from '@glitch/log-parser';
 import { prisma } from './client';
+import { createUser } from './auth-service';
 import { createSite } from './site-service';
 import { importLogFile, replaceSitemapUrls } from './log-service';
 import { runCrawl } from './crawl-service';
@@ -25,15 +25,13 @@ async function main() {
     create: { name: demo ? '[DEMO] Glitch Workspace' : 'Default Workspace', slug: 'default' }
   });
 
-  const email = process.env.SEED_ADMIN_EMAIL ?? 'admin@glitch.local';
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (!existing) {
-    const password = process.env.SEED_ADMIN_PASSWORD ?? crypto.randomBytes(9).toString('base64url');
-    const user = await prisma.user.create({
-      data: { email, name: 'Admin', passwordHash: await bcrypt.hash(password, 12), mustChangePassword: true }
-    });
-    await prisma.workspaceMember.create({ data: { workspaceId: ws.id, userId: user.id, role: 'OWNER' } });
-    console.log(`Admin created: ${email} / ${password}  (must be changed on first login)`);
+  // The first user is the workspace Owner. Credentials come from the environment (never from the repo).
+  const username = (process.env.SEED_ADMIN_USERNAME ?? 'admin').toLowerCase();
+  if (!(await prisma.user.findUnique({ where: { username } }))) {
+    const fromEnv = process.env.SEED_ADMIN_PASSWORD;
+    const password = fromEnv ?? `${crypto.randomBytes(9).toString('base64url')}-1`;
+    await createUser({ username, name: process.env.SEED_ADMIN_NAME ?? username, password, role: 'OWNER', workspaceId: ws.id, mustChangePassword: !fromEnv });
+    console.log(fromEnv ? `Owner "${username}" created with SEED_ADMIN_PASSWORD.` : `Owner "${username}" created. Temporary password: ${password} (must be changed at first login)`);
   }
 
   if (!demo) return;

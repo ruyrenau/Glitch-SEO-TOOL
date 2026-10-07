@@ -2,13 +2,13 @@
 
 Only claim what the code does today. Update this file as roadmap items ship.
 
-## Portfolio summary (accurate for v0.6)
+## Portfolio summary (accurate for v0.7)
 
-> Built a TypeScript SEO operations tool that streams Nginx/Apache server logs (including gzip) with bounded memory, identifies search-engine and AI crawlers, stores privacy-safe aggregates, cross-references bot activity with XML sitemaps, and crawls sites (robots.txt-compliant, rate-limited, SSRF-guarded) to detect and prioritize 39 types of technical SEO issues, raises alerts when a deploy introduces regressions between crawls, and turns CSV datasets into quality-gated programmatic pages that are published to WordPress as drafts, through its REST API, only after human approval. Includes a Fastify REST API with OpenAPI, a Next.js dashboard, a CLI, SSRF-guarded sitemap fetching, an audit trail, and Vitest/Playwright test suites.
+> Built a TypeScript SEO operations tool that streams Nginx/Apache server logs (including gzip) with bounded memory, identifies search-engine and AI crawlers, stores privacy-safe aggregates, cross-references bot activity with XML sitemaps, and crawls sites (robots.txt-compliant, rate-limited, SSRF-guarded) to detect and prioritize 39 types of technical SEO issues, raises alerts when a deploy introduces regressions between crawls, and turns CSV datasets into quality-gated programmatic pages that are published to WordPress as drafts, through its REST API, only after human approval. Access is protected by session-based authentication and workspace-scoped role-based permissions. Includes a Fastify REST API with OpenAPI, a Next.js dashboard, a CLI, SSRF-guarded sitemap fetching, an audit trail, and Vitest/Playwright test suites.
 
-Do **not** claim Search Console integration, a job queue or role-based access until they exist. WordPress integration creates and updates drafts only.
+Do **not** claim Search Console integration or a job queue until they exist. WordPress integration creates and updates drafts only.
 
-## Resume bullets (accurate for v0.6)
+## Resume bullets (accurate for v0.7)
 
 - Built a streaming log-analysis pipeline in TypeScript that processes 2M Nginx lines (432 MB) in ~31 s under a 128 MB heap cap; found and fixed a V8 sliced-string leak that previously retained ~240 bytes per line.
 - Implemented privacy-by-design ingestion: HMAC-hashed IPs never persisted, sensitive query parameters redacted, SHA-256 de-duplication, zip-bomb and file-type validation.
@@ -17,7 +17,8 @@ Do **not** claim Search Console integration, a job queue or role-based access un
 - Added crawl-to-crawl diffing and regression alerts (noindex added, pages broken, canonical changes, new robots.txt blocks) with optional Slack/webhook delivery, validated by an end-to-end test that simulates a bad deploy.
 - Integrated the WordPress REST API with Application Passwords (encrypted at rest) under a drafts-only policy: human approval gate, dry-run diffs, detection of edits made in wp-admin, pre-update backups with restore, idempotent sends; verified against a real WordPress via WordPress Playground.
 - Designed programmatic-content quality gates that measure what each data row adds beyond the template (shingle sets minus boilerplate), so template pages are not false duplicates while copied rows are blocked; added CSV profiling, HTML escaping of data, risky-claim detection and per-page bulk review.
-- Delivered a Fastify API (Zod validation, correlation IDs, OpenAPI), Next.js dashboard and CLI on a shared Prisma data layer, covered by 109 Vitest unit/integration tests (including a local fixture site with planted problems) and Playwright end-to-end tests.
+- Implemented authentication and RBAC: bcrypt, hashed server-side session tokens in httpOnly cookies, login throttling, origin-based CSRF protection, five roles with deny-by-default route permissions and workspace isolation on every resource; audited actions and approvals carry the real user.
+- Delivered a Fastify API (Zod validation, correlation IDs, OpenAPI), Next.js dashboard and CLI on a shared Prisma data layer, covered by 123 Vitest unit/integration tests (including a local fixture site with planted problems) and Playwright end-to-end tests.
 
 ## Interview demo (3–5 minutes)
 

@@ -1,5 +1,6 @@
 import path from 'path';
 import { test, expect } from '@playwright/test';
+import { login } from './helpers';
 import { startMockWordPress, MockWordPress } from '../packages/testing/src/mock-wordpress';
 
 let wp: MockWordPress;
@@ -19,11 +20,12 @@ const BODY = [
   '<p>Precio de referencia: {{precio}} MXN.</p>'
 ].join('\n');
 
-test('import a CSV, build a template, generate in batch, approve and send in bulk', async ({ page, request }) => {
+test('import a CSV, build a template, generate in batch, approve and send in bulk', async ({ page }) => {
+  await login(page);
   page.on('dialog', d => d.accept());
-  const { id } = await (await request.post('http://localhost:4000/api/v1/sites', { data: { name: 'Datasets E2E', domain: 'ds-e2e.example.com', canonicalUrl: 'https://ds-e2e.example.com' } })).json();
-  await request.put(`http://localhost:4000/api/v1/sites/${id}/wordpress`, { data: { endpointUrl: wp.url, username: wp.username, appPassword: wp.appPassword } });
-  await request.post(`http://localhost:4000/api/v1/sites/${id}/wordpress/test`);
+  const { id } = await (await page.request.post('http://localhost:4000/api/v1/sites', { data: { name: 'Datasets E2E', domain: 'ds-e2e.example.com', canonicalUrl: 'https://ds-e2e.example.com' } })).json();
+  await page.request.put(`http://localhost:4000/api/v1/sites/${id}/wordpress`, { data: { endpointUrl: wp.url, username: wp.username, appPassword: wp.appPassword } });
+  await page.request.post(`http://localhost:4000/api/v1/sites/${id}/wordpress/test`);
 
   await page.goto('/');
   await page.getByLabel('Sitio activo').selectOption(id);
@@ -47,7 +49,6 @@ test('import a CSV, build a template, generate in batch, approve and send in bul
   await expect(page.getByText(/Fila 9 omitida: Slug already exists/)).toBeVisible();
 
   await page.getByLabel('Filtrar por estado').selectOption('READY_FOR_APPROVAL');
-  await page.getByPlaceholder('Tu nombre').fill('Ana');
   await page.getByLabel(/Seleccionar \d+ visibles/).check();
   const ready = Number((await page.getByText(/\d+ seleccionadas/).textContent())!.split(' ')[0]);
   expect(ready).toBeGreaterThanOrEqual(8);

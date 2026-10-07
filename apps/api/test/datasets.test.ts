@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp } from '../src/app';
+import { buildAuthedApp } from './helpers';
 import { prisma } from '@glitch/db';
 import { startMockWordPress, MockWordPress } from '@glitch/testing';
 
@@ -33,7 +33,7 @@ const TEMPLATE = {
 beforeAll(async () => {
   process.env.CRAWL_ALLOW_PRIVATE_HOSTS = '127.0.0.1';
   wp = await startMockWordPress();
-  app = await buildApp({ logger: false });
+  ({ app } = await buildAuthedApp());
   siteId = (await app.inject({ method: 'POST', url: '/api/v1/sites', payload: { name: 'Datasets', domain: 'ds.example.com', canonicalUrl: 'https://ds.example.com' } })).json().id;
 });
 afterAll(async () => {

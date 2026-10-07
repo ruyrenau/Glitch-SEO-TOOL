@@ -2,7 +2,7 @@
 
 import React from 'react';
 import {
-  BookOpen, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert
+  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert
 } from 'lucide-react';
 import { Badge, Button, Card } from './ui';
 
@@ -205,6 +205,34 @@ const SECTIONS: Section[] = [
     limits: ['Solo entradas (posts). Aún no maneja páginas de WordPress, imágenes, imagen destacada ni campos de Yoast o Rank Math.']
   },
   {
+    id: 'users',
+    nav: 'users',
+    icon: Users,
+    title: 'Acceso, usuarios y roles',
+    status: 'ready',
+    what: 'Cada persona entra con su usuario y contraseña. Lo que puede hacer depende de su rol. Owner y Admin ven la sección "Usuarios" para invitar personas, cambiar roles, desactivar cuentas y restablecer contraseñas.',
+    why: 'Evita que cualquiera con la URL cambie datos, y deja registrado quién hizo cada cosa (aprobaciones, crawls, envíos a WordPress).',
+    steps: [
+      'Para cambiar tu contraseña, pulsa tu nombre abajo a la izquierda (Mi cuenta).',
+      'Para invitar a alguien: Usuarios → Invitar usuario. Elige un rol y una contraseña temporal; la persona deberá cambiarla al entrar por primera vez.',
+      'Comparte la contraseña temporal por un canal seguro, nunca en un documento público.',
+      'Si alguien deja el equipo, desactívalo: sus sesiones se cierran en ese momento.'
+    ],
+    read: [
+      ['Owner', 'Todo, incluida la gestión de otros Owners. Siempre debe quedar al menos uno activo.'],
+      ['Admin', 'Sitios, credenciales de WordPress, borrados y usuarios (excepto Owners).'],
+      ['SEO Manager', 'Logs, sitemaps, crawls, issues, alertas, contenido y envíos a WordPress.'],
+      ['Editor', 'Datasets, plantillas, generación, revisión y envío de borradores.'],
+      ['Viewer', 'Solo lectura.']
+    ],
+    tips: [
+      'Las aprobaciones de contenido se registran con tu nombre de usuario; ya no hace falta escribirlo.',
+      'Tras 5 intentos fallidos el acceso se bloquea 15 minutos para ese usuario.',
+      'La sesión dura 12 horas sin actividad.'
+    ],
+    limits: ['No hay recuperación de contraseña por email todavía: un Admin debe restablecerla.']
+  },
+  {
     id: 'audit',
     nav: 'audit',
     icon: History,
@@ -212,7 +240,7 @@ const SECTIONS: Section[] = [
     status: 'ready',
     what: 'Registro de todas las acciones: sitios creados, logs importados o borrados, crawls, cambios de estado de issues, aprobaciones y envíos a WordPress.',
     why: 'Permite saber quién hizo qué y cuándo, y reconstruir lo que pasó si algo sale mal.',
-    limits: ['Hasta que exista el inicio de sesión, las acciones se registran sin usuario.']
+    tips: ['Cada evento muestra el usuario que hizo la acción.']
   },
   {
     id: 'pending',
@@ -247,7 +275,7 @@ export function ManualView({ go }: { go: (nav: string) => void }) {
               programáticas con control de calidad. Todo se organiza por sitio: elige uno en "Sitio activo" y trabaja sección por sección.
             </p>
             <p className="text-slate-600 dark:text-slate-400">
-              <strong>Flujo recomendado:</strong> registra el sitio → importa un log y carga el sitemap → ejecuta un crawl → trabaja los issues → vuelve a rastrear después de cada deploy para
+              <strong>Flujo recomendado:</strong> inicia sesión → registra el sitio → importa un log y carga el sitemap → ejecuta un crawl → trabaja los issues → vuelve a rastrear después de cada deploy para
               recibir alertas → genera contenido desde un CSV, apruébalo y envíalo a WordPress como borrador.
             </p>
           </div>
@@ -362,6 +390,7 @@ export function ManualView({ go }: { go: (nav: string) => void }) {
             ['¿Puedo rastrear cualquier sitio?', 'Sí, sitios públicos. Respeta robots.txt y no supera las solicitudes por segundo que elijas. Rastrea sitios propios o de clientes con permiso.'],
             ['¿Se publica algo en WordPress automáticamente?', 'No. Solo se crean o actualizan borradores, y solo de páginas que una persona aprobó.'],
             ['Dice "No se pudo contactar la API"', 'La API no está corriendo. Ábrela en una terminal con "node apps/api/dist/index.js" desde la carpeta del proyecto.'],
+            ['Olvidé mi contraseña', 'Pide a un Owner o Admin que la restablezca desde Usuarios. Si eres el único Owner, desde la terminal: GLITCH_USER_PASSWORD=... pnpm cli users:reset-password --username tu-usuario.'],
             ['¿Qué significan los datos marcados DEMO?', 'Son datos sintéticos para probar la herramienta. Pasan por los mismos procesos que los datos reales.']
           ].map(([q, a]) => (
             <div key={q}>

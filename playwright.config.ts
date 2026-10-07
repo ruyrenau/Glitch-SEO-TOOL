@@ -17,6 +17,12 @@ if (!process.env.PW_E2E_DB_READY) {
   fs.mkdirSync(path.dirname(dbFile), { recursive: true });
   fs.rmSync(dbFile, { force: true });
   execSync('npx prisma migrate deploy', { cwd: path.resolve(__dirname, 'packages/db'), env: { ...process.env, DATABASE_URL: e2eDb }, stdio: 'pipe' });
+  // E2E user (password only for this throwaway database).
+  execSync('node apps/cli/dist/index.js users:create --username e2e --name "E2E Owner" --role OWNER', {
+    cwd: __dirname,
+    env: { ...process.env, DATABASE_URL: e2eDb, GLITCH_USER_PASSWORD: 'E2e-password-123' },
+    stdio: 'pipe'
+  });
   process.env.PW_E2E_DB_READY = '1'; // config is re-evaluated in workers
 }
 

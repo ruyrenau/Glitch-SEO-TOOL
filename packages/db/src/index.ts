@@ -7,3 +7,5 @@ export * from './crawl-service';
 export * from './alert-service';
 export * from './wordpress-service';
 export * from './content-service';
+export * from './auth-service';
+export * from './errors';

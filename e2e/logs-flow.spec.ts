@@ -1,9 +1,11 @@
 import path from 'path';
 import { test, expect } from '@playwright/test';
+import { login } from './helpers';
 
 const fixtures = path.resolve(__dirname, '../fixtures');
 
 test('register a site, import a log and a sitemap, read the report and the audit log', async ({ page }) => {
+  await login(page);
   await page.goto('/');
 
   // With an empty database the form is already open; otherwise open it from "Sitios".
@@ -39,6 +41,7 @@ test('register a site, import a log and a sitemap, read the report and the audit
 });
 
 test('modules without a backend say so instead of showing numbers', async ({ page }) => {
+  await login(page);
   await page.goto('/');
   await page.getByRole('button', { name: /Search Console/ }).click();
   await expect(page.getByText('PENDIENTE')).toBeVisible();
