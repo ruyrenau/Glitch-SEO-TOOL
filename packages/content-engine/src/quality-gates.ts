@@ -1,53 +1,59 @@
+import { toWords } from './similarity';
+
 export interface QualityGateResult {
   passed: boolean;
   status: 'READY_FOR_APPROVAL' | 'NEEDS_REVIEW' | 'BLOCKED';
   issues: string[];
 }
 
-export function evaluateQualityGate(params: {
+export interface QualityGateInput {
   title: string;
   metaDescription: string;
   content: string;
-  similarityScore: number;
   slug: string;
-}): QualityGateResult {
-  const issues: string[] = [];
+  /** Highest similarity with another page (0-1). For template pages, use the template-specific similarity. */
+  similarityScore: number;
+  /** Words the data contributes beyond the template boilerplate (undefined for hand-written pages). */
+  uniqueWords?: number;
+  /** Template variables with no value in the data row. */
+  missingVariables?: string[];
+}
 
-  if (!params.title || params.title.trim().length === 0) {
-    issues.push('Title is missing.');
-  } else if (params.title.length > 70) {
-    issues.push('Title exceeds 70 characters.');
+/** Claims that need a human to confirm they are true and supportable. */
+const RISKY_CLAIMS = /\b(garantizad[oa]s?|guarantee[ds]?|el mejor|la mejor|los mejores|the best|n[uú]mero 1|#1|100 ?%|sin riesgo|risk[- ]free|cura|cures)\b/i;
+
+export function evaluateQualityGate(p: QualityGateInput): QualityGateResult {
+  const blockers: string[] = [];
+  const reviews: string[] = [];
+  const words = toWords(p.content).length;
+
+  if (!p.title?.trim()) blockers.push('Title is missing.');
+  else if (p.title.length > 65) reviews.push(`Title is ${p.title.length} characters (over 65).`);
+  else if (p.title.length < 20) reviews.push(`Title is ${p.title.length} characters (under 20).`);
+
+  if (!p.metaDescription?.trim()) reviews.push('Meta description is missing.');
+  else if (p.metaDescription.length > 160) reviews.push(`Meta description is ${p.metaDescription.length} characters (over 160).`);
+  else if (p.metaDescription.length < 70) reviews.push(`Meta description is ${p.metaDescription.length} characters (under 70).`);
+
+  if (!p.slug || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(p.slug)) blockers.push('Slug is missing or has invalid characters.');
+  if (!/<h1[\s>]/i.test(p.content)) reviews.push('No <h1> in the body.');
+  if (/\{\{|\}\}/.test(`${p.title} ${p.content} ${p.metaDescription}`)) blockers.push('Unrendered template syntax ({{ or }}) in the output.');
+  if (p.missingVariables?.length) blockers.push(...p.missingVariables.map(v => `Missing data for {{${v}}}`));
+
+  if (words < 50) blockers.push(`Content is too thin (${words} words).`);
+  else if (words < 100) reviews.push(`Content is short (${words} words).`);
+
+  if (p.uniqueWords !== undefined) {
+    if (p.uniqueWords < 8) blockers.push(`Almost nothing specific to this row: ${p.uniqueWords} words differ from the template.`);
+    else if (p.uniqueWords < 25) reviews.push(`Little content specific to this row (${p.uniqueWords} words beyond the template).`);
   }
 
-  if (!params.metaDescription || params.metaDescription.trim().length === 0) {
-    issues.push('Meta description is missing.');
-  }
+  if (p.similarityScore > 0.85) blockers.push(`Near-duplicate of another page (${Math.round(p.similarityScore * 100)}% similar).`);
+  else if (p.similarityScore > 0.6) reviews.push(`Very similar to another page (${Math.round(p.similarityScore * 100)}%).`);
 
-  const wordCount = params.content.split(/\s+/).filter(Boolean).length;
-  if (wordCount < 100) {
-    issues.push('Content is too thin (< 100 words).');
-  }
+  const claim = RISKY_CLAIMS.exec(`${p.title} ${p.metaDescription} ${p.content.replace(/<[^>]+>/g, ' ')}`);
+  if (claim) reviews.push(`Possibly risky claim: "${claim[0]}". Confirm it is true and supportable.`);
 
-  if (params.similarityScore > 0.85) {
-    issues.push(`Extreme similarity with existing pages (${Math.round(params.similarityScore * 100)}%).`);
-  } else if (params.similarityScore > 0.65) {
-    issues.push(`Moderate similarity threshold exceeded (${Math.round(params.similarityScore * 100)}%).`);
-  }
-
-  if (!params.slug || !/^[a-z0-9-]+$/.test(params.slug)) {
-    issues.push('Slug contains invalid characters or is missing.');
-  }
-
-  let status: QualityGateResult['status'] = 'READY_FOR_APPROVAL';
-  if (params.similarityScore > 0.85 || wordCount < 50 || !params.title) {
-    status = 'BLOCKED';
-  } else if (issues.length > 0) {
-    status = 'NEEDS_REVIEW';
-  }
-
-  return {
-    passed: issues.length === 0,
-    status,
-    issues
-  };
+  const issues = [...blockers, ...reviews];
+  return { passed: issues.length === 0, status: blockers.length ? 'BLOCKED' : reviews.length ? 'NEEDS_REVIEW' : 'READY_FOR_APPROVAL', issues };
 }

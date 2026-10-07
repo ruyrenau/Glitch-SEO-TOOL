@@ -1,0 +1,221 @@
+import { Prisma, Severity } from '@prisma/client';
+import { crawlSite, auditCrawl, indexabilityOf, CrawlOptions, DetectedIssue } from '@glitch/crawler';
+import { calculatePriorityScore } from '@glitch/core';
+import { prisma } from './client';
+import { recordAuditEvent } from './audit';
+import { createAlertsForRun } from './alert-service';
+
+const BATCH = 500;
+
+/**
+ * Until per-section business importance is configurable, severity acts as the
+ * businessImportance factor of the priority heuristic. Scores are scaled x10.
+ */
+const SEVERITY_WEIGHT: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1, INFO: 0.5 };
+
+export interface RunCrawlOptions extends Partial<Omit<CrawlOptions, 'startUrl' | 'seeds' | 'signal' | 'onProgress'>> {
+  siteId: string;
+  /** Use stored sitemap URLs as extra seeds (default true). */
+  seedFromSitemap?: boolean;
+  actorUserId?: string | null;
+  signal?: AbortSignal;
+  onProgress?: CrawlOptions['onProgress'];
+  /** Called right after the CrawlRun row exists, before crawling starts. */
+  onStarted?: (crawlRunId: string) => void;
+}
+
+const json = (v: unknown) => v as Prisma.InputJsonValue;
+
+export async function runCrawl(opts: RunCrawlOptions) {
+  const site = await prisma.site.findUnique({ where: { id: opts.siteId } });
+  if (!site) throw new Error(`Site ${opts.siteId} not found`);
+  const sitemapRows = await prisma.sitemapUrl.findMany({ where: { siteId: site.id }, select: { url: true } });
+  const sitemapUrls = new Set(sitemapRows.map(r => r.url));
+
+  const config = {
+    maxUrls: opts.maxUrls ?? 500,
+    maxDepth: opts.maxDepth ?? 5,
+    concurrency: opts.concurrency ?? 2,
+    rps: opts.rps ?? site.maxRps,
+    respectRobots: opts.respectRobots ?? true,
+    include: opts.include ?? [],
+    exclude: opts.exclude ?? [],
+    userAgent: opts.userAgent ?? site.userAgent,
+    seedFromSitemap: opts.seedFromSitemap ?? true
+  };
+  const run = await prisma.crawlRun.create({ data: { siteId: site.id, status: 'running', maxDepth: config.maxDepth, config: json(config) } });
+  opts.onStarted?.(run.id);
+  await recordAuditEvent({ workspaceId: site.workspaceId, userId: opts.actorUserId ?? null, action: 'crawl.started', entity: 'CrawlRun', entityId: run.id, details: json(config) });
+
+  try {
+    const result = await crawlSite({
+      ...config,
+      startUrl: site.canonicalUrl,
+      seeds: config.seedFromSitemap ? [...sitemapUrls] : [],
+      allowHosts: opts.allowHosts,
+      timeoutMs: opts.timeoutMs,
+      signal: opts.signal,
+      onProgress: opts.onProgress
+    });
+
+    // Paths Googlebot requested in the latest log import, to flag crawl/log overlap.
+    const latestImport = await prisma.logImport.findFirst({ where: { siteId: site.id, status: 'completed' }, orderBy: { createdAt: 'desc' } });
+    const loggedPaths = new Set(
+      latestImport
+        ? (await prisma.logAggregate.findMany({ where: { logImportId: latestImport.id, botName: { startsWith: 'Googlebot' } }, select: { path: true }, distinct: ['path'] })).map(r => r.path)
+        : []
+    );
+
+    const rows = result.pages.map(p => {
+      const ix = indexabilityOf(p);
+      const u = new URL(p.url);
+      const e = p.extracted;
+      return {
+        crawlRunId: run.id,
+        url: p.url,
+        finalUrl: p.finalUrl,
+        statusCode: p.statusCode,
+        responseTimeMs: p.responseTimeMs,
+        mimeType: p.mimeType,
+        sizeBytes: p.sizeBytes,
+        title: e?.title?.slice(0, 500) ?? null,
+        metaDescription: e?.metaDescription?.slice(0, 1000) ?? null,
+        canonical: e?.canonical ?? null,
+        robotsMeta: e?.robotsMeta ?? null,
+        xRobotsTag: p.xRobotsTag,
+        h1: e?.h1[0]?.slice(0, 500) ?? null,
+        h1Count: e?.h1.length ?? 0,
+        lang: e?.lang ?? null,
+        hreflang: e?.hreflang.length ? json(e.hreflang) : undefined,
+        schemaTypes: e?.schemaTypes.length ? json(e.schemaTypes) : undefined,
+        schemaErrors: e?.schemaErrors.length ?? 0,
+        redirectChain: p.redirectChain.length ? json(p.redirectChain) : undefined,
+        contentHash: e?.contentHash ?? null,
+        inlinks: p.inlinks,
+        outlinks: e?.internalLinks.length ?? 0,
+        externalLinks: e?.externalLinks ?? 0,
+        imagesMissingAlt: e?.imagesMissingAlt ?? 0,
+        blockedByRobots: p.blockedByRobots,
+        error: p.error,
+        inSitemap: sitemapUrls.has(p.url),
+        inLogs: loggedPaths.has(u.pathname + u.search),
+        isIndexable: ix.indexable,
+        indexabilityReason: ix.reason,
+        wordCount: e?.wordCount ?? 0,
+        depth: p.depth
+      };
+    });
+    for (let i = 0; i < rows.length; i += BATCH) await prisma.crawledPage.createMany({ data: rows.slice(i, i + BATCH) });
+
+    const detected = auditCrawl(result, { environment: site.environment, sitemapUrls });
+    await syncIssues(site.id, run.id, detected);
+
+    const status = result.cancelled ? 'cancelled' : 'completed';
+    const done = await prisma.crawlRun.update({
+      where: { id: run.id },
+      data: {
+        status,
+        urlsCrawled: result.pages.length,
+        urlsDiscovered: result.discovered,
+        issuesFound: detected.length,
+        completedAt: new Date(),
+        config: json({ ...config, robots: result.robots, hostVariants: result.hostVariants, limitReached: result.limitReached })
+      }
+    });
+    await prisma.site.update({ where: { id: site.id }, data: { lastAuditAt: new Date() } });
+    if (status === 'completed') {
+      try {
+        await createAlertsForRun(run.id);
+      } catch (e) {
+        await recordAuditEvent({ workspaceId: site.workspaceId, userId: null, action: 'alerts.failed', entity: 'CrawlRun', entityId: run.id, details: { error: (e as Error).message } });
+      }
+    }
+    await recordAuditEvent({ workspaceId: site.workspaceId, userId: opts.actorUserId ?? null, action: `crawl.${status}`, entity: 'CrawlRun', entityId: run.id, details: { pages: result.pages.length, issues: detected.length } });
+    return done;
+  } catch (err) {
+    await prisma.crawlRun.update({ where: { id: run.id }, data: { status: 'failed', error: (err as Error).message.slice(0, 1000), completedAt: new Date() } });
+    await recordAuditEvent({ workspaceId: site.workspaceId, userId: opts.actorUserId ?? null, action: 'crawl.failed', entity: 'CrawlRun', entityId: run.id, details: { error: (err as Error).message } });
+    throw err;
+  }
+}
+
+/**
+ * Upserts one row per (site, code). Codes no longer detected are resolved;
+ * issues a person marked "ignored" stay ignored.
+ */
+async function syncIssues(siteId: string, crawlRunId: string, detected: DetectedIssue[]) {
+  const now = new Date();
+  const existing = await prisma.issue.findMany({ where: { siteId } });
+  const byCode = new Map(existing.map(i => [i.code, i]));
+  for (const d of detected) {
+    const priorityScore = Math.round(calculatePriorityScore({ impact: d.impact, confidence: d.confidence, affectedUrlsCount: d.affectedUrls.length, businessImportance: SEVERITY_WEIGHT[d.severity] ?? 1, effort: d.effort, risk: d.risk }) * 10);
+    const data = {
+      crawlRunId,
+      category: d.category,
+      title: d.title,
+      description: d.description,
+      severity: d.severity as Severity,
+      impact: d.impact,
+      effort: d.effort,
+      risk: d.risk,
+      confidence: d.confidence,
+      priorityScore,
+      affectedUrlsCount: d.affectedUrls.length,
+      affectedUrls: json(d.affectedUrls.slice(0, 200)),
+      evidence: d.evidence ? json(d.evidence) : Prisma.JsonNull,
+      recommendation: d.recommendation,
+      lastSeenAt: now
+    };
+    const prev = byCode.get(d.code);
+    if (prev) {
+      await prisma.issue.update({
+        where: { id: prev.id },
+        data: { ...data, ...(prev.status === 'resolved' ? { status: 'open', resolvedAt: null } : {}) }
+      });
+    } else {
+      await prisma.issue.create({ data: { ...data, siteId, code: d.code, status: 'open' } });
+    }
+  }
+  const stillPresent = new Set(detected.map(d => d.code));
+  await prisma.issue.updateMany({
+    where: { siteId, status: { in: ['open', 'in_progress'] }, code: { notIn: [...stillPresent] } },
+    data: { status: 'resolved', resolvedAt: now }
+  });
+}
+
+export async function listCrawlRuns(siteId: string) {
+  return prisma.crawlRun.findMany({ where: { siteId }, orderBy: { startedAt: 'desc' }, take: 50 });
+}
+
+export async function listCrawledPages(crawlRunId: string, filter: { status?: 'ok' | 'redirect' | 'error' | 'blocked'; indexable?: boolean; q?: string; skip?: number; take?: number }) {
+  const where: Prisma.CrawledPageWhereInput = { crawlRunId };
+  if (filter.status === 'ok') where.statusCode = { gte: 200, lt: 300 };
+  if (filter.status === 'redirect') where.statusCode = { gte: 300, lt: 400 };
+  if (filter.status === 'error') where.OR = [{ statusCode: { gte: 400 } }, { statusCode: 0, blockedByRobots: false }];
+  if (filter.status === 'blocked') where.blockedByRobots = true;
+  if (filter.indexable !== undefined) where.isIndexable = filter.indexable;
+  if (filter.q) where.url = { contains: filter.q };
+  const [total, items] = await Promise.all([
+    prisma.crawledPage.count({ where }),
+    prisma.crawledPage.findMany({ where, orderBy: [{ depth: 'asc' }, { url: 'asc' }], skip: filter.skip ?? 0, take: Math.min(filter.take ?? 50, 200) })
+  ]);
+  return { total, items };
+}
+
+const SEVERITY_RANK: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 };
+
+/** Ordered by severity first, then by the priority heuristic within each severity. */
+export async function listIssues(siteId: string, status?: string) {
+  const rows = await prisma.issue.findMany({ where: { siteId, ...(status ? { status } : {}) } });
+  return rows.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || b.priorityScore - a.priorityScore);
+}
+
+export async function setIssueStatus(issueId: string, status: 'open' | 'in_progress' | 'resolved' | 'ignored', actorUserId?: string | null) {
+  const issue = await prisma.issue.update({
+    where: { id: issueId },
+    data: { status, resolvedAt: status === 'resolved' ? new Date() : null },
+    include: { site: true }
+  });
+  await recordAuditEvent({ workspaceId: issue.site.workspaceId, userId: actorUserId ?? null, action: 'issue.status_changed', entity: 'Issue', entityId: issueId, details: { code: issue.code, status } });
+  return issue;
+}

@@ -1,6 +1,13 @@
-﻿node_modules/
+node_modules/
 .next/
 dist/
 *.log
 .env
 .turbo/
+.tmp/
+*.db
+*.db-journal
+!fixtures/**/*.log
+test-results/
+playwright-report/
+*.tsbuildinfo

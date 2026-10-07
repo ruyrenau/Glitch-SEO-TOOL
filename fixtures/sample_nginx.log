@@ -1,0 +1,5 @@
+66.249.66.1 - - [05/Oct/2026:14:32:10 +0000] "GET /blog/seo-best-practices HTTP/1.1" 200 4520 "-" "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/W.X.Y.Z Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" 0.120
+157.55.39.12 - - [05/Oct/2026:14:32:12 +0000] "GET /features/pricing HTTP/1.1" 200 8920 "-" "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)" 0.180
+20.171.207.0 - - [05/Oct/2026:14:32:15 +0000] "GET /docs/api?token=secret123&user=john HTTP/1.1" 200 6210 "-" "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)" 0.090
+192.0.2.1 - - [05/Oct/2026:14:32:18 +0000] "GET /old-landing-page HTTP/1.1" 404 1540 "-" "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" 0.045
+192.0.2.2 - - [05/Oct/2026:14:32:20 +0000] "GET /api/v1/checkout HTTP/1.1" 500 820 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" 1.250

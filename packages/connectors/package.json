@@ -5,11 +5,12 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "tsc -w"
+    "dev": "tsc -w",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@glitch/core": "workspace:*",
-    "node-fetch": "^3.3.2"
+    "@glitch/crawler": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.2",

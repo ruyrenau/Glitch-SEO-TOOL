@@ -8,13 +8,21 @@
     "migrate": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "seed": "tsx src/seed.ts",
+    "reset": "prisma migrate reset --force --skip-seed",
     "seed:demo": "tsx src/seed.ts --demo",
     "build": "tsc",
-    "dev": "tsc -w"
+    "dev": "tsc -w",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@glitch/log-parser": "workspace:*",
     "@prisma/client": "^6.4.1",
-    "bcryptjs": "^3.0.2"
+    "bcryptjs": "^3.0.2",
+    "@glitch/crawler": "workspace:*",
+    "@glitch/core": "workspace:*",
+    "@glitch/testing": "workspace:*",
+    "@glitch/connectors": "workspace:*",
+    "@glitch/content-engine": "workspace:*"
   },
   "devDependencies": {
     "prisma": "^6.4.1",

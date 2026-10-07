@@ -8,3 +8,11 @@ body {
   color: #1F2430;
   overflow-x: hidden;
 }
+
+/* Keep absolutely-positioned sr-only labels inside scroll containers (prevents page overflow on mobile). */
+.overflow-x-auto { position: relative; }
+
+/* Breathing room between table columns. */
+table th, table td { padding-left: 0.5rem; padding-right: 0.5rem; }
+table th:first-child, table td:first-child { padding-left: 0; }
+table th:last-child, table td:last-child { padding-right: 0; }

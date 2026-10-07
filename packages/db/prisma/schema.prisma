@@ -1,5 +1,5 @@
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -38,6 +38,7 @@ enum PageStatus {
   READY_FOR_APPROVAL
   APPROVED
   PUBLISHED
+  SENT_AS_DRAFT
   FAILED
   ARCHIVED
 }
@@ -103,9 +104,13 @@ model Site {
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   logImports         LogImport[]
+  sitemapUrls        SitemapUrl[]
+  alerts             Alert[]
+  generatedPages     GeneratedPage[]
+  datasets           Dataset[]
   crawls             CrawlRun[]
   issues             Issue[]
-  wpConnections      WordPressConnection[]
+  wpConnection       WordPressConnection?
   gscConnections     SearchConsoleConnection[]
   geoPrompts         GeoPrompt[]
 }
@@ -128,8 +133,11 @@ model LogImport {
   googlebotRequests Int         @default(0)
   aiBotRequests     Int         @default(0)
   errorsSummary   Json?
+  stats           Json?         // percentiles, AI bot breakdown, parameter stats
   createdAt       DateTime      @default(now())
   aggregates      LogAggregate[]
+
+  @@unique([siteId, checksum])
 }
 
 model LogAggregate {
@@ -144,70 +152,127 @@ model LogAggregate {
   hits          Int       @default(1)
   bytes         BigInt    @default(0)
   avgDurationMs Float     @default(0)
+  durationSamples Int     @default(0) // lines that included $request_time
+
+  @@index([logImportId, botName])
+  @@index([logImportId, path])
+}
+
+model SitemapUrl {
+  id        String    @id @default(uuid())
+  siteId    String
+  site      Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  url       String
+  path      String
+  lastmod   DateTime?
+  source    String    // sitemap URL or uploaded file name
+  createdAt DateTime  @default(now())
+
+  @@unique([siteId, path])
 }
 
 model CrawlRun {
-  id            String        @id @default(uuid())
-  siteId        String
-  site          Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  status        String        @default("completed")
-  urlsCrawled   Int           @default(0)
-  maxDepth      Int           @default(3)
-  startedAt     DateTime      @default(now())
-  completedAt   DateTime?
-  pages         CrawledPage[]
+  id             String        @id @default(uuid())
+  siteId         String
+  site           Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  status         String        @default("running") // running, completed, failed, cancelled
+  urlsCrawled    Int           @default(0)
+  urlsDiscovered Int           @default(0)
+  issuesFound    Int           @default(0)
+  maxDepth       Int           @default(3)
+  config         Json?
+  error          String?
+  startedAt      DateTime      @default(now())
+  completedAt    DateTime?
+  pages          CrawledPage[]
+  issues         Issue[]
+  alerts         Alert[]
 }
 
 model CrawledPage {
-  id              String    @id @default(uuid())
-  crawlRunId      String
-  crawlRun        CrawlRun  @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
-  url             String
-  finalUrl        String
-  statusCode      Int
-  responseTimeMs  Int
-  mimeType        String    @default("text/html")
-  title           String?
-  metaDescription String?
-  canonical       String?
-  h1              String?
-  inSitemap       Boolean   @default(false)
-  inLogs          Boolean   @default(false)
-  isIndexable     Boolean   @default(true)
+  id                 String    @id @default(uuid())
+  crawlRunId         String
+  crawlRun           CrawlRun  @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
+  url                String
+  finalUrl           String
+  statusCode         Int       // 0 = not fetched (blocked or network error)
+  responseTimeMs     Int
+  mimeType           String    @default("text/html")
+  sizeBytes          Int       @default(0)
+  title              String?
+  metaDescription    String?
+  canonical          String?
+  robotsMeta         String?
+  xRobotsTag         String?
+  h1                 String?
+  h1Count            Int       @default(0)
+  lang               String?
+  hreflang           Json?
+  schemaTypes        Json?
+  schemaErrors       Int       @default(0)
+  redirectChain      Json?
+  contentHash        String?
+  inlinks            Int       @default(0)
+  outlinks           Int       @default(0)
+  externalLinks      Int       @default(0)
+  imagesMissingAlt   Int       @default(0)
+  blockedByRobots    Boolean   @default(false)
+  error              String?
+  inSitemap          Boolean   @default(false)
+  inLogs             Boolean   @default(false)
+  isIndexable        Boolean   @default(true)
   indexabilityReason String?
-  wordCount       Int       @default(0)
-  depth           Int       @default(0)
-  createdAt       DateTime  @default(now())
+  wordCount          Int       @default(0)
+  depth              Int       @default(0)
+  createdAt          DateTime  @default(now())
+
+  @@index([crawlRunId, statusCode])
 }
 
 model Issue {
-  id               String       @id @default(uuid())
-  siteId           String
-  site             Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  code             String
-  category         String
-  title            String
-  description      String
-  severity         Severity     @default(MEDIUM)
-  priorityScore    Float        @default(5.0)
-  affectedUrlsCount Int         @default(1)
-  affectedUrls     Json?        // List of sample URLs
-  recommendation   String
-  status           String       @default("open") // open, in_progress, resolved, ignored
-  createdAt        DateTime     @default(now())
-  resolvedAt       DateTime?
+  id                String       @id @default(uuid())
+  siteId            String
+  site              Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  crawlRunId        String?
+  crawlRun          CrawlRun?    @relation(fields: [crawlRunId], references: [id], onDelete: SetNull)
+  code              String
+  category          String
+  title             String
+  description       String
+  severity          Severity     @default(MEDIUM)
+  impact            Int          @default(5)
+  effort            Int          @default(3)
+  risk              Int          @default(2)
+  confidence        Float        @default(0.9)
+  priorityScore     Float        @default(5.0)
+  affectedUrlsCount Int          @default(1)
+  affectedUrls      Json?        // sample of affected URLs (max 200)
+  evidence          Json?
+  recommendation    String
+  status            String       @default("open") // open, in_progress, resolved, ignored
+  createdAt         DateTime     @default(now())
+  lastSeenAt        DateTime     @default(now())
+  resolvedAt        DateTime?
+
+  @@unique([siteId, code])
 }
 
 model Dataset {
   id          String          @id @default(uuid())
+  siteId      String?
+  site        Site?           @relation(fields: [siteId], references: [id], onDelete: Cascade)
   name        String
   filename    String
+  checksum    String
   rowCount    Int             @default(0)
-  columns     Json            // list of column names
-  data        Json            // array of records
+  columns     Json            // [{ name, type, empty, unique }]
+  data        Json            // array of row objects (max 5,000 rows)
+  issues      Json?           // duplicate rows, empty cells, duplicate keys
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   templates   ContentTemplate[]
+
+  @@unique([siteId, checksum])
 }
 
 model ContentTemplate {
@@ -227,43 +292,75 @@ model ContentTemplate {
 
 model GeneratedPage {
   id                String       @id @default(uuid())
-  templateId        String
-  template          ContentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  siteId            String?
+  site              Site?        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  templateId        String?
+  template          ContentTemplate? @relation(fields: [templateId], references: [id], onDelete: Cascade)
   slug              String
   title             String
   metaDescription   String
   content           String
+  sourceData        Json?        // the data row the page was rendered from (provenance)
+  sourceRow         Int?         // row index in the dataset
+  uniqueWords       Int          @default(0) // words not shared with the template boilerplate
   schemaJson        Json?
-  status            PageStatus   @default(READY_FOR_APPROVAL)
+  status            PageStatus   @default(NEEDS_REVIEW)
   similarityScore   Float        @default(0.0)
   qualityChecks     Json?
-  publishedWpPostId Int?
+  publishedWpPostId Int?         // remote WordPress post id once a draft exists
+  wpModifiedGmt     String?      // remote modified_gmt after our last write (conflict detection)
+  wpLink            String?
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
   approvals         Approval[]
+  publications      WordPressPublication[]
 }
 
 model Approval {
   id              String        @id @default(uuid())
   generatedPageId String
   generatedPage   GeneratedPage @relation(fields: [generatedPageId], references: [id], onDelete: Cascade)
-  userId          String
-  user            User          @relation(fields: [userId], references: [id])
-  action          String        // approved, rejected, edited
+  userId          String?       // null until authentication exists
+  user            User?         @relation(fields: [userId], references: [id])
+  reviewer        String        // display name entered by the reviewer
+  action          String        // approved, rejected
   notes           String?
   createdAt       DateTime      @default(now())
 }
 
 model WordPressConnection {
   id             String    @id @default(uuid())
-  siteId         String
+  siteId         String    @unique
   site           Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  endpointUrl    String
+  endpointUrl    String    // site root, e.g. https://example.com
   username       String
-  appPasswordEnc String
-  status         String    @default("connected")
+  appPasswordEnc String    // AES-256-GCM, key from CREDENTIALS_KEY
+  status         String    @default("untested") // untested, ok, error
+  remoteName     String?
+  lastTestAt     DateTime?
+  lastError      String?
   lastSyncAt     DateTime?
   createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  publications   WordPressPublication[]
+}
+
+/// Every attempt to send a page to WordPress, including dry runs and refusals.
+model WordPressPublication {
+  id              String              @id @default(uuid())
+  generatedPageId String
+  generatedPage   GeneratedPage       @relation(fields: [generatedPageId], references: [id], onDelete: Cascade)
+  connectionId    String?
+  connection      WordPressConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  action          String              // dry_run, create, update
+  result          String              // success, failed, conflict, refused
+  wpPostId        Int?
+  wpLink          String?
+  contentHash     String
+  diff            Json?
+  previousRemote  Json?               // backup of the remote post before an update
+  error           String?
+  createdAt       DateTime            @default(now())
 }
 
 model SearchConsoleConnection {
@@ -340,4 +437,24 @@ model AuditEvent {
   details     Json?
   ipAddress   String?
   createdAt   DateTime   @default(now())
+}
+
+/// Raised when something important changes between two crawls of the same site.
+model Alert {
+  id             String    @id @default(uuid())
+  siteId         String
+  site           Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  crawlRunId     String?
+  crawlRun       CrawlRun? @relation(fields: [crawlRunId], references: [id], onDelete: SetNull)
+  type           String    // e.g. NOINDEX_ADDED, CANONICAL_CHANGED, PAGE_BROKEN
+  severity       Severity  @default(MEDIUM)
+  message        String
+  urls           Json?
+  details        Json?
+  status         String    @default("open") // open, acknowledged
+  deliveredTo    Json?     // channels that received it, with result
+  createdAt      DateTime  @default(now())
+  acknowledgedAt DateTime?
+
+  @@index([siteId, status])
 }

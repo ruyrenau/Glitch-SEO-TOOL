@@ -1,19 +1,22 @@
 {
   "name": "@glitch/cli",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "bin": {
     "seo-ops": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",
-    "start": "tsx src/index.ts"
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@glitch/core": "workspace:*",
     "@glitch/log-parser": "workspace:*",
     "@glitch/schema-engine": "workspace:*",
     "@glitch/content-engine": "workspace:*",
-    "commander": "^13.1.0"
+    "commander": "^13.1.0",
+    "@glitch/db": "workspace:*",
+    "@glitch/crawler": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.19.3",

@@ -2,7 +2,7 @@ import crypto from 'crypto';
 
 const SENSITIVE_QUERY_PARAMS = new Set([
   'email', 'token', 'password', 'pwd', 'authorization', 'auth', 'session', 'sessionid',
-  'phone', 'address', 'card', 'secret', 'apikey', 'key', 'ssn'
+  'phone', 'address', 'card', 'secret', 'apikey', 'key', 'ssn', 'user', 'username', 'access_token', 'refresh_token'
 ]);
 
 export function anonymizeIp(ip: string, salt: string = 'glitch-salt'): string {

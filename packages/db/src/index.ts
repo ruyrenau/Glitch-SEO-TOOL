@@ -1,4 +1,9 @@
-import { PrismaClient } from '@prisma/client';
-
-export const prisma = new PrismaClient();
+export { prisma } from './client';
 export * from '@prisma/client';
+export * from './audit';
+export * from './site-service';
+export * from './log-service';
+export * from './crawl-service';
+export * from './alert-service';
+export * from './wordpress-service';
+export * from './content-service';

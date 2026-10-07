@@ -1,50 +1,28 @@
-version: '3.8'
-
+# Local stack: API (SQLite on a volume) + web.
+# Postgres and Redis return when the BullMQ worker lands (see README roadmap).
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: glitch-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
-      POSTGRES_DB: glitch_seo_ops
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7-alpine
-    container_name: glitch-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redisdata:/data
-
   api:
     build:
       context: .
       dockerfile: ./apps/api/Dockerfile
-    container_name: glitch-api
     restart: unless-stopped
     environment:
-      DATABASE_URL: "postgresql://postgres:postgrespassword@postgres:5432/glitch_seo_ops?schema=public"
-      REDIS_URL: "redis://redis:6379"
+      DATABASE_URL: "file:/data/glitch.db"
+      HOST: "0.0.0.0"
       PORT: 4000
       NODE_ENV: production
+      DEMO_MODE: "false"
+      WEB_ORIGIN: "http://localhost:3000"
+      SALT_SECRET: "${SALT_SECRET:-change-me-in-.env}"
     ports:
       - "4000:4000"
-    depends_on:
-      - postgres
-      - redis
+    volumes:
+      - glitchdata:/data
 
   web:
     build:
       context: .
       dockerfile: ./apps/web/Dockerfile
-    container_name: glitch-web
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -52,5 +30,4 @@ services:
       - api
 
 volumes:
-  pgdata:
-  redisdata:
+  glitchdata:

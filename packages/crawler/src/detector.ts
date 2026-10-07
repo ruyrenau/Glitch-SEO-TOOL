@@ -1,169 +1,288 @@
-import { IssueSeverity } from '@glitch/core';
-
-export interface CrawlPageAuditData {
-  url: string;
-  statusCode: number;
-  responseTimeMs: number;
-  title?: string;
-  metaDescription?: string;
-  canonical?: string;
-  robotsMeta?: string;
-  h1?: string[];
-  h2Count?: number;
-  wordCount: number;
-  inSitemap?: boolean;
-  inLogs?: boolean;
-  internalOutlinksCount: number;
-  hasSchema: boolean;
-  redirectChain?: string[];
-}
+import type { IssueSeverity } from '@glitch/core';
+import type { CrawlResult, CrawledPageData } from './crawl';
+import { findBrokenLinks } from './crawl';
 
 export interface DetectedIssue {
   code: string;
   title: string;
-  category: string;
+  category: 'INDEXABILITY' | 'CRAWLABILITY' | 'CANONICAL' | 'METADATA' | 'CONTENT' | 'PERFORMANCE' | 'STRUCTURED_DATA' | 'INTERNATIONAL' | 'ACCESSIBILITY';
   severity: IssueSeverity;
   description: string;
   recommendation: string;
-  impact: number;
-  effort: number;
-  risk: number;
+  impact: number; // 1-10
+  effort: number; // 1-10
+  risk: number; // 1-10
+  confidence: number; // 0-1
   affectedUrls: string[];
+  evidence?: Record<string, unknown>;
 }
 
-export function detectTechnicalIssues(pages: CrawlPageAuditData[]): DetectedIssue[] {
+export interface AuditContext {
+  environment: 'production' | 'staging' | 'development' | string;
+  /** Absolute URLs listed in the sitemap. */
+  sitemapUrls?: Set<string>;
+}
+
+export interface Indexability {
+  indexable: boolean;
+  reason: string | null;
+}
+
+const isNoindex = (p: CrawledPageData) => /noindex|none/i.test(`${p.extracted?.robotsMeta ?? ''} ${p.xRobotsTag ?? ''}`);
+
+export function indexabilityOf(p: CrawledPageData): Indexability {
+  if (p.blockedByRobots) return { indexable: false, reason: 'Blocked by robots.txt' };
+  if (p.statusCode === 0) return { indexable: false, reason: p.error ?? 'Not fetched' };
+  if (p.redirectChain.length) return { indexable: false, reason: `Redirects (${p.redirectChain[0].status})` };
+  if (p.statusCode !== 200) return { indexable: false, reason: `HTTP ${p.statusCode}` };
+  if (!p.extracted) return { indexable: false, reason: `Not HTML (${p.mimeType || 'unknown'})` };
+  if (isNoindex(p)) return { indexable: false, reason: 'noindex' };
+  const c = p.extracted.canonical;
+  if (c && c !== p.url) return { indexable: false, reason: `Canonicalized to ${c}` };
+  return { indexable: true, reason: null };
+}
+
+const groupBy = <T>(items: T[], key: (t: T) => string | null | undefined) => {
+  const m = new Map<string, T[]>();
+  for (const i of items) {
+    const k = key(i);
+    if (!k) continue;
+    if (!m.has(k)) m.set(k, []);
+    m.get(k)!.push(i);
+  }
+  return m;
+};
+
+/**
+ * Runs every rule against a crawl. Rules only fire with evidence from this crawl;
+ * nothing is inferred from data we did not observe.
+ */
+export function auditCrawl(result: CrawlResult, ctx: AuditContext): DetectedIssue[] {
   const issues: DetectedIssue[] = [];
-  const addIssue = (
-    code: string,
-    title: string,
-    category: string,
-    severity: IssueSeverity,
-    description: string,
-    recommendation: string,
-    impact: number,
-    effort: number,
-    urls: string[]
-  ) => {
-    if (urls.length > 0) {
-      issues.push({
-        code,
-        title,
-        category,
-        severity,
-        description,
-        recommendation,
-        impact,
-        effort,
-        risk: 2,
-        affectedUrls: urls
-      });
-    }
+  const add = (i: Omit<DetectedIssue, 'confidence'> & { confidence?: number }) => {
+    if (i.affectedUrls.length) issues.push({ confidence: 0.9, ...i, affectedUrls: [...new Set(i.affectedUrls)] });
   };
+  const pages = result.pages;
+  const byUrl = new Map(pages.map(p => [p.url, p]));
+  const html200 = pages.filter(p => p.statusCode === 200 && !p.redirectChain.length && p.extracted);
+  const indexable = html200.filter(p => indexabilityOf(p).indexable);
+  const sitemap = ctx.sitemapUrls ?? new Set<string>();
+  const inSitemap = (p: CrawledPageData) => sitemap.has(p.url);
+  const prod = ctx.environment === 'production';
 
-  // 1. 4xx Client Errors
-  const notFound = pages.filter(p => p.statusCode >= 400 && p.statusCode < 500).map(p => p.url);
-  addIssue('ERR_4XX_CLIENT', '4xx Client Error Response', 'INDEXABILITY', 'CRITICAL',
-    'Server returned 4xx status code when requested by bot or crawler.',
-    'Update links pointing to these URLs or configure proper 301 redirects to relevant live pages.',
-    9, 3, notFound);
+  // --- HTTP status & crawlability -------------------------------------------------
+  add({
+    code: 'HTTP_4XX', title: 'Internal URLs returning 4xx', category: 'CRAWLABILITY', severity: 'HIGH',
+    description: 'Crawled URLs answered with a client error.',
+    recommendation: 'Fix or remove the links pointing to them, or 301-redirect to the closest live page.',
+    impact: 7, effort: 3, risk: 2,
+    affectedUrls: pages.filter(p => p.statusCode >= 400 && p.statusCode < 500).map(p => p.url)
+  });
+  add({
+    code: 'HTTP_5XX', title: 'Internal URLs returning 5xx', category: 'CRAWLABILITY', severity: 'CRITICAL',
+    description: 'Server errors during the crawl. Persistent 5xx reduce crawl rate and can drop pages from the index.',
+    recommendation: 'Check application and upstream logs for these URLs; confirm whether the error is reproducible.',
+    impact: 9, effort: 5, risk: 3,
+    affectedUrls: pages.filter(p => p.statusCode >= 500).map(p => p.url)
+  });
+  add({
+    code: 'FETCH_FAILED', title: 'URLs that could not be fetched', category: 'CRAWLABILITY', severity: 'MEDIUM',
+    description: 'Timeouts, DNS or connection errors, oversized bodies.',
+    recommendation: 'Review the error per URL; repeated timeouts usually indicate slow templates or rate limiting.',
+    impact: 6, effort: 4, risk: 2, confidence: 0.7,
+    affectedUrls: pages.filter(p => p.statusCode === 0 && !p.blockedByRobots && p.error !== 'Redirect loop').map(p => p.url),
+    evidence: { errors: Object.fromEntries(pages.filter(p => p.statusCode === 0 && !p.blockedByRobots).slice(0, 50).map(p => [p.url, p.error])) }
+  });
+  add({
+    code: 'REDIRECT_LOOP', title: 'Redirect loops', category: 'CRAWLABILITY', severity: 'CRITICAL',
+    description: 'The redirect chain returns to a URL already visited.',
+    recommendation: 'Fix the redirect rules so each URL resolves to a final 200 page.',
+    impact: 9, effort: 3, risk: 3,
+    affectedUrls: pages.filter(p => p.error === 'Redirect loop').map(p => p.url)
+  });
+  const chains = pages.filter(p => p.redirectChain.length >= 2 && p.error !== 'Redirect loop');
+  add({
+    code: 'REDIRECT_CHAIN', title: 'Redirect chains (2+ hops)', category: 'CRAWLABILITY', severity: 'MEDIUM',
+    description: 'Each extra hop costs a request and delays the final page.',
+    recommendation: 'Point the first redirect (and internal links) straight to the final URL.',
+    impact: 5, effort: 2, risk: 2,
+    affectedUrls: chains.map(p => p.url),
+    evidence: { chains: Object.fromEntries(chains.slice(0, 50).map(p => [p.url, [...p.redirectChain.map(h => `${h.status} ${h.url}`), `→ ${p.finalUrl}`]])) }
+  });
+  add({
+    code: 'INTERNAL_LINKS_TO_REDIRECTS', title: 'Internal links pointing to redirects', category: 'CRAWLABILITY', severity: 'LOW',
+    description: 'Pages link to URLs that redirect instead of linking to the destination.',
+    recommendation: 'Update internal links to the final URL.',
+    impact: 3, effort: 2, risk: 1,
+    affectedUrls: pages.filter(p => p.redirectChain.length && p.inlinks > 0).map(p => p.url)
+  });
+  const broken = findBrokenLinks(pages);
+  add({
+    code: 'BROKEN_INTERNAL_LINKS', title: 'Pages with broken internal links', category: 'CRAWLABILITY', severity: 'HIGH',
+    description: 'Pages contain links to URLs that returned 4xx/5xx in this crawl.',
+    recommendation: 'Edit or remove these links.',
+    impact: 6, effort: 2, risk: 1,
+    affectedUrls: broken.map(b => b.source),
+    evidence: { links: broken.slice(0, 100) }
+  });
+  add({
+    code: 'ROBOTS_BLOCKED', title: 'URLs blocked by robots.txt', category: 'CRAWLABILITY', severity: 'INFO',
+    description: 'Linked URLs that robots.txt disallows for this crawler. Often intentional.',
+    recommendation: 'Confirm each blocked section is meant to be blocked.',
+    impact: 3, effort: 1, risk: 3, confidence: 0.6,
+    affectedUrls: pages.filter(p => p.blockedByRobots && !inSitemap(p)).map(p => p.url)
+  });
+  add({
+    code: 'ROBOTS_MISSING', title: 'robots.txt not found', category: 'CRAWLABILITY', severity: 'LOW',
+    description: `robots.txt returned ${result.robots.status ?? 'no response'}.`,
+    recommendation: 'Serve a robots.txt (even an allow-all one) that also lists the sitemap.',
+    impact: 3, effort: 1, risk: 1,
+    affectedUrls: result.robots.found ? [] : [new URL('/robots.txt', pages[0]?.url ?? 'http://invalid').toString()]
+  });
+  add({
+    code: 'ROBOTS_NO_SITEMAP', title: 'robots.txt does not reference a sitemap', category: 'CRAWLABILITY', severity: 'INFO',
+    description: 'A Sitemap: line helps every crawler discover the sitemap.',
+    recommendation: 'Add "Sitemap: https://…/sitemap.xml" to robots.txt.',
+    impact: 2, effort: 1, risk: 1,
+    affectedUrls: result.robots.found && !result.robots.sitemaps.length ? [new URL('/robots.txt', pages[0]?.url ?? 'http://invalid').toString()] : []
+  });
+  for (const v of result.hostVariants) {
+    const isHttp = v.kind === 'http_to_https';
+    const target = pages[0] ? new URL(pages[0].url).origin : '';
+    const ok = v.finalUrl !== null && v.finalUrl.startsWith(target) && v.status >= 300 && v.status < 400;
+    if (ok || (v.error && /ENOTFOUND|getaddrinfo|unresolvable/i.test(v.error))) continue;
+    add({
+      code: isHttp ? 'HTTP_NOT_REDIRECTED_TO_HTTPS' : 'HOST_VARIANT_NOT_REDIRECTED',
+      title: isHttp ? 'HTTP version does not redirect to HTTPS' : 'www / non-www variant does not redirect',
+      category: 'CANONICAL', severity: 'HIGH',
+      description: `${v.url} answered ${v.status || v.error} and ended at ${v.finalUrl ?? 'nothing'} instead of redirecting to ${target}.`,
+      recommendation: 'Add a single 301 from every protocol/host variant to the canonical origin.',
+      impact: 7, effort: 2, risk: 3,
+      affectedUrls: [v.url],
+      evidence: { ...v }
+    });
+  }
 
-  // 2. 5xx Server Errors
-  const serverErrors = pages.filter(p => p.statusCode >= 500).map(p => p.url);
-  addIssue('ERR_5XX_SERVER', '5xx Server Error Response', 'CRAWLABILITY', 'CRITICAL',
-    'Internal server error or gateway timeout during crawl.',
-    'Investigate backend crash logs, database connection pooling, or upstream server stability.',
-    10, 5, serverErrors);
+  // --- Indexability ---------------------------------------------------------------
+  const noindex = html200.filter(isNoindex);
+  add({
+    code: 'NOINDEX_IN_SITEMAP', title: 'noindex pages listed in the sitemap', category: 'INDEXABILITY', severity: prod ? 'CRITICAL' : 'MEDIUM',
+    description: 'The sitemap asks for indexing while the page asks not to be indexed. One of the two is wrong.',
+    recommendation: 'Remove noindex if the page should rank (common after a staging deploy), otherwise remove it from the sitemap.',
+    impact: 9, effort: 1, risk: 3,
+    affectedUrls: noindex.filter(inSitemap).map(p => p.url)
+  });
+  add({
+    code: 'NOINDEX', title: 'Pages with noindex', category: 'INDEXABILITY', severity: 'INFO',
+    description: 'Pages excluded from the index via meta robots or X-Robots-Tag. Review that each is intentional.',
+    recommendation: 'Keep noindex only on pages that should not appear in search.',
+    impact: 4, effort: 1, risk: 3, confidence: 0.5,
+    affectedUrls: noindex.filter(p => !inSitemap(p)).map(p => p.url)
+  });
+  add({
+    code: 'STAGING_INDEXABLE', title: 'Staging site is indexable', category: 'INDEXABILITY', severity: 'CRITICAL',
+    description: 'This site is registered as staging/development but serves indexable pages (no noindex, not blocked).',
+    recommendation: 'Protect staging with authentication or X-Robots-Tag: noindex on every response.',
+    impact: 9, effort: 2, risk: 2,
+    affectedUrls: ctx.environment !== 'production' ? indexable.slice(0, 200).map(p => p.url) : []
+  });
+  if (sitemap.size) {
+    const smNonIndexable = pages.filter(p => inSitemap(p) && !indexabilityOf(p).indexable && !isNoindex(p));
+    add({
+      code: 'SITEMAP_NON_INDEXABLE', title: 'Sitemap lists non-indexable URLs', category: 'INDEXABILITY', severity: 'HIGH',
+      description: 'Sitemap URLs that redirect, error, are blocked or canonicalize elsewhere.',
+      recommendation: 'The sitemap should only contain final, 200, self-canonical URLs.',
+      impact: 7, effort: 2, risk: 1,
+      affectedUrls: smNonIndexable.map(p => p.url),
+      evidence: { reasons: Object.fromEntries(smNonIndexable.slice(0, 100).map(p => [p.url, indexabilityOf(p).reason])) }
+    });
+    add({
+      code: 'INDEXABLE_NOT_IN_SITEMAP', title: 'Indexable pages missing from the sitemap', category: 'INDEXABILITY', severity: 'LOW',
+      description: 'Crawlable, indexable pages that the sitemap does not list.',
+      recommendation: 'Add them to the sitemap if they should rank; otherwise consider noindex or removing links.',
+      impact: 4, effort: 2, risk: 1, confidence: 0.8,
+      affectedUrls: indexable.filter(p => !inSitemap(p)).map(p => p.url)
+    });
+    add({
+      code: 'SITEMAP_ORPHAN', title: 'Sitemap pages without internal links (orphans)', category: 'CRAWLABILITY', severity: 'MEDIUM',
+      description: 'Pages reached only through the sitemap: no crawled page links to them. Estimated from the crawled subset.',
+      recommendation: 'Link them from relevant category or hub pages, or retire them.',
+      impact: 6, effort: 3, risk: 1, confidence: result.limitReached ? 0.5 : 0.8,
+      affectedUrls: html200.filter(p => inSitemap(p) && p.inlinks === 0 && p.depth > 0).map(p => p.url)
+    });
+  }
 
-  // 3. Missing Title Tag
-  const missingTitle = pages.filter(p => p.statusCode === 200 && (!p.title || p.title.trim().length === 0)).map(p => p.url);
-  addIssue('META_TITLE_MISSING', 'Missing <title> Tag', 'METADATA', 'HIGH',
-    'Pages lack a title element, hindering search engine understanding and CTR.',
-    'Provide descriptive, keyword-aligned title tags between 50-60 characters.',
-    8, 2, missingTitle);
+  // --- Canonicals -----------------------------------------------------------------
+  add({
+    code: 'CANONICAL_MISSING', title: 'Missing canonical', category: 'CANONICAL', severity: 'MEDIUM',
+    description: 'Indexable HTML pages without rel=canonical.',
+    recommendation: 'Add a self-referencing canonical to every indexable page.',
+    impact: 5, effort: 2, risk: 1,
+    affectedUrls: html200.filter(p => !p.extracted!.canonical && !isNoindex(p)).map(p => p.url)
+  });
+  const badCanon = html200.filter(p => {
+    const c = p.extracted!.canonical;
+    if (!c || c === p.url) return false;
+    const target = byUrl.get(c);
+    return target ? target.statusCode !== 200 || target.redirectChain.length > 0 || isNoindex(target) : false;
+  });
+  add({
+    code: 'CANONICAL_TO_NON_INDEXABLE', title: 'Canonical points to a redirect, error or noindex URL', category: 'CANONICAL', severity: 'HIGH',
+    description: 'Search engines usually ignore a canonical whose target is not a clean 200 page.',
+    recommendation: 'Point the canonical to the final, indexable URL.',
+    impact: 7, effort: 2, risk: 2,
+    affectedUrls: badCanon.map(p => p.url),
+    evidence: { canonicals: Object.fromEntries(badCanon.slice(0, 50).map(p => [p.url, p.extracted!.canonical])) }
+  });
+  const crossHost = html200.filter(p => p.extracted!.canonical && new URL(p.extracted!.canonical!).hostname !== new URL(p.url).hostname);
+  add({
+    code: 'CANONICAL_CROSS_HOST', title: 'Canonical points to another host', category: 'CANONICAL', severity: 'HIGH',
+    description: 'The canonical sends signals to a different hostname (often staging or http/www mix-ups).',
+    recommendation: 'Confirm the cross-host canonical is intentional.',
+    impact: 8, effort: 2, risk: 3, confidence: 0.7,
+    affectedUrls: crossHost.map(p => p.url)
+  });
+  const paramIndexable = indexable.filter(p => new URL(p.url).search);
+  add({
+    code: 'PARAMETER_URLS_INDEXABLE', title: 'Parameterized URLs are indexable', category: 'CANONICAL', severity: 'MEDIUM',
+    description: 'URLs with query strings are self-canonical and indexable, which can multiply near-duplicates (facets, sorting, tracking).',
+    recommendation: 'Canonicalize parameter variants to the clean URL or block crawl of non-valuable facets.',
+    impact: 5, effort: 3, risk: 3, confidence: 0.7,
+    affectedUrls: paramIndexable.map(p => p.url)
+  });
 
-  // 4. Short Title Tag (<30 chars)
-  const shortTitle = pages.filter(p => p.statusCode === 200 && p.title && p.title.length < 30).map(p => p.url);
-  addIssue('META_TITLE_TOO_SHORT', 'Title Tag Too Short', 'METADATA', 'MEDIUM',
-    'Title tag does not utilize sufficient character space for relevancy.',
-    'Expand title with brand name or secondary descriptive terms.',
-    5, 2, shortTitle);
+  // --- Metadata --------------------------------------------------------------------
+  const titled = indexable.filter(p => p.extracted!.title);
+  add({ code: 'TITLE_MISSING', title: 'Missing <title>', category: 'METADATA', severity: 'HIGH', description: 'Indexable pages without a title element.', recommendation: 'Write a unique, descriptive title.', impact: 7, effort: 2, risk: 1, affectedUrls: indexable.filter(p => !p.extracted!.title).map(p => p.url) });
+  add({ code: 'TITLE_TOO_SHORT', title: 'Title shorter than 30 characters', category: 'METADATA', severity: 'LOW', description: 'Very short titles rarely describe the page well.', recommendation: 'Add the main topic and a qualifier.', impact: 3, effort: 2, risk: 1, confidence: 0.6, affectedUrls: titled.filter(p => p.extracted!.title!.length < 30).map(p => p.url) });
+  add({ code: 'TITLE_TOO_LONG', title: 'Title longer than 60 characters', category: 'METADATA', severity: 'LOW', description: 'Long titles are usually truncated in results.', recommendation: 'Front-load the important words; trim to ~60 characters.', impact: 2, effort: 2, risk: 1, confidence: 0.6, affectedUrls: titled.filter(p => p.extracted!.title!.length > 60).map(p => p.url) });
+  const dupTitles = [...groupBy(titled, p => p.extracted!.title!.toLowerCase()).values()].filter(g => g.length > 1);
+  add({ code: 'TITLE_DUPLICATE', title: 'Duplicate titles', category: 'METADATA', severity: 'MEDIUM', description: 'Several indexable pages share the same title.', recommendation: 'Make each title specific to its page.', impact: 5, effort: 3, risk: 1, affectedUrls: dupTitles.flat().map(p => p.url), evidence: { groups: dupTitles.slice(0, 30).map(g => ({ title: g[0].extracted!.title, urls: g.map(p => p.url) })) } });
+  add({ code: 'META_DESCRIPTION_MISSING', title: 'Missing meta description', category: 'METADATA', severity: 'LOW', description: 'Search engines will build a snippet from page text.', recommendation: 'Write a description summarizing the page.', impact: 3, effort: 2, risk: 1, affectedUrls: indexable.filter(p => !p.extracted!.metaDescription).map(p => p.url) });
+  const dupDesc = [...groupBy(indexable, p => p.extracted!.metaDescription?.toLowerCase()).values()].filter(g => g.length > 1);
+  add({ code: 'META_DESCRIPTION_DUPLICATE', title: 'Duplicate meta descriptions', category: 'METADATA', severity: 'LOW', description: 'Several pages share the same description.', recommendation: 'Write page-specific descriptions.', impact: 3, effort: 3, risk: 1, affectedUrls: dupDesc.flat().map(p => p.url) });
+  add({ code: 'H1_MISSING', title: 'Missing H1', category: 'CONTENT', severity: 'MEDIUM', description: 'Indexable pages without an h1.', recommendation: 'Add one visible h1 that states the page topic.', impact: 4, effort: 2, risk: 1, affectedUrls: indexable.filter(p => !p.extracted!.h1.length).map(p => p.url) });
+  add({ code: 'H1_MULTIPLE', title: 'Multiple H1', category: 'CONTENT', severity: 'INFO', description: 'More than one h1. Not an error by itself, but often a template issue.', recommendation: 'Use one h1 and h2/h3 for sections.', impact: 2, effort: 2, risk: 1, confidence: 0.5, affectedUrls: indexable.filter(p => p.extracted!.h1.length > 1).map(p => p.url) });
+  add({ code: 'LANG_MISSING', title: 'Missing html lang', category: 'INTERNATIONAL', severity: 'LOW', description: '<html> has no lang attribute.', recommendation: 'Set lang to the content language (e.g. es-MX).', impact: 2, effort: 1, risk: 1, affectedUrls: indexable.filter(p => !p.extracted!.lang).map(p => p.url) });
+  const badHreflang = indexable.filter(p => {
+    const h = p.extracted!.hreflang;
+    if (!h.length) return false;
+    const valid = h.every(x => /^(x-default|[a-z]{2,3}(-[A-Za-z]{2,4})?)$/i.test(x.lang) && x.href);
+    return !valid || !h.some(x => x.href === p.url);
+  });
+  add({ code: 'HREFLANG_INVALID', title: 'Invalid hreflang (bad code or no self-reference)', category: 'INTERNATIONAL', severity: 'MEDIUM', description: 'hreflang sets need valid ISO codes and a self-referencing entry.', recommendation: 'Fix language/region codes and include the page itself in its hreflang set.', impact: 5, effort: 3, risk: 2, affectedUrls: badHreflang.map(p => p.url) });
 
-  // 5. Missing Meta Description
-  const missingDesc = pages.filter(p => p.statusCode === 200 && (!p.metaDescription || p.metaDescription.trim().length === 0)).map(p => p.url);
-  addIssue('META_DESC_MISSING', 'Missing Meta Description', 'METADATA', 'MEDIUM',
-    'Search snippets may generate random body snippets instead of crafted copy.',
-    'Add compelling meta descriptions between 120-155 characters.',
-    6, 2, missingDesc);
+  // --- Content ------------------------------------------------------------------------
+  add({ code: 'CONTENT_THIN', title: 'Thin content (under 150 words)', category: 'CONTENT', severity: 'MEDIUM', description: 'Main content (excluding nav, header, footer) has fewer than 150 words. Word count alone does not mean low quality.', recommendation: 'Add useful, specific content, consolidate, or noindex.', impact: 5, effort: 5, risk: 2, confidence: 0.6, affectedUrls: indexable.filter(p => p.extracted!.wordCount < 150).map(p => p.url) });
+  const dupContent = [...groupBy(indexable, p => p.extracted!.contentHash).values()].filter(g => g.length > 1);
+  add({ code: 'CONTENT_DUPLICATE', title: 'Exact duplicate main content', category: 'CONTENT', severity: 'HIGH', description: 'Indexable pages with identical main text.', recommendation: 'Consolidate with a 301 or point canonicals to one version.', impact: 7, effort: 3, risk: 2, affectedUrls: dupContent.flat().map(p => p.url), evidence: { groups: dupContent.slice(0, 30).map(g => g.map(p => p.url)) } });
+  add({ code: 'DEPTH_EXCESSIVE', title: 'Pages deeper than 4 clicks', category: 'CRAWLABILITY', severity: 'LOW', description: 'Far from the homepage in the link graph.', recommendation: 'Surface important deep pages through hubs, breadcrumbs or related links.', impact: 4, effort: 4, risk: 1, confidence: 0.7, affectedUrls: indexable.filter(p => p.depth > 4).map(p => p.url) });
+  add({ code: 'IMAGES_MISSING_ALT', title: 'Images without alt attribute', category: 'ACCESSIBILITY', severity: 'LOW', description: 'img elements with no alt (decorative images should use alt="").', recommendation: 'Describe informative images; use empty alt for decorative ones.', impact: 3, effort: 2, risk: 1, affectedUrls: html200.filter(p => p.extracted!.imagesMissingAlt > 0).map(p => p.url) });
 
-  // 6. Missing H1 Tag
-  const missingH1 = pages.filter(p => p.statusCode === 200 && (!p.h1 || p.h1.length === 0)).map(p => p.url);
-  addIssue('HEADING_H1_MISSING', 'Missing Primary <h1> Heading', 'CONTENT', 'HIGH',
-    'Page lacks a top-level heading establishing page topic hierarchy.',
-    'Ensure every page has exactly one descriptive <h1> tag matching the user intent.',
-    7, 2, missingH1);
-
-  // 7. Multiple H1 Tags
-  const multiH1 = pages.filter(p => p.statusCode === 200 && p.h1 && p.h1.length > 1).map(p => p.url);
-  addIssue('HEADING_H1_MULTIPLE', 'Multiple <h1> Headings Found', 'CONTENT', 'LOW',
-    'More than one primary H1 tag found, which can dilute semantic hierarchy.',
-    'Consolidate main topic into a single H1 and use H2/H3 for subsections.',
-    3, 2, multiH1);
-
-  // 8. Missing Canonical Tag
-  const missingCanonical = pages.filter(p => p.statusCode === 200 && !p.canonical).map(p => p.url);
-  addIssue('CANONICAL_MISSING', 'Missing Canonical Link Element', 'CANONICAL', 'HIGH',
-    'Pages without canonical URL declaration risk duplicate content signals.',
-    'Add self-referential or master rel="canonical" tag in the <head>.',
-    7, 2, missingCanonical);
-
-  // 9. Accidental Noindex in Production
-  const accidentalNoindex = pages.filter(p => p.statusCode === 200 && p.robotsMeta && /noindex/i.test(p.robotsMeta)).map(p => p.url);
-  addIssue('INDEX_ACCIDENTAL_NOINDEX', 'Page Blocked by noindex Tag', 'INDEXABILITY', 'CRITICAL',
-    'Robots meta tag explicitly instructs search engines not to index this page.',
-    'Verify if noindex was left from staging or intentional; remove if page is valuable.',
-    10, 1, accidentalNoindex);
-
-  // 10. Thin Content (<150 words)
-  const thinContent = pages.filter(p => p.statusCode === 200 && p.wordCount < 150).map(p => p.url);
-  addIssue('CONTENT_THIN', 'Thin Content Detected (<150 words)', 'CONTENT', 'HIGH',
-    'Pages have sparse content providing little unique value to users or search engines.',
-    'Enrich page with comprehensive information, FAQs, data, or consider noindexing/consolidating.',
-    8, 4, thinContent);
-
-  // 11. Slow Server Response (>1000ms TTFB)
-  const slowPages = pages.filter(p => p.responseTimeMs > 1000).map(p => p.url);
-  addIssue('PERF_SLOW_RESPONSE', 'Slow Server Response (>1.0s)', 'PERFORMANCE', 'HIGH',
-    'High server latency hurts crawl budget and Core Web Vitals (TTFB/LCP).',
-    'Enable page caching, CDN edge caching, and optimize database queries.',
-    7, 4, slowPages);
-
-  // 12. Orphan Pages (In sitemap or logs but 0 internal inlinks)
-  const orphanPages = pages.filter(p => p.inSitemap && p.internalOutlinksCount === 0).map(p => p.url);
-  addIssue('ARCH_ORPHAN_PAGE', 'Orphan Page Suspected', 'CRAWLABILITY', 'MEDIUM',
-    'URL found in sitemap has no incoming crawl references from site architecture.',
-    'Add contextual links from parent category or related articles.',
-    6, 3, orphanPages);
-
-  // 13. Missing Structured Data (Schema JSON-LD)
-  const missingSchema = pages.filter(p => p.statusCode === 200 && !p.hasSchema).map(p => p.url);
-  addIssue('SCHEMA_MISSING', 'No Structured Data (JSON-LD) Found', 'STRUCTURED_DATA', 'MEDIUM',
-    'Page lacks Schema.org semantic annotations, reducing eligibility for rich snippets.',
-    'Embed appropriate JSON-LD (WebPage, Article, Organization or Product).',
-    5, 3, missingSchema);
-
-  // 14. Redirect Chains (2+ hops)
-  const redirectChains = pages.filter(p => p.redirectChain && p.redirectChain.length > 2).map(p => p.url);
-  addIssue('REDIRECT_CHAIN', 'Redirect Chain Detected (>2 hops)', 'CRAWLABILITY', 'HIGH',
-    'Multiple intermediate 301/302 redirects waste crawl budget and slow page loads.',
-    'Update references to point directly to final destination 200 URL.',
-    7, 2, redirectChains);
-
-  // 15. URL in Sitemap Returning Error
-  const sitemapErrors = pages.filter(p => p.inSitemap && p.statusCode >= 400).map(p => p.url);
-  addIssue('SITEMAP_ERROR_URL', 'Sitemap Contains Broken / Non-200 URLs', 'INDEXABILITY', 'HIGH',
-    'XML Sitemap includes URLs returning 404 or 500 status codes.',
-    'Clean XML sitemap to contain strictly clean 200 OK indexable canonical pages.',
-    8, 2, sitemapErrors);
+  // --- Structured data & performance ---------------------------------------------------
+  add({ code: 'SCHEMA_INVALID_JSON', title: 'JSON-LD with syntax errors', category: 'STRUCTURED_DATA', severity: 'HIGH', description: 'A JSON-LD block could not be parsed, so it is ignored entirely.', recommendation: 'Fix the JSON syntax (often trailing commas or unescaped quotes).', impact: 6, effort: 2, risk: 1, affectedUrls: html200.filter(p => p.extracted!.schemaErrors.length).map(p => p.url), evidence: { errors: Object.fromEntries(html200.filter(p => p.extracted!.schemaErrors.length).slice(0, 30).map(p => [p.url, p.extracted!.schemaErrors])) } });
+  add({ code: 'SCHEMA_MISSING', title: 'No JSON-LD found', category: 'STRUCTURED_DATA', severity: 'INFO', description: 'No structured data. Only some types can produce rich results, and none are guaranteed.', recommendation: 'Add markup that matches visible content (Organization, BreadcrumbList, Article, Product…).', impact: 3, effort: 3, risk: 1, confidence: 0.5, affectedUrls: indexable.filter(p => !p.extracted!.schemaTypes.length && !p.extracted!.schemaErrors.length).map(p => p.url) });
+  add({ code: 'SLOW_RESPONSE', title: 'Slow server response (over 1 s)', category: 'PERFORMANCE', severity: 'MEDIUM', description: 'Time to fetch the full HTML from the crawler location. Lab measurement, not user data.', recommendation: 'Check server caching and slow queries for these templates.', impact: 5, effort: 5, risk: 2, confidence: 0.6, affectedUrls: html200.filter(p => p.responseTimeMs > 1000).map(p => p.url) });
 
   return issues;
 }

@@ -6,21 +6,30 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
-    "test": "turbo run test",
+    "test": "vitest run",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "db:generate": "pnpm --filter @glitch/db generate",
     "db:migrate": "pnpm --filter @glitch/db migrate",
     "db:seed": "pnpm --filter @glitch/db seed",
     "demo:seed": "pnpm --filter @glitch/db seed:demo",
-    "cli": "pnpm --filter @glitch/cli run start"
+    "db:reset": "pnpm --filter @glitch/db reset",
+    "cli": "pnpm --filter @glitch/cli run start",
+    "test:watch": "vitest",
+    "bench:logs": "tsx scripts/bench-1m.ts",
+    "test:e2e": "playwright test",
+    "demo:site": "tsx scripts/demo-site.ts",
+    "wp:local": "node scripts/wp-local.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "~1.56.1",
+    "@types/node": "^22.13.10",
+    "eslint": "^9.22.0",
+    "prettier": "^3.5.3",
+    "tsx": "^4.23.15",
     "turbo": "^2.4.4",
     "typescript": "^5.8.2",
-    "prettier": "^3.5.3",
-    "eslint": "^9.22.0",
-    "@types/node": "^22.13.10"
+    "vitest": "^3.2.7"
   },
   "packageManager": "pnpm@12.9.1"
 }
