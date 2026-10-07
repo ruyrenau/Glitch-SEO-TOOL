@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import net from 'net';
 import { assertSafeUrl } from './ssrf';
 import { parseRobotsTxt, isAllowedByRobots, crawlDelayFor, RobotsTxt } from './robots';
+import { createRenderer, Renderer } from './render';
 import { extractPage, normalizeUrl, ExtractedPage, ResourceKind, resourceKindFromUrl } from './extract';
 
 export interface CrawlOptions {
@@ -29,6 +30,20 @@ export interface CrawlOptions {
   checkExternalLinks?: boolean;
   /** Cap on resources + external URLs checked (default 2000). */
   maxResources?: number;
+  /** Render pages in headless Chrome/Edge and analyse the DOM after JavaScript (default false). */
+  renderJs?: boolean;
+}
+
+/** What JavaScript changed on a rendered page, compared with the HTML the server sent. */
+export interface JsInfo {
+  rendered: boolean;
+  renderMs: number;
+  error: string | null;
+  errors: string[];
+  blockedRequests: number;
+  raw: { title: string | null; h1: string | null; canonical: string | null; robotsMeta: string | null; wordCount: number; internalLinks: number };
+  /** Internal links that only exist after JavaScript runs (max 50). */
+  jsOnlyLinks: string[];
 }
 
 export interface CrawledResource {
@@ -71,6 +86,8 @@ export interface CrawledPageData {
   html: string | null;
   /** Selected response headers. */
   headers: Record<string, string>;
+  /** Present when the crawl rendered JavaScript. */
+  js?: JsInfo | null;
 }
 
 export interface HostVariantCheck {
@@ -293,6 +310,8 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
     const res = await fetchWithRedirects(url, fetchOpts);
     const finalSameHost = new URL(res.finalUrl).hostname === host;
     let extracted: ExtractedPage | null = null;
+    let html = res.body;
+    let js: JsInfo | null = null;
     if (res.chain.length) {
       // The redirect target is crawled as its own page (same depth) so its status and content are recorded once.
       if (finalSameHost) {
@@ -302,6 +321,20 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
       }
     } else if (res.body && res.status >= 200 && res.status < 300) {
       extracted = extractPage(res.body, res.finalUrl);
+      if (renderer) {
+        const raw = extracted;
+        const rawInfo = { title: raw.title, h1: raw.h1[0] ?? null, canonical: raw.canonical, robotsMeta: raw.robotsMeta, wordCount: raw.wordCount, internalLinks: raw.internalLinks.length };
+        try {
+          const r = await renderer.render(res.finalUrl);
+          const rendered = extractPage(r.html, res.finalUrl);
+          const rawLinks = new Set(raw.internalLinks);
+          js = { rendered: true, renderMs: r.ms, error: null, errors: r.jsErrors, blockedRequests: r.blockedRequests, raw: rawInfo, jsOnlyLinks: rendered.internalLinks.filter(l => !rawLinks.has(l)).slice(0, 50) };
+          extracted = rendered;
+          html = r.html;
+        } catch (e) {
+          js = { rendered: false, renderMs: 0, error: (e as Error).message.slice(0, 300), errors: [], blockedRequests: 0, raw: rawInfo, jsOnlyLinks: [] };
+        }
+      }
       for (const link of extracted.internalLinks) {
         if (!linkGraph.has(link)) linkGraph.set(link, new Set());
         linkGraph.get(link)!.add(url);
@@ -323,12 +356,14 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
       error: res.error,
       extracted,
       inlinks: 0,
-      html: extracted ? res.body : null,
+      html: extracted ? html : null,
+      js,
       headers: Object.fromEntries(['content-type', 'cache-control', 'content-encoding', 'last-modified', 'etag', 'x-robots-tag', 'link', 'server', 'vary'].map(h => [h, res.headers?.get(h)]).filter((e): e is [string, string] => !!e[1]))
     });
   };
 
   const hostVariants = await checkHostVariants(start, fetchOpts);
+  const renderer: Renderer | null = options.renderJs ? await createRenderer({ userAgent, timeoutMs: fetchOpts.timeoutMs, allowHosts: options.allowHosts, concurrency }) : null;
 
   // Worker pool over a growing queue.
   let active = 0;
@@ -352,6 +387,7 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
     pump();
   });
 
+  await renderer?.close();
   for (const p of pages) p.inlinks = linkGraph.get(p.url)?.size ?? 0;
   const resources = cancelled ? [] : await checkResources(pages, host, options, fetchOpts, () => cancelled || !!options.signal?.aborted);
   return { pages, resources, robots: robotsInfo, hostVariants, discovered: visited.size, cancelled, limitReached };

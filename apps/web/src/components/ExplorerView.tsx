@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, Columns3, Download, ExternalLink, Search, WrapText 
 import { API_URL, apiGet, fmt, fmtDate } from '@/lib/api';
 import type { CrawlRun } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorBox, Skeleton, inputCls } from './ui';
+import { CustomSearchPanel, StructurePanel } from './ExplorerExtras';
 
 interface Column { key: string; label: string; type?: 'number' | 'text' | 'url' }
 interface Rows { tab: { id: string; label: string; columns: Column[] }; total: number; page: number; pageSize: number; rows: Array<Record<string, unknown> & { pageId?: string; url?: string }> }
@@ -103,6 +104,17 @@ function DetailPanel({ crawlId, pageId, extra }: { crawlId: string; pageId: stri
     ['Visitada por Googlebot (último log)', p.inLogs ? 'Sí' : 'No'],
     ['Redirecciones', p.redirectChain?.map(h => `${h.status} ${h.url}`).join(' → ')]
   ];
+  const js = p.js as null | { rendered: boolean; renderMs: number; error: string | null; errors: string[]; raw: { title: string | null; h1: string | null; wordCount: number; internalLinks: number }; jsOnlyLinks: string[] };
+  if (js) {
+    info.push(
+      ['JavaScript ejecutado', js.rendered ? `Sí (${js.renderMs} ms)` : `No se pudo: ${js.error ?? ''}`],
+      ['Título sin JavaScript', js.raw.title ?? '(ninguno)'],
+      ['H1 sin JavaScript', js.raw.h1 ?? '(ninguno)'],
+      ['Palabras sin / con JavaScript', `${js.raw.wordCount} / ${p.wordCount}`],
+      ['Enlaces que solo existen con JavaScript', js.jsOnlyLinks.length ? js.jsOnlyLinks.map(path).join(' · ') : 'Ninguno'],
+      ['Errores de JavaScript', js.errors.join(' · ')]
+    );
+  }
   return (
     <div className="space-y-3">
       <div role="tablist" aria-label="Detalle de la URL" className="flex flex-wrap gap-1">
@@ -195,6 +207,7 @@ export function ExplorerView({ siteId, detailExtra }: { siteId: string; detailEx
   const [q, setQ] = useState('');
   const [layouts, setLayouts] = useState<Record<string, Layout>>({});
   const [wrap, setWrap] = useState(false);
+  const [mode, setMode] = useState<'table' | 'structure' | 'custom'>('table');
   useEffect(() => setLayouts(readLayouts()), []);
   const saveLayout = (tab: string, l: Layout) =>
     setLayouts(all => {
@@ -285,6 +298,18 @@ export function ExplorerView({ siteId, detailExtra }: { siteId: string; detailEx
         {summary && <span className="text-slate-500">{fmt(summary.totals.urls)} URLs · {fmt(summary.totals.html)} HTML 200 · {fmt(summary.totals.images)} imágenes · {fmt(summary.totals.resources ?? 0)} archivos · {fmt(summary.totals.external ?? 0)} externos</span>}
       </div>
 
+      <div role="radiogroup" aria-label="Vista del explorador" className="inline-flex rounded-xl border border-slate-200 dark:border-slate-700 p-0.5 bg-white dark:bg-[#151824] text-xs">
+        {([['table', 'Tabla'], ['structure', 'Estructura'], ['custom', 'Búsqueda personalizada']] as const).map(([id, label]) => (
+          <button key={id} role="radio" aria-checked={mode === id} onClick={() => { setMode(id); setSelected(null); }} className={`px-3 py-1.5 rounded-lg font-semibold ${mode === id ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'structure' && <StructurePanel crawlId={crawlId} onOpen={setSelected} />}
+      {mode === 'custom' && <CustomSearchPanel crawlId={crawlId} onOpen={setSelected} />}
+
+      {mode === 'table' && (<>
       <div role="tablist" aria-label="Pestañas del explorador" className="flex gap-1 overflow-x-auto pb-1">
         {(summary?.tabs ?? []).map(t => (
           <button key={t.id} role="tab" aria-selected={state.tab === t.id} onClick={() => go(t.id)} className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium border ${state.tab === t.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-[#151824] border-slate-200 dark:border-slate-700'}`}>
@@ -428,6 +453,8 @@ export function ExplorerView({ siteId, detailExtra }: { siteId: string; detailEx
           )}
         </Card>
       </div>
+
+      </>)}
 
       {selected && crawlId && (
         <Card title="Detalle de la URL">

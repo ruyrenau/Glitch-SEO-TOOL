@@ -15,7 +15,7 @@ const codeTone = (c: number) => (c === 0 ? 'bad' : c >= 500 ? 'bad' : c >= 400 ?
 export function CrawlView({ siteId, onFinished }: { siteId: string; onFinished: () => void }) {
   const [runs, setRuns] = useState<CrawlRun[] | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const [form, setForm] = useState({ maxUrls: 500, maxDepth: 5, concurrency: 2, rps: 2, respectRobots: true, seedFromSitemap: true, exclude: '' });
+  const [form, setForm] = useState({ maxUrls: 500, maxDepth: 5, concurrency: 2, rps: 2, respectRobots: true, seedFromSitemap: true, renderJs: false, exclude: '' });
   const [selected, setSelected] = useState<string>('');
   const [job, setJob] = useState<JobRow | null>(null);
   const { can } = useAuth();
@@ -90,6 +90,7 @@ export function CrawlView({ siteId, onFinished }: { siteId: string; onFinished: 
           <div className="flex flex-wrap gap-4 text-xs">
             <label className="flex items-center gap-2"><input type="checkbox" checked={form.respectRobots} onChange={e => setForm({ ...form, respectRobots: e.target.checked })} /> Respetar robots.txt</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={form.seedFromSitemap} onChange={e => setForm({ ...form, seedFromSitemap: e.target.checked })} /> Usar URLs del sitemap como semillas</label>
+            <label className="flex items-center gap-2" title="Abre cada página en Chrome/Edge sin ventana y analiza el resultado después de ejecutar JavaScript. Mucho más lento: úsalo en sitios hechos con React, Vue, Angular o similares."><input type="checkbox" checked={form.renderJs} onChange={e => setForm({ ...form, renderJs: e.target.checked })} /> Ejecutar JavaScript (más lento)</label>
           </div>
           <label className="block text-xs font-semibold space-y-1">
             <span>Excluir rutas (una expresión regular por línea). Logout, carrito, checkout, wp-admin y búsquedas internas ya se excluyen siempre.</span>

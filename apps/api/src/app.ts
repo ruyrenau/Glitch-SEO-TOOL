@@ -46,6 +46,8 @@ import {
   explorerRows,
   explorerPageDetail,
   explorerCsv,
+  explorerCustom,
+  explorerStructure,
   lookupEditable,
   proposeChange,
   listProposals,
@@ -65,7 +67,7 @@ import {
   MAX_BATCH,
   DuplicateImportError
 } from '@glitch/db';
-import { fetchSitemap, parseSitemapXml } from '@glitch/crawler';
+import { fetchSitemap, findBrowser, parseSitemapXml } from '@glitch/crawler';
 import { validateJsonLd } from '@glitch/schema-engine';
 import { renderTemplate, computeJaccardSimilarity, evaluateQualityGate } from '@glitch/content-engine';
 import { GoogleSearchConsoleClient } from '@glitch/connectors';
@@ -319,12 +321,14 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
       respectRobots: z.boolean().default(true),
       include: z.array(z.string().max(200)).max(20).default([]),
       exclude: z.array(z.string().max(200)).max(50).default([]),
-      seedFromSitemap: z.boolean().default(true)
+      seedFromSitemap: z.boolean().default(true),
+      renderJs: z.boolean().default(false)
     })
     .strict();
   const ACTIVE = ['QUEUED', 'RUNNING', 'RETRYING'] as const;
 
-  const validatePatterns = (b: { include: string[]; exclude: string[] }) => {
+  const validatePatterns = (b: { include: string[]; exclude: string[]; renderJs?: boolean }) => {
+    if (b.renderJs && !findBrowser()) throw new ApiError(400, 'BROWSER_NOT_FOUND', 'Para ejecutar JavaScript se necesita Chrome, Chromium o Edge instalado en el servidor (o la variable CHROME_PATH).');
     for (const r of b.include.concat(b.exclude)) {
       try {
         new RegExp(r);
@@ -423,6 +427,24 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     const p = z.object({ id: z.string().uuid(), pageId: z.string().uuid() }).parse(req.params);
     await requireRun(p.id);
     return explorerPageDetail(p.id, p.pageId);
+  });
+
+  app.get('/api/v1/crawls/:id/explorer/structure', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireRun(id);
+    return explorerStructure(id);
+  });
+
+  const customBody = z
+    .object({
+      search: z.array(z.object({ name: z.string().trim().min(1).max(60), mode: z.enum(['contains', 'not_contains', 'regex', 'not_regex']), pattern: z.string().min(1).max(300), scope: z.enum(['html', 'text']).default('html') }).strict()).max(10).default([]),
+      extract: z.array(z.object({ name: z.string().trim().min(1).max(60), kind: z.enum(['css', 'regex']), selector: z.string().min(1).max(300), attr: z.string().max(60).optional() }).strict()).max(10).default([])
+    })
+    .strict();
+  app.post('/api/v1/crawls/:id/explorer/custom', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireRun(id);
+    return explorerCustom(id, customBody.parse(req.body ?? {}));
   });
 
   // ------------------------------------------------------------------ SEO changes on live WordPress content

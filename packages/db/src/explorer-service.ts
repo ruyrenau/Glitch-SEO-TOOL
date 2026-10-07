@@ -50,7 +50,20 @@ export interface ExplorerPage {
   inSitemap: boolean;
   inLogs: boolean;
   redirectChain: Array<{ url: string; status: number }> | null;
+  js: JsInfo | null;
 }
+
+type JsInfo = {
+  rendered: boolean;
+  renderMs: number;
+  error: string | null;
+  errors: string[];
+  blockedRequests: number;
+  raw: { title: string | null; h1: string | null; canonical: string | null; robotsMeta: string | null; wordCount: number; internalLinks: number };
+  jsOnlyLinks: string[];
+};
+const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
+const jsChanged = (raw: string | null | undefined, now: string | null | undefined) => norm(raw) !== norm(now);
 
 interface Column {
   key: string;
@@ -384,6 +397,47 @@ export const TABS: Tab[] = [
       { id: 'broken', label: 'Apunta a URL con error', test: (p, c) => [p.relNext, p.relPrev].some(u => !!u && c.statusByUrl.has(u) && c.statusByUrl.get(u) !== 200) }
     ],
     row: p => ({ relPrev: p.relPrev, relNext: p.relNext })
+  },
+  {
+    id: 'javascript',
+    label: 'JavaScript',
+    base: p => isHtml200(p) && !!p.js,
+    columns: [
+      { key: 'url', label: 'Dirección', type: 'url' },
+      { key: 'rendered', label: 'Renderizado' },
+      { key: 'rawWords', label: 'Palabras sin JS', type: 'number' },
+      { key: 'words', label: 'Palabras con JS', type: 'number' },
+      { key: 'jsWordsPct', label: '% contenido por JS', type: 'number' },
+      { key: 'rawLinks', label: 'Enlaces sin JS', type: 'number' },
+      { key: 'jsOnlyLinks', label: 'Enlaces solo con JS', type: 'number' },
+      { key: 'rawTitle', label: 'Título sin JS' },
+      { key: 'title', label: 'Título con JS' },
+      { key: 'jsErrors', label: 'Errores JS', type: 'number' },
+      { key: 'renderMs', label: 'Render (ms)', type: 'number' }
+    ],
+    filters: [
+      { id: 'all', label: 'Todas', test: () => true },
+      { id: 'js-content', label: 'Contenido que depende de JS (>25 %)', test: p => !!p.js && p.wordCount > 0 && (p.wordCount - p.js.raw.wordCount) / p.wordCount > 0.25 },
+      { id: 'js-links', label: 'Con enlaces que solo existen con JS', test: p => !!p.js?.jsOnlyLinks.length },
+      { id: 'title-changed', label: 'Título cambiado por JS', test: p => !!p.js && jsChanged(p.js.raw.title, p.title) },
+      { id: 'h1-changed', label: 'H1 cambiado por JS', test: p => !!p.js && jsChanged(p.js.raw.h1, p.h1) },
+      { id: 'canonical-changed', label: 'Canonical cambiado por JS', test: p => !!p.js && jsChanged(p.js.raw.canonical, p.canonical) },
+      { id: 'robots-changed', label: 'Meta robots cambiado por JS', test: p => !!p.js && jsChanged(p.js.raw.robotsMeta, p.robotsMeta) },
+      { id: 'errors', label: 'Con errores de JavaScript', test: p => !!p.js?.errors.length },
+      { id: 'render-failed', label: 'No se pudo renderizar', test: p => !!p.js && !p.js.rendered }
+    ],
+    row: p => ({
+      rendered: p.js!.rendered ? 'Sí' : `No: ${p.js!.error ?? ''}`,
+      rawWords: p.js!.raw.wordCount,
+      words: p.wordCount,
+      jsWordsPct: p.wordCount ? Math.max(0, Math.round(((p.wordCount - p.js!.raw.wordCount) / p.wordCount) * 100)) : 0,
+      rawLinks: p.js!.raw.internalLinks,
+      jsOnlyLinks: p.js!.jsOnlyLinks.length,
+      rawTitle: p.js!.raw.title,
+      title: p.title,
+      jsErrors: p.js!.errors.length,
+      renderMs: p.js!.renderMs
+    })
   }
 ];
 
@@ -443,7 +497,8 @@ async function loadPages(crawlRunId: string): Promise<ExplorerPage[]> {
     depth: r.depth,
     inSitemap: r.inSitemap,
     inLogs: r.inLogs,
-    redirectChain: Array.isArray(r.redirectChain) && r.redirectChain.length ? (r.redirectChain as ExplorerPage['redirectChain']) : null
+    redirectChain: Array.isArray(r.redirectChain) && r.redirectChain.length ? (r.redirectChain as ExplorerPage['redirectChain']) : null,
+    js: (r.js as JsInfo | null) ?? null
   }));
   cache.set(crawlRunId, { at: Date.now(), pages });
   if (cache.size > 20) cache.delete(cache.keys().next().value!);
@@ -665,4 +720,203 @@ export async function explorerCsv(crawlRunId: string, query: ExplorerQuery) {
     return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
   };
   return [r.tab.columns.map(c => esc(c.label)).join(','), ...r.rows.map(row => r.tab.columns.map(c => esc(row[c.key])).join(','))].join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Custom search and extraction over the stored HTML (no re-crawl needed).
+
+export interface CustomSearchRule {
+  name: string;
+  /** contains / not_contains: plain text (case-insensitive). regex / not_regex: JavaScript regular expression. */
+  mode: 'contains' | 'not_contains' | 'regex' | 'not_regex';
+  pattern: string;
+  /** html = the whole source; text = visible text only. */
+  scope: 'html' | 'text';
+}
+export interface CustomExtractRule {
+  name: string;
+  kind: 'css' | 'regex';
+  /** CSS selector, or a regex whose first group (or whole match) is extracted. */
+  selector: string;
+  /** For CSS: 'text' (default), 'html', or an attribute name such as href or content. */
+  attr?: string;
+}
+
+const MAX_CUSTOM_PAGES = 5_000;
+const MAX_HTML_FOR_REGEX = 2 * 1024 * 1024;
+
+function compile(pattern: string): RegExp {
+  if (pattern.length > 300) throw new WorkflowError('PATTERN_TOO_LONG', 'La expresión es demasiado larga (máximo 300 caracteres).', 400);
+  // Nested quantifiers such as (a+)+ can hang the server on long pages.
+  if (/\([^)]*[+*][^)]*\)[+*{]/.test(pattern)) throw new WorkflowError('UNSAFE_PATTERN', 'La expresión tiene cuantificadores anidados, como (a+)+, que pueden bloquear el servidor. Simplifícala.', 400);
+  try {
+    return new RegExp(pattern, 'gi');
+  } catch (e) {
+    throw new WorkflowError('INVALID_PATTERN', `Expresión regular inválida: ${(e as Error).message}`, 400);
+  }
+}
+
+export async function explorerCustom(crawlRunId: string, input: { search?: CustomSearchRule[]; extract?: CustomExtractRule[] }) {
+  const search = (input.search ?? []).slice(0, 10);
+  const extract = (input.extract ?? []).slice(0, 10);
+  if (!search.length && !extract.length) throw new WorkflowError('NO_RULES', 'Agrega al menos una búsqueda o una extracción.', 400);
+  const names = new Set<string>();
+  for (const r of [...search, ...extract]) {
+    if (!r.name?.trim()) throw new WorkflowError('NAME_REQUIRED', 'Cada regla necesita un nombre.', 400);
+    if (names.has(r.name)) throw new WorkflowError('DUPLICATE_NAME', `Nombre repetido: ${r.name}`, 400);
+    names.add(r.name);
+    const body = 'pattern' in r ? r.pattern : r.selector;
+    if (!(body ?? '').trim()) throw new WorkflowError('PATTERN_REQUIRED', `La regla "${r.name}" está vacía.`, 400);
+  }
+  const searchRe = search.map(r => (r.mode === 'regex' || r.mode === 'not_regex' ? compile(r.pattern) : null));
+  const extractRe = extract.map(r => (r.kind === 'regex' ? compile(r.selector) : null));
+  const cheerio = await import('cheerio');
+  for (const r of extract) {
+    if (r.kind !== 'css') continue;
+    try {
+      cheerio.load('<p></p>')(r.selector);
+    } catch {
+      throw new WorkflowError('INVALID_SELECTOR', `Selector CSS inválido: ${r.selector}`, 400);
+    }
+  }
+
+  const rows = await prisma.crawledPage.findMany({ where: { crawlRunId, htmlGz: { not: null } }, select: { id: true, url: true, htmlGz: true }, take: MAX_CUSTOM_PAGES });
+  const out: Array<Record<string, unknown>> = [];
+  for (const r of rows) {
+    const html = zlib.gunzipSync(r.htmlGz!).toString('utf8').slice(0, MAX_HTML_FOR_REGEX);
+    const $ = cheerio.load(html);
+    let text: string | null = null;
+    const textOf = (): string => {
+      if (text === null) {
+        const c = cheerio.load(html);
+        c('script, style, noscript, template').remove();
+        text = c('body').text().replace(/\s+/g, ' ');
+      }
+      return text;
+    };
+    const row: Record<string, unknown> = { pageId: r.id, url: r.url };
+    let match = false;
+    search.forEach((s, i) => {
+      const hay = s.scope === 'text' ? textOf() : html;
+      let n = 0;
+      const re = searchRe[i];
+      if (re) n = (hay.match(re) ?? []).length;
+      else {
+        const needle = s.pattern.toLowerCase();
+        const h = hay.toLowerCase();
+        for (let at = h.indexOf(needle); at !== -1 && n < 10_000; at = h.indexOf(needle, at + needle.length)) n++;
+      }
+      const negative = s.mode === 'not_contains' || s.mode === 'not_regex';
+      row[s.name] = negative ? (n === 0 ? 'No contiene' : '') : n;
+      if (negative ? n === 0 : n > 0) match = true;
+    });
+    extract.forEach((e, i) => {
+      let values: string[] = [];
+      const re = extractRe[i];
+      if (re) {
+        for (const m of html.matchAll(re)) {
+          values.push((m[1] ?? m[0]).trim());
+          if (values.length >= 20) break;
+        }
+      } else {
+        const attr = (e.attr ?? 'text').trim() || 'text';
+        values = $(e.selector)
+          .slice(0, 20)
+          .map((_, el) => (attr === 'text' ? $(el).text() : attr === 'html' ? $(el).html() ?? '' : $(el).attr(attr) ?? ''))
+          .get()
+          .map((v: string) => v.replace(/\s+/g, ' ').trim().slice(0, 500))
+          .filter(Boolean);
+      }
+      row[e.name] = values.join(' | ');
+      row[`${e.name} (n)`] = values.length;
+      if (values.length) match = true;
+    });
+    row._match = match;
+    out.push(row);
+  }
+  const columns: Column[] = [
+    { key: 'url', label: 'Dirección', type: 'url' },
+    ...search.map((s): Column => ({ key: s.name, label: s.name, ...(s.mode === 'contains' || s.mode === 'regex' ? { type: 'number' as const } : {}) })),
+    ...extract.flatMap((e): Column[] => [
+      { key: e.name, label: e.name },
+      { key: `${e.name} (n)`, label: `${e.name} (nº)`, type: 'number' }
+    ])
+  ];
+  return { columns, scanned: rows.length, matched: out.filter(r => r._match).length, rows: out };
+}
+
+// ---------------------------------------------------------------------------
+// Site structure: folder tree and crawl depth.
+
+export interface StructureNode {
+  path: string;
+  name: string;
+  /** URLs at or below this folder. */
+  total: number;
+  indexable: number;
+  errors: number;
+  redirects: number;
+  /** The URL that is exactly this folder, if crawled. */
+  page: { id: string; url: string; statusCode: number; isIndexable: boolean; title: string | null; inlinks: number; depth: number } | null;
+  children: StructureNode[];
+}
+
+export async function explorerStructure(crawlRunId: string) {
+  const pages = await loadPages(crawlRunId);
+  const root: StructureNode = { path: '/', name: '/', total: 0, indexable: 0, errors: 0, redirects: 0, page: null, children: [] };
+  for (const p of pages) {
+    let u: URL;
+    try {
+      u = new URL(p.url);
+    } catch {
+      continue;
+    }
+    const segs = u.pathname.split('/').filter(Boolean);
+    if (u.search) segs.push(u.search);
+    const bump = (n: StructureNode) => {
+      n.total++;
+      if (p.isIndexable) n.indexable++;
+      if (p.statusCode >= 400 || p.statusCode === 0) n.errors++;
+      if (p.redirectChain) n.redirects++;
+    };
+    let node = root;
+    bump(node);
+    let path = '';
+    for (const seg of segs) {
+      path += seg.startsWith('?') ? seg : `/${seg}`;
+      let child = node.children.find(c => c.name === seg);
+      if (!child) {
+        child = { path, name: seg, total: 0, indexable: 0, errors: 0, redirects: 0, page: null, children: [] };
+        node.children.push(child);
+      }
+      node = child;
+      bump(node);
+    }
+    const info = { id: p.id, url: p.url, statusCode: p.statusCode, isIndexable: p.isIndexable, title: p.title, inlinks: p.inlinks, depth: p.depth };
+    if (!node.page || p.url.length < node.page.url.length) node.page = info;
+  }
+  const sortTree = (n: StructureNode) => {
+    n.children.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+    n.children.forEach(sortTree);
+  };
+  sortTree(root);
+  const depthMap = new Map<number, { depth: number; total: number; indexable: number; errors: number }>();
+  for (const p of pages) {
+    const d = depthMap.get(p.depth) ?? { depth: p.depth, total: 0, indexable: 0, errors: 0 };
+    d.total++;
+    if (p.isIndexable) d.indexable++;
+    if (p.statusCode >= 400 || p.statusCode === 0) d.errors++;
+    depthMap.set(p.depth, d);
+  }
+  const html = pages.filter(isHtml200);
+  return {
+    tree: root,
+    depth: [...depthMap.values()].sort((a, b) => a.depth - b.depth),
+    stats: {
+      urls: pages.length,
+      maxDepth: Math.max(0, ...pages.map(p => p.depth)),
+      deepPages: html.filter(p => p.depth > 3).length,
+      noInlinks: html.filter(p => p.inlinks === 0 && p.depth > 0).length
+    }
+  };
 }

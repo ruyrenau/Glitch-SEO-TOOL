@@ -5,3 +5,4 @@ export * from './robots';
 export * from './extract';
 export * from './crawl';
 export * from './diff';
+export * from './render';

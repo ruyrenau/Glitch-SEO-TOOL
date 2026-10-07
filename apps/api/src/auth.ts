@@ -41,6 +41,7 @@ const RULES: Array<[RegExp, RegExp, Permission]> = [
   [/^POST$/, /^\/api\/v1\/auth\/(logout|password)$/, 'read'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/(log-imports|sitemap|crawls)$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/crawls\/:id\/cancel$/, 'seo:operate'],
+  [/^POST$/, /^\/api\/v1\/crawls\/:id\/explorer\/custom$/, 'read'], // read-only analysis of stored HTML
   [/^POST$/, /^\/api\/v1\/jobs\/:id\/(cancel|retry)$/, 'seo:operate'],
   [/^PUT$/, /^\/api\/v1\/sites\/:id\/schedule$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/performance$/, 'seo:operate'],

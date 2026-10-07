@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@glitch/core": "workspace:*",
-    "cheerio": "^1.0.0"
+    "cheerio": "^1.0.0",
+    "puppeteer-core": "^24.43.1"
   },
   "devDependencies": {
     "typescript": "^5.8.2",

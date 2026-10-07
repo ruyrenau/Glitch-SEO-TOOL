@@ -42,7 +42,8 @@ export async function runCrawl(opts: RunCrawlOptions) {
     include: opts.include ?? [],
     exclude: opts.exclude ?? [],
     userAgent: opts.userAgent ?? site.userAgent,
-    seedFromSitemap: opts.seedFromSitemap ?? true
+    seedFromSitemap: opts.seedFromSitemap ?? true,
+    renderJs: opts.renderJs ?? false
   };
   const run = await prisma.crawlRun.create({ data: { siteId: site.id, status: 'running', maxDepth: config.maxDepth, config: json(config) } });
   opts.onStarted?.(run.id);
@@ -115,7 +116,8 @@ export async function runCrawl(opts: RunCrawlOptions) {
         relPrev: e?.relPrev ?? null,
         images: e?.imageList.length ? json(e.imageList) : undefined,
         headers: Object.keys(p.headers).length ? json(p.headers) : undefined,
-        htmlGz: p.html && p.html.length <= 2 * 1024 * 1024 ? zlib.gzipSync(p.html) : null
+        htmlGz: p.html && p.html.length <= 2 * 1024 * 1024 ? zlib.gzipSync(p.html) : null,
+        js: p.js ? json(p.js) : undefined
       };
     });
     for (let i = 0; i < rows.length; i += BATCH) await prisma.crawledPage.createMany({ data: rows.slice(i, i + BATCH) });

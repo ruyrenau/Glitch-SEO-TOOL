@@ -99,6 +99,54 @@ describe('SEO explorer', () => {
     expect(await prisma.crawledPage.count({ where: { crawlRunId: crawlId, url: `${site.origin}/guia.pdf` } })).toBe(0);
   });
 
+  it('runs custom search and extraction over the stored HTML without re-crawling', async () => {
+    const r = await app.inject({
+      method: 'POST',
+      url: `/api/v1/crawls/${crawlId}/explorer/custom`,
+      payload: {
+        search: [
+          { name: 'Menciona Puebla', mode: 'contains', pattern: 'puebla', scope: 'html' },
+          { name: 'Texto visible', mode: 'contains', pattern: 'pie de página', scope: 'text' },
+          { name: 'Sin JSON-LD', mode: 'not_contains', pattern: 'application/ld+json', scope: 'html' }
+        ],
+        extract: [
+          { name: 'Canonical', kind: 'css', selector: 'link[rel=canonical]', attr: 'href' },
+          { name: 'Tipo schema', kind: 'regex', selector: '"@type":"([A-Za-z]+)"' }
+        ]
+      }
+    });
+    expect(r.statusCode).toBe(200);
+    const body = r.json();
+    expect(body.scanned).toBeGreaterThan(10);
+    const about = body.rows.find((x: { url: string }) => x.url === `${site.origin}/about`);
+    expect(about['Menciona Puebla']).toBeGreaterThan(0);
+    expect(about['Texto visible']).toBe(1);
+    expect(about.Canonical).toBe(`${site.origin}/about`);
+    expect(about['Tipo schema']).toBe('AboutPage');
+    expect(about['Sin JSON-LD']).toBe('');
+    const thin = body.rows.find((x: { url: string }) => x.url === `${site.origin}/thin`);
+    expect(thin['Sin JSON-LD']).toBe('No contiene');
+    expect(body.columns.map((c: { key: string }) => c.key)).toEqual(['url', 'Menciona Puebla', 'Texto visible', 'Sin JSON-LD', 'Canonical', 'Canonical (n)', 'Tipo schema', 'Tipo schema (n)']);
+
+    const bad = async (payload: object) => (await app.inject({ method: 'POST', url: `/api/v1/crawls/${crawlId}/explorer/custom`, payload })).json().error.code;
+    expect(await bad({ search: [{ name: 'x', mode: 'regex', pattern: '(a+)+$' }] })).toBe('UNSAFE_PATTERN');
+    expect(await bad({ search: [{ name: 'x', mode: 'regex', pattern: '([' }] })).toBe('INVALID_PATTERN');
+    expect(await bad({ extract: [{ name: 'x', kind: 'css', selector: 'a[[' }] })).toBe('INVALID_SELECTOR');
+    expect(await bad({})).toBe('NO_RULES');
+  });
+
+  it('builds the folder tree and the crawl depth distribution', async () => {
+    const s = (await app.inject(`/api/v1/crawls/${crawlId}/explorer/structure`)).json();
+    expect(s.tree.total).toBe(s.stats.urls);
+    const deep = s.tree.children.find((c: { name: string }) => c.name === 'deep');
+    expect(deep.total).toBe(6);
+    expect(deep.children.map((c: { name: string }) => c.name).sort()).toEqual(['1', '2', '3', '4', '5', '6']);
+    expect(deep.children.find((c: { name: string }) => c.name === '6').page).toMatchObject({ statusCode: 200, depth: 6 });
+    expect(s.stats.maxDepth).toBe(6);
+    expect(s.depth.find((d: { depth: number }) => d.depth === 0).total).toBe(1);
+    expect(s.tree.errors).toBeGreaterThanOrEqual(2); // /missing 404 and /error 500
+  });
+
   it('exports the current tab and filter as CSV', async () => {
     const r = await app.inject(`/api/v1/crawls/${crawlId}/explorer.csv?tab=images&filter=missing-alt`);
     expect(r.headers['content-type']).toContain('text/csv');

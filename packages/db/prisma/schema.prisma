@@ -262,7 +262,8 @@ model CrawledPage {
   relPrev            String?
   images             Json?     // [{ src, alt, width, height, loading }] (max 200)
   headers            Json?
-  htmlGz             Bytes?    // gzip of the HTML (max 2 MB raw)
+  htmlGz             Bytes?    // gzip of the HTML (max 2 MB raw; the rendered DOM when JavaScript was executed)
+  js                 Json?     // what JavaScript changed (only when the crawl rendered JS)
   createdAt          DateTime  @default(now())
 
   @@index([crawlRunId, statusCode])

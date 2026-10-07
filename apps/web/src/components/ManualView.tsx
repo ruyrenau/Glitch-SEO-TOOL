@@ -90,11 +90,12 @@ const SECTIONS: Section[] = [
     icon: ShieldAlert,
     title: 'Crawl y auditoría',
     status: 'ready',
-    what: 'Rastrea el sitio como lo haría un buscador (sin ejecutar JavaScript), guarda los datos SEO de cada página y compara cada crawl con el anterior.',
+    what: 'Rastrea el sitio como lo haría un buscador, guarda los datos SEO de cada página, revisa sus archivos (CSS, JS, imágenes, PDF) y enlaces externos, y compara cada crawl con el anterior. Opcionalmente ejecuta JavaScript.',
     why: 'Detecta problemas técnicos antes de que afecten la indexación, y después de cada deploy te dice exactamente qué cambió.',
     steps: [
       'Ajusta los límites: máximo de URLs, profundidad, concurrencia y solicitudes por segundo. Para sitios en producción, empieza con 1 o 2 solicitudes por segundo.',
       'Deja marcado "Respetar robots.txt" y "Usar URLs del sitemap como semillas".',
+      'Si el sitio está hecho con React, Vue, Angular u otro framework que arma la página en el navegador, marca "Ejecutar JavaScript". Cada página se abre en Chrome o Edge sin ventana; es varias veces más lento.',
       'Si quieres excluir secciones, escribe una expresión regular por línea (por ejemplo ^/tag/).',
       'Pulsa "Iniciar crawl". Lo ejecuta el worker: puedes cerrar la página y volver. Puedes cancelarlo; lo rastreado se guarda.',
       'En el historial, pulsa "Ver detalle" para ver los cambios respecto al crawl anterior y la tabla de páginas.'
@@ -108,7 +109,7 @@ const SECTIONS: Section[] = [
       'Logout, carrito, checkout, wp-admin y búsquedas internas nunca se solicitan.',
       'Solo se rastrea el mismo dominio. Las direcciones privadas están bloqueadas por seguridad.'
     ],
-    limits: ['No ve contenido que se genera con JavaScript en el navegador.', 'Un solo crawl a la vez por sitio.']
+    limits: ['Sin "Ejecutar JavaScript" no ve el contenido que se genera en el navegador.', 'Ejecutar JavaScript necesita Chrome, Chromium o Edge instalado en el servidor.', 'Un solo crawl a la vez por sitio.']
   },
   {
     id: 'explorer',
@@ -123,18 +124,23 @@ const SECTIONS: Section[] = [
       'Elige una pestaña y un filtro (por ejemplo Títulos → Más de 60 caracteres). El resumen de la derecha muestra cuántas URLs hay en cada filtro; haz clic para ir directo.',
       'Ajusta la tabla: arrastra el borde de un encabezado para cambiar el ancho (doble clic lo restablece), elige qué campos ver en "Columnas" y usa "Ajustar texto" para leer títulos completos.',
       'Haz clic en una URL para ver su detalle: enlaces entrantes y salientes, imágenes, vista en Google, código fuente, cabeceras e issues.',
-      'Exporta a CSV la pestaña y el filtro actuales.'
+      'Exporta a CSV la pestaña y el filtro actuales.',
+      'Arriba cambia entre Tabla, Estructura y Búsqueda personalizada.'
     ],
     read: [
       ['Recursos y archivos', 'CSS, JavaScript, imágenes, fuentes, PDF y documentos que usan las páginas, con estado, tipo de contenido, peso y en cuántas páginas se usan.'],
       ['Externos', 'Enlaces a otros sitios y recursos de terceros (CDN, scripts), con su código de respuesta. Útil para encontrar enlaces rotos.'],
-      ['Tipos de archivo', 'En el resumen: cuántas URLs internas hay de cada tipo, como el panel Overview de Screaming Frog.']
+      ['Tipos de archivo', 'En el resumen: cuántas URLs internas hay de cada tipo, como el panel Overview de Screaming Frog.'],
+      ['JavaScript', 'Solo en crawls con "Ejecutar JavaScript". Compara lo que manda el servidor con lo que queda después de JavaScript: contenido, enlaces, título, H1, canonical y meta robots que cambia JavaScript, y errores de JavaScript.'],
+      ['Estructura', 'Árbol de carpetas con cuántas URLs hay en cada una, cuántas son indexables y cuántas tienen error, y la distribución de páginas por clics desde la portada.'],
+      ['Búsqueda personalizada', 'Busca un texto o expresión en el código o en el texto visible de todas las páginas, o extrae datos con un selector CSS (por ejemplo precios, autores o SKU). Usa el HTML guardado del crawl; no vuelve a rastrear.']
     ],
     tips: ['Los anchos y columnas se recuerdan por pestaña en este navegador.', 'La barra lateral de la app se contrae con el botón junto al título de la sección.'],
     limits: [
       'No ejecuta JavaScript: ve el HTML que entrega el servidor.',
       'Los archivos se comprueban sin descargarlos; si el servidor no envía el tamaño, aparece vacío.',
-      'Máximo 2,000 recursos y enlaces externos por crawl.'
+      'Máximo 2,000 recursos y enlaces externos por crawl.',
+      'La extracción no admite XPath; usa selectores CSS o expresiones regulares.'
     ]
   },
   {
