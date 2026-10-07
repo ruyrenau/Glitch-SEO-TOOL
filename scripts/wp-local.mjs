@@ -17,8 +17,7 @@ import path from 'path';
 const port = Number(process.env.WP_LOCAL_PORT ?? 8881);
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'glitch-wp-'));
 const blueprint = {
-  landingPage: '/wp-admin/',
-  login: true,
+  // No auto-login: its cookie redirects loop for clients without a cookie jar; the REST API uses the Application Password.
   steps: [
     { step: 'defineWpConfigConsts', consts: { WP_ENVIRONMENT_TYPE: 'local', WP_DEBUG_DISPLAY: false } },
     // Application Passwords normally require HTTPS; allow them on this throwaway local site only.
