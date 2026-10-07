@@ -92,8 +92,6 @@ jobs:
           grep "application password" wp.log
       - name: WordPress suite against real WordPress
         run: |
-          curl -s -o /dev/null -w "REST index: %{http_code} -> %{redirect_url}
-" "http://127.0.0.1:8881/?rest_route=/"
-
+          curl -s -i "http://127.0.0.1:8881/?rest_route=/" | head -12
           export WP_TEST_APP_PASSWORD=$(grep -oE "application password: \S+" wp.log | awk '{print $3}')
           WP_TEST_URL=http://127.0.0.1:8881 WP_TEST_USER=admin pnpm vitest run apps/api/test/wordpress.test.ts
