@@ -46,6 +46,13 @@ import {
   explorerRows,
   explorerPageDetail,
   explorerCsv,
+  lookupEditable,
+  proposeChange,
+  listProposals,
+  reviewProposal,
+  applyProposal,
+  revertProposal,
+  verifyProposal,
   importDataset,
   listDatasets,
   deleteDataset,
@@ -416,6 +423,54 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     const p = z.object({ id: z.string().uuid(), pageId: z.string().uuid() }).parse(req.params);
     await requireRun(p.id);
     return explorerPageDetail(p.id, p.pageId);
+  });
+
+  // ------------------------------------------------------------------ SEO changes on live WordPress content
+  app.get('/api/v1/sites/:id/seo-edits/lookup', async req => {
+    const { id } = idParam.parse(req.params);
+    const q = z.object({ url: z.string().url(), images: z.string().max(20_000).optional() }).parse(req.query);
+    await requireSite(id);
+    return lookupEditable(id, q.url, q.images ? q.images.split('\n').filter(Boolean) : []);
+  });
+
+  app.get('/api/v1/sites/:id/seo-edits', async req => {
+    const { id } = idParam.parse(req.params);
+    const { status } = z.object({ status: z.enum(['proposed', 'approved', 'rejected', 'applied', 'conflict', 'failed', 'reverted']).optional() }).parse(req.query);
+    await requireSite(id);
+    return listProposals(id, status);
+  });
+
+  app.post('/api/v1/sites/:id/seo-edits', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    const b = z
+      .object({ url: z.string().url(), field: z.enum(['postTitle', 'slug', 'seoTitle', 'metaDescription', 'imageAlt']), newValue: z.string().max(1000), note: z.string().max(500).optional(), imageSrc: z.string().max(2000).optional() })
+      .strict()
+      .parse(req.body);
+    return reply.status(201).send(await proposeChange(id, b));
+  });
+
+  app.post('/api/v1/seo-edits/:id/review', async req => {
+    const { id } = idParam.parse(req.params);
+    const { decision } = z.object({ decision: z.enum(['approved', 'rejected']) }).strict().parse(req.body);
+    return reviewProposal(id, decision);
+  });
+
+  app.post('/api/v1/seo-edits/:id/apply', async req => {
+    const { id } = idParam.parse(req.params);
+    z.object({ confirm: z.literal(true, { message: 'Send {"confirm": true}: this changes live content' }) }).strict().parse(req.body);
+    return applyProposal(id);
+  });
+
+  app.post('/api/v1/seo-edits/:id/verify', async req => {
+    const { id } = idParam.parse(req.params);
+    return verifyProposal(id);
+  });
+
+  app.post('/api/v1/seo-edits/:id/revert', async req => {
+    const { id } = idParam.parse(req.params);
+    z.object({ confirm: z.literal(true, { message: 'Send {"confirm": true}' }) }).strict().parse(req.body);
+    return revertProposal(id);
   });
 
   // ------------------------------------------------------------------ performance (Core Web Vitals)

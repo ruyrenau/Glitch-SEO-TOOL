@@ -44,6 +44,8 @@ const RULES: Array<[RegExp, RegExp, Permission]> = [
   [/^POST$/, /^\/api\/v1\/jobs\/:id\/(cancel|retry)$/, 'seo:operate'],
   [/^PUT$/, /^\/api\/v1\/sites\/:id\/schedule$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/performance$/, 'seo:operate'],
+  [/^POST$/, /^\/api\/v1\/sites\/:id\/seo-edits$/, 'content:edit'],
+  [/^POST$/, /^\/api\/v1\/seo-edits\/:id\/(review|apply|verify|revert)$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/(issues\/:id\/status|alerts\/:id\/acknowledge)$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/wordpress\/test$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/(generated-pages|datasets)$/, 'content:edit'],
@@ -80,6 +82,7 @@ async function workspaceOfResource(route: string, id: string): Promise<string | 
     const p = await prisma.wordPressPublication.findUnique({ where: { id }, select: { generatedPage: { select: { site: { select: { workspaceId: true } } } } } });
     return p ? p.generatedPage.site?.workspaceId ?? null : undefined;
   }
+  if (/^\/api\/v1\/seo-edits\/:id/.test(route)) return viaSite(await prisma.seoChangeProposal.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
   if (/^\/api\/v1\/jobs\/:id/.test(route)) return (await prisma.job.findUnique({ where: { id }, select: { workspaceId: true } }))?.workspaceId;
   if (/^\/api\/v1\/users\/:id/.test(route)) {
     const m = await prisma.workspaceMember.findFirst({ where: { userId: id }, select: { workspaceId: true } });

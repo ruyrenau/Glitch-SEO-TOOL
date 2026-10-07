@@ -2,7 +2,9 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  LayoutDashboard, Globe, FileText, ShieldAlert, Gauge, Code2, Layers, Send, Search, Sparkles, Cpu, History, Sun, Moon, AlertTriangle, Menu, Bell, BookOpen, Users, LogOut, UserCircle, ScanSearch
+  LayoutDashboard, Globe, FileText, ShieldAlert, Gauge, Code2, Layers, Send, Search, Sparkles, Cpu, History, Sun, Moon, AlertTriangle, Menu, Bell, BookOpen, Users, LogOut, UserCircle, ScanSearch,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { API_URL, ApiRequestError, UNAUTHORIZED_EVENT, apiGet, apiSend } from '@/lib/api';
 import { AuthProvider, useAuth } from '@/lib/auth';
@@ -56,6 +58,19 @@ function Dashboard() {
   const [nav, setNav] = useState<NavId>('overview');
   const [dark, setDark] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem('glitch.sidebar') === 'collapsed');
+    } catch {}
+  }, []);
+  const toggleCollapsed = () =>
+    setCollapsed(c => {
+      try {
+        localStorage.setItem('glitch.sidebar', c ? 'open' : 'collapsed');
+      } catch {}
+      return !c;
+    });
   const [sites, setSites] = useState<Site[] | null>(null);
   const [siteId, setSiteId] = useState('');
   const [error, setError] = useState<unknown>(null);
@@ -119,18 +134,18 @@ function Dashboard() {
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-2 focus:bg-white">Saltar al contenido</a>
       <div className="min-h-screen flex bg-[#F4F6FB] text-slate-900 dark:bg-[#0F111A] dark:text-slate-100">
         <aside
-          className={`${menuOpen ? 'fixed inset-0 z-40 flex' : 'hidden'} md:static md:flex w-64 border-r flex-col shrink-0 bg-white border-slate-200 dark:bg-[#151824] dark:border-slate-800`}
+          className={`${menuOpen ? 'fixed inset-0 z-40 flex' : 'hidden'} md:static md:flex ${collapsed && !menuOpen ? 'w-16 [&_.nav-text]:hidden' : 'w-64'} transition-[width] border-r flex-col shrink-0 bg-white border-slate-200 dark:bg-[#151824] dark:border-slate-800`}
           aria-label="Navegación principal"
         >
-          <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5">
+          <div className={`${collapsed && !menuOpen ? 'p-3 justify-center' : 'p-5'} border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5`}>
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center font-black text-sm" aria-hidden>G</div>
-            <div>
+            <div className="nav-text">
               <div className="font-bold text-sm">Glitch SEO Ops</div>
               <div className="text-[10px] text-slate-500 font-mono">v0.9 · local</div>
             </div>
           </div>
 
-          <div className="p-3 border-b border-slate-200 dark:border-slate-800">
+          <div className="nav-text p-3 border-b border-slate-200 dark:border-slate-800">
             <label htmlFor="site-select" className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Sitio activo</label>
             <select
               id="site-select"
@@ -154,19 +169,20 @@ function Dashboard() {
                   key={item.id}
                   onClick={() => go(item.id)}
                   aria-current={active ? 'page' : undefined}
+                  title={item.label}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                     active ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60'
                   }`}
                 >
                   <Icon className="w-4 h-4 shrink-0" />
-                  <span className="truncate flex-1 text-left">{item.label}</span>
-                  {!item.ready && <span className={`text-[9px] font-bold ${active ? 'text-white/80' : 'text-amber-600'}`}>PRONTO</span>}
+                  <span className="nav-text truncate flex-1 text-left">{item.label}</span>
+                  {!item.ready && <span className={`nav-text text-[9px] font-bold ${active ? 'text-white/80' : 'text-amber-600'}`}>PRONTO</span>}
                 </button>
               );
             })}
           </nav>
 
-          <div className="px-3 pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2">
+          <div className={`px-3 pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2 ${collapsed && !menuOpen ? 'flex-col' : ''}`}>
             <button
               onClick={() => go('account')}
               aria-current={nav === 'account' ? 'page' : undefined}
@@ -174,7 +190,7 @@ function Dashboard() {
               title="Mi cuenta"
             >
               <UserCircle className="w-7 h-7 text-indigo-600 dark:text-indigo-400 shrink-0" aria-hidden />
-              <span className="min-w-0">
+              <span className="nav-text min-w-0">
                 <span className="block text-[11px] font-semibold truncate">{user.name}</span>
                 <span className="block text-[10px] text-slate-500">{user.roleLabel}</span>
               </span>
@@ -183,9 +199,9 @@ function Dashboard() {
               <LogOut className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="p-3 flex justify-between items-center">
+          <div className={`p-3 flex justify-between items-center ${collapsed && !menuOpen ? 'flex-col gap-1.5' : ''}`}>
             <a href={`${API_URL}/docs`} target="_blank" rel="noreferrer" className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">OpenAPI</a>
-            <div className="flex items-center gap-1.5">
+            <div className={`flex items-center gap-1.5 ${collapsed && !menuOpen ? 'flex-col' : ''}`}>
             <button
               onClick={() => go('manual')}
               aria-label="Abrir manual de uso"
@@ -206,6 +222,15 @@ function Dashboard() {
           <header className="h-14 border-b flex items-center gap-3 px-4 md:px-6 shrink-0 bg-white border-slate-200 dark:bg-[#151824] dark:border-slate-800">
             <button className="md:hidden p-1.5 rounded-lg border border-slate-200 dark:border-slate-700" aria-label="Abrir menú" aria-expanded={menuOpen} onClick={() => setMenuOpen(o => !o)}>
               <Menu className="w-4 h-4" />
+            </button>
+            <button
+              className="hidden md:inline-flex p-1.5 rounded-lg border border-slate-200 dark:border-slate-700"
+              aria-label={collapsed ? 'Expandir barra lateral' : 'Contraer barra lateral'}
+              title={collapsed ? 'Expandir barra lateral' : 'Contraer barra lateral'}
+              aria-expanded={!collapsed}
+              onClick={toggleCollapsed}
+            >
+              {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
             </button>
             <h1 className="font-bold text-base">{current.label}</h1>
           </header>

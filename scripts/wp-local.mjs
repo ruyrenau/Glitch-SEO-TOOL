@@ -10,6 +10,7 @@
  * Data lives in memory and disappears when the process stops.
  */
 import { spawn } from 'child_process';
+import { fileURLToPath } from 'url';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -34,6 +35,9 @@ const blueprint = {
     }
   ]
 };
+// Expose Yoast/Rank Math SEO fields over REST, as a real site would with docs/wordpress/glitch-seo-meta.php.
+const seoMeta = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'wordpress', 'glitch-seo-meta.php'), 'utf8');
+blueprint.steps.splice(3, 0, { step: 'writeFile', path: '/wordpress/wp-content/mu-plugins/glitch-seo-meta.php', data: seoMeta });
 fs.writeFileSync(path.join(dir, 'blueprint.json'), JSON.stringify(blueprint));
 
 const child = spawn('npx', ['-y', '@wp-playground/cli@latest', 'server', `--port=${port}`, '--blueprint=./blueprint.json'], { cwd: dir, shell: true, stdio: ['ignore', 'pipe', 'inherit'] });

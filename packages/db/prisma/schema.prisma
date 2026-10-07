@@ -129,6 +129,7 @@ model Site {
   datasets           Dataset[]
   jobs               Job[]
   performanceRuns    PerformanceRun[]
+  seoChanges         SeoChangeProposal[]
   crawlSchedule      String?   // cron expression in the site's timezone, null = off
   crawlScheduleOptions Json?
   crawls             CrawlRun[]
@@ -566,4 +567,33 @@ model PerformanceRun {
   createdAt        DateTime @default(now())
 
   @@index([siteId, url, createdAt])
+}
+
+/// A proposed change to an SEO field of live WordPress content. Applied only after approval.
+model SeoChangeProposal {
+  id           String    @id @default(uuid())
+  siteId       String
+  site         Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  url          String    // page where the field was seen
+  target       String    // post | page | media
+  wpId         Int
+  field        String    // postTitle | slug | seoTitle | metaDescription | imageAlt
+  metaKey      String?   // Yoast / Rank Math key for seoTitle and metaDescription
+  imageSrc     String?
+  oldValue     String    // value in WordPress when proposed (also the backup used to revert)
+  newValue     String
+  note         String?
+  status       String    @default("proposed") // proposed, approved, rejected, applied, conflict, failed, reverted
+  verifyStatus String?   // verified | mismatch | error
+  verifyDetail String?
+  error        String?
+  createdById  String?
+  reviewedById String?
+  appliedById  String?
+  appliedAt    DateTime?
+  verifiedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([siteId, status])
 }

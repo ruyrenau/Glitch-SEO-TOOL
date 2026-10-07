@@ -80,6 +80,14 @@ export class WordPressClient {
     return u.toString();
   }
 
+  protected get<T>(path: string, query: Record<string, string | number> = {}): Promise<T> {
+    return this.request<T>('GET', path, { query });
+  }
+
+  protected post<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>('POST', path, { body });
+  }
+
   private async request<T>(method: 'GET' | 'POST', path: string, opts: { query?: Record<string, string | number>; body?: unknown; auth?: boolean } = {}): Promise<T> {
     const url = this.url(path, opts.query);
     await assertSafeUrl(url, { allowHosts: this.cfg.allowHosts });
@@ -205,4 +213,132 @@ export function lineDiff(before: string[], after: string[], max = 2000): DiffLin
   while (i < a.length) out.push({ op: 'remove', text: a[i++] });
   while (j < b.length) out.push({ op: 'add', text: b[j++] });
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// SEO field editing on existing content (title, slug, SEO title/description, image alt)
+// ---------------------------------------------------------------------------
+
+export type SeoTarget = 'post' | 'page';
+export type SeoMetaProvider = 'yoast' | 'rankmath';
+
+export const SEO_META_KEYS: Record<SeoMetaProvider, { title: string; description: string }> = {
+  yoast: { title: '_yoast_wpseo_title', description: '_yoast_wpseo_metadesc' },
+  rankmath: { title: 'rank_math_title', description: 'rank_math_description' }
+};
+const ALLOWED_META = new Set(Object.values(SEO_META_KEYS).flatMap(k => [k.title, k.description]));
+
+export interface WpSeoItem {
+  id: number;
+  type: SeoTarget;
+  status: string;
+  link: string;
+  slug: string;
+  title: string;
+  modified_gmt: string;
+  meta: Record<string, string>;
+  /** Which SEO plugin fields are exposed over REST (null = none: install docs/wordpress/glitch-seo-meta.php). */
+  metaProvider: SeoMetaProvider | null;
+}
+
+export interface WpMediaItem {
+  id: number;
+  source_url: string;
+  alt_text: string;
+  modified_gmt: string;
+}
+
+const sameUrl = (a: string, b: string) => {
+  const n = (u: string) => {
+    try {
+      const x = new URL(u);
+      return `${x.hostname.toLowerCase()}${x.pathname.replace(/\/+$/, '')}${x.search}`;
+    } catch {
+      return u;
+    }
+  };
+  return n(a) === n(b);
+};
+
+function toSeoItem(raw: { id: number; status: string; link: string; slug: string; modified_gmt: string; title: { raw?: string; rendered: string }; meta?: Record<string, unknown> }, type: SeoTarget, active: SeoMetaProvider | null): WpSeoItem {
+  const meta: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw.meta ?? {})) if (ALLOWED_META.has(k)) meta[k] = typeof v === 'string' ? v : '';
+  // Usable only when the ACTIVE SEO plugin's keys come back in `meta` (registered with show_in_rest).
+  const provider = active && (SEO_META_KEYS[active].title in meta || SEO_META_KEYS[active].description in meta) ? active : null;
+  return { id: raw.id, type, status: raw.status, link: raw.link, slug: raw.slug, title: raw.title.raw ?? raw.title.rendered, modified_gmt: raw.modified_gmt, meta, metaProvider: provider };
+}
+
+export interface SeoFieldUpdate {
+  title?: string;
+  slug?: string;
+  meta?: Record<string, string>;
+}
+
+export class WordPressSeoClient extends WordPressClient {
+  private active: Promise<SeoMetaProvider | null> | null = null;
+
+  /** The SEO plugin actually running, from the REST namespaces it registers (yoast/v1, rankmath/v1). */
+  activeSeoPlugin(): Promise<SeoMetaProvider | null> {
+    this.active ??= this.get<{ namespaces?: string[] }>('/', {})
+      .then(r => (r.namespaces?.includes('yoast/v1') ? 'yoast' : r.namespaces?.includes('rankmath/v1') ? 'rankmath' : null))
+      .catch(() => null);
+    return this.active;
+  }
+
+  /** Finds the post or page whose permalink is `url` (matched by slug, then by link). */
+  async findByUrl(url: string): Promise<WpSeoItem | null> {
+    const slug = decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop() ?? '');
+    if (!slug) return null; // the front page has no slug
+    for (const type of ['posts', 'pages'] as const) {
+      const list = await this.get<Array<Parameters<typeof toSeoItem>[0]>>(`/wp/v2/${type}`, { slug, context: 'edit', status: 'publish,draft,private,future,pending', per_page: 10 });
+      const hit = list.find(i => sameUrl(i.link, url)) ?? (list.length === 1 ? list[0] : undefined);
+      if (hit) return toSeoItem(hit, type === 'posts' ? 'post' : 'page', await this.activeSeoPlugin());
+    }
+    return null;
+  }
+
+  async getSeoItem(type: SeoTarget, id: number): Promise<WpSeoItem> {
+    return toSeoItem(await this.get(`/wp/v2/${type === 'post' ? 'posts' : 'pages'}/${id}`, { context: 'edit' }), type, await this.activeSeoPlugin());
+  }
+
+  /**
+   * Updates SEO fields only. Content, status, dates and authors are never sent,
+   * and meta keys outside the Yoast/Rank Math title/description whitelist are rejected.
+   */
+  async updateSeoFields(type: SeoTarget, id: number, u: SeoFieldUpdate): Promise<WpSeoItem> {
+    const body: Record<string, unknown> = {};
+    if (u.title !== undefined) body.title = u.title;
+    if (u.slug !== undefined) body.slug = u.slug;
+    if (u.meta) {
+      for (const k of Object.keys(u.meta)) if (!ALLOWED_META.has(k)) throw new WordPressError(0, 'META_NOT_ALLOWED', `Meta key ${k} is not an SEO field`);
+      body.meta = u.meta;
+    }
+    if (!Object.keys(body).length) throw new WordPressError(0, 'NOTHING_TO_UPDATE', 'No SEO fields to update');
+    return toSeoItem(await this.post(`/wp/v2/${type === 'post' ? 'posts' : 'pages'}/${id}`, body), type, await this.activeSeoPlugin());
+  }
+
+  /** Media library item behind an <img src> (also matches WordPress' resized variants). */
+  async findMediaBySrc(src: string): Promise<WpMediaItem | null> {
+    let file: string;
+    try {
+      file = decodeURIComponent(new URL(src).pathname.split('/').pop() ?? '');
+    } catch {
+      return null;
+    }
+    const base = file.replace(/\.[a-z0-9]+$/i, '').replace(/-\d+x\d+$/, '').replace(/-scaled$/, '');
+    if (!base) return null;
+    const list = await this.get<Array<WpMediaItem & { media_details?: { sizes?: Record<string, { source_url: string }> } }>>('/wp/v2/media', { search: base, per_page: 20, context: 'edit' });
+    const hit = list.find(m => m.source_url === src || Object.values(m.media_details?.sizes ?? {}).some(s => s.source_url === src)) ?? list.find(m => m.source_url.split('/').pop()?.startsWith(base));
+    return hit ? { id: hit.id, source_url: hit.source_url, alt_text: hit.alt_text ?? '', modified_gmt: hit.modified_gmt } : null;
+  }
+
+  async getMedia(id: number): Promise<WpMediaItem> {
+    const m = await this.get<WpMediaItem>(`/wp/v2/media/${id}`, { context: 'edit' });
+    return { id: m.id, source_url: m.source_url, alt_text: m.alt_text ?? '', modified_gmt: m.modified_gmt };
+  }
+
+  async updateMediaAlt(id: number, alt: string): Promise<WpMediaItem> {
+    const m = await this.post<WpMediaItem>(`/wp/v2/media/${id}`, { alt_text: alt });
+    return { id: m.id, source_url: m.source_url, alt_text: m.alt_text ?? '', modified_gmt: m.modified_gmt };
+  }
 }

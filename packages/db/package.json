@@ -22,7 +22,8 @@
     "@glitch/core": "workspace:*",
     "@glitch/testing": "workspace:*",
     "@glitch/connectors": "workspace:*",
-    "@glitch/content-engine": "workspace:*"
+    "@glitch/content-engine": "workspace:*",
+    "cheerio": "^1.0.0"
   },
   "devDependencies": {
     "prisma": "^6.4.1",

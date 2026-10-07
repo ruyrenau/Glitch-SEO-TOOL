@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Download, ExternalLink, Search } from 'lucide-react';
+import { ArrowDown, ArrowUp, Columns3, Download, ExternalLink, Search, WrapText } from 'lucide-react';
 import { API_URL, apiGet, fmt, fmtDate } from '@/lib/api';
 import type { CrawlRun } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorBox, Skeleton, inputCls } from './ui';
@@ -152,6 +152,37 @@ function DetailPanel({ crawlId, pageId, extra }: { crawlId: string; pageId: stri
   );
 }
 
+// Per-tab column layout (widths in px + hidden keys), remembered in this browser.
+type Layout = { widths: Record<string, number>; hidden: string[] };
+const LAYOUT_KEY = 'glitch.explorer.layout';
+const readLayouts = (): Record<string, Layout> => {
+  try {
+    return JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? '{}');
+  } catch {
+    return {};
+  }
+};
+const defaultWidth = (c: Column) => (c.key === 'url' || c.key === 'src' ? 320 : c.type === 'number' ? 90 : 180);
+
+function ColumnPicker({ columns, hidden, onToggle, onReset }: { columns: Column[]; hidden: string[]; onToggle: (k: string) => void; onReset: () => void }) {
+  return (
+    <details className="relative">
+      <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 dark:bg-slate-800 dark:border-slate-700">
+        <Columns3 className="w-3.5 h-3.5" aria-hidden /> Columnas ({columns.length - hidden.filter(h => columns.some(c => c.key === h)).length}/{columns.length})
+      </summary>
+      <div className="absolute right-0 z-20 mt-1 w-60 max-h-80 overflow-y-auto p-2 rounded-xl border shadow-lg bg-white border-slate-200 dark:bg-[#151824] dark:border-slate-700 text-xs">
+        {columns.map(c => (
+          <label key={c.key} className="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+            <input type="checkbox" checked={!hidden.includes(c.key)} disabled={c.key === 'url' || c.key === 'src'} onChange={() => onToggle(c.key)} />
+            {c.label}
+          </label>
+        ))}
+        <button className="mt-1 w-full text-left px-1.5 py-1 text-indigo-600 dark:text-indigo-400 hover:underline" onClick={onReset}>Restablecer columnas y anchos</button>
+      </div>
+    </details>
+  );
+}
+
 export function ExplorerView({ siteId, detailExtra }: { siteId: string; detailExtra?: (d: Detail, crawlId: string) => React.ReactNode }) {
   const [runs, setRuns] = useState<CrawlRun[] | null>(null);
   const [crawlId, setCrawlId] = useState('');
@@ -161,6 +192,36 @@ export function ExplorerView({ siteId, detailExtra }: { siteId: string; detailEx
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [q, setQ] = useState('');
+  const [layouts, setLayouts] = useState<Record<string, Layout>>({});
+  const [wrap, setWrap] = useState(false);
+  useEffect(() => setLayouts(readLayouts()), []);
+  const saveLayout = (tab: string, l: Layout) =>
+    setLayouts(all => {
+      const next = { ...all, [tab]: l };
+      try {
+        localStorage.setItem(LAYOUT_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  const layout: Layout = layouts[state.tab] ?? { widths: {}, hidden: [] };
+  const visibleCols = rows ? rows.tab.columns.filter(c => !layout.hidden.includes(c.key)) : [];
+  const widthOf = (c: Column) => layout.widths[c.key] ?? defaultWidth(c);
+  const startResize = (e: React.PointerEvent, c: Column) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const x0 = e.clientX;
+    const w0 = widthOf(c);
+    const tab = state.tab;
+    const move = (ev: PointerEvent) => saveLayout(tab, { ...layout, widths: { ...layout.widths, [c.key]: Math.max(50, Math.round(w0 + ev.clientX - x0)) } });
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      document.body.style.cursor = '';
+    };
+    document.body.style.cursor = 'col-resize';
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
 
   useEffect(() => {
     apiGet<CrawlRun[]>(`/api/v1/sites/${siteId}/crawls`)
@@ -243,6 +304,17 @@ export function ExplorerView({ siteId, detailExtra }: { siteId: string; detailEx
                 <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden />
                 <input className={`${inputCls} pl-7 w-48`} placeholder="Buscar…" value={q} onChange={e => setQ(e.target.value)} />
               </label>
+              {rows && (
+                <ColumnPicker
+                  columns={rows.tab.columns}
+                  hidden={layout.hidden}
+                  onToggle={k => saveLayout(state.tab, { ...layout, hidden: layout.hidden.includes(k) ? layout.hidden.filter(h => h !== k) : [...layout.hidden, k] })}
+                  onReset={() => saveLayout(state.tab, { widths: {}, hidden: [] })}
+                />
+              )}
+              <button title="Mostrar el texto completo en varias líneas" aria-pressed={wrap} onClick={() => setWrap(w => !w)} className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border ${wrap ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-100 hover:bg-slate-200 border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}>
+                <WrapText className="w-3.5 h-3.5" aria-hidden /> Ajustar texto
+              </button>
               <a className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 dark:bg-slate-800 dark:border-slate-700" href={`${API_URL}/api/v1/crawls/${crawlId}/explorer.csv?${qs}`}>
                 <Download className="w-3.5 h-3.5" aria-hidden /> CSV
               </a>
@@ -254,18 +326,31 @@ export function ExplorerView({ siteId, detailExtra }: { siteId: string; detailEx
           ) : !rows.rows.length ? (
             <Empty>Ninguna URL coincide con este filtro.</Empty>
           ) : (
-            <div className="overflow-x-auto max-h-[28rem] overflow-y-auto">
-              <table className="w-full text-left text-xs">
+            <div className="overflow-auto max-h-[32rem] resize-y">
+              <table className="text-left text-xs table-fixed" style={{ width: 40 + visibleCols.reduce((n, c) => n + widthOf(c), 0) }}>
+                <colgroup>
+                  <col style={{ width: 40 }} />
+                  {visibleCols.map(c => <col key={c.key} style={{ width: widthOf(c) }} />)}
+                </colgroup>
                 <caption className="sr-only">{rows.tab.label}</caption>
                 <thead className="sticky top-0 bg-white dark:bg-[#151824] z-10">
                   <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500">
-                    <th scope="col" className="py-2 w-8">#</th>
-                    {rows.tab.columns.map(c => (
-                      <th key={c.key} scope="col" aria-sort={state.sort === c.key ? (state.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                        <button className="inline-flex items-center gap-1 font-semibold hover:text-slate-900 dark:hover:text-white" onClick={() => sortBy(c.key)}>
-                          {c.label}
-                          {state.sort === c.key && (state.dir === 'asc' ? <ArrowUp className="w-3 h-3" aria-hidden /> : <ArrowDown className="w-3 h-3" aria-hidden />)}
+                    <th scope="col" className="py-2">#</th>
+                    {visibleCols.map(c => (
+                      <th key={c.key} scope="col" className="relative pr-3 border-r border-slate-100 dark:border-slate-800" aria-sort={state.sort === c.key ? (state.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                        <button className="flex items-center gap-1 font-semibold hover:text-slate-900 dark:hover:text-white w-full min-w-0 py-2" onClick={() => sortBy(c.key)} title={c.label}>
+                          <span className="truncate">{c.label}</span>
+                          {state.sort === c.key && (state.dir === 'asc' ? <ArrowUp className="w-3 h-3 shrink-0" aria-hidden /> : <ArrowDown className="w-3 h-3 shrink-0" aria-hidden />)}
                         </button>
+                        <span
+                          role="separator"
+                          aria-orientation="vertical"
+                          aria-label={`Ajustar ancho de ${c.label}`}
+                          title="Arrastra para cambiar el ancho · doble clic para restablecer"
+                          onPointerDown={e => startResize(e, c)}
+                          onDoubleClick={() => saveLayout(state.tab, { ...layout, widths: Object.fromEntries(Object.entries(layout.widths).filter(([k]) => k !== c.key)) })}
+                          className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-indigo-500/40 active:bg-indigo-500/60"
+                        />
                       </th>
                     ))}
                   </tr>
@@ -277,8 +362,8 @@ export function ExplorerView({ siteId, detailExtra }: { siteId: string; detailEx
                     return (
                       <tr key={id} onClick={() => setSelected(r.pageId ?? null)} className={`cursor-pointer ${active ? 'bg-indigo-500/10' : 'hover:bg-slate-50 dark:hover:bg-slate-900/60'}`} aria-selected={active}>
                         <td className="py-1.5 text-slate-400 tabular-nums">{(rows.page - 1) * rows.pageSize + i + 1}</td>
-                        {rows.tab.columns.map(c => (
-                          <td key={c.key} className="py-1.5 pr-2 align-top max-w-[22rem]">
+                        {visibleCols.map(c => (
+                          <td key={c.key} className={`py-1.5 pr-3 align-top ${wrap ? 'break-words' : 'truncate'}`} title={wrap || r[c.key] == null ? undefined : String(r[c.key])}>
                             {c.key === 'url' ? <button className="text-left" onClick={() => setSelected(r.pageId ?? null)}><Cell col={c} value={r[c.key]} /></button> : <Cell col={c} value={r[c.key]} />}
                           </td>
                         ))}
