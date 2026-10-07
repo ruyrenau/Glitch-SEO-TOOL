@@ -44,6 +44,10 @@ export interface CrawledPageData {
   error: string | null;
   extracted: ExtractedPage | null;
   inlinks: number;
+  /** Raw HTML of 2xx HTML pages (for "view source" and re-analysis). */
+  html: string | null;
+  /** Selected response headers. */
+  headers: Record<string, string>;
 }
 
 export interface HostVariantCheck {
@@ -259,7 +263,7 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
   const crawlOne = async ({ url, depth }: { url: string; depth: number }) => {
     const u = new URL(url);
     if (respectRobots && !isAllowedByRobots(robots, userAgent, u.pathname + u.search)) {
-      pages.push({ url, finalUrl: url, statusCode: 0, responseTimeMs: 0, mimeType: '', sizeBytes: 0, xRobotsTag: null, redirectChain: [], depth, blockedByRobots: true, error: 'Blocked by robots.txt', extracted: null, inlinks: 0 });
+      pages.push({ url, finalUrl: url, statusCode: 0, responseTimeMs: 0, mimeType: '', sizeBytes: 0, xRobotsTag: null, redirectChain: [], depth, blockedByRobots: true, error: 'Blocked by robots.txt', extracted: null, inlinks: 0, html: null, headers: {} });
       return;
     }
     const res = await fetchWithRedirects(url, fetchOpts);
@@ -293,7 +297,9 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
       blockedByRobots: false,
       error: res.error,
       extracted,
-      inlinks: 0
+      inlinks: 0,
+      html: extracted ? res.body : null,
+      headers: Object.fromEntries(['content-type', 'cache-control', 'content-encoding', 'last-modified', 'etag', 'x-robots-tag', 'link', 'server', 'vary'].map(h => [h, res.headers?.get(h)]).filter((e): e is [string, string] => !!e[1]))
     });
   };
 

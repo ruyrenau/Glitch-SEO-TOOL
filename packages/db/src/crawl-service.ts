@@ -1,3 +1,4 @@
+import zlib from 'zlib';
 import { Prisma, Severity } from '@prisma/client';
 import { crawlSite, auditCrawl, indexabilityOf, CrawlOptions, DetectedIssue } from '@glitch/crawler';
 import { calculatePriorityScore } from '@glitch/core';
@@ -102,10 +103,24 @@ export async function runCrawl(opts: RunCrawlOptions) {
         isIndexable: ix.indexable,
         indexabilityReason: ix.reason,
         wordCount: e?.wordCount ?? 0,
-        depth: p.depth
+        depth: p.depth,
+        titleCount: e?.titleCount ?? 0,
+        metaDescriptionCount: e?.metaDescriptionCount ?? 0,
+        h1All: e?.h1.length ? json(e.h1.slice(0, 20)) : undefined,
+        h2: e?.h2.length ? json(e.h2) : undefined,
+        metaKeywords: e?.metaKeywords?.slice(0, 1000) ?? null,
+        og: e ? json(e.og) : undefined,
+        twitter: e ? json(e.twitter) : undefined,
+        relNext: e?.relNext ?? null,
+        relPrev: e?.relPrev ?? null,
+        images: e?.imageList.length ? json(e.imageList) : undefined,
+        headers: Object.keys(p.headers).length ? json(p.headers) : undefined,
+        htmlGz: p.html && p.html.length <= 2 * 1024 * 1024 ? zlib.gzipSync(p.html) : null
       };
     });
     for (let i = 0; i < rows.length; i += BATCH) await prisma.crawledPage.createMany({ data: rows.slice(i, i + BATCH) });
+    const links = result.pages.flatMap(p => (p.extracted?.links ?? []).map(l => ({ crawlRunId: run.id, sourceUrl: p.finalUrl, targetUrl: l.url, anchor: l.anchor, internal: l.internal, nofollow: l.nofollow })));
+    for (let i = 0; i < links.length; i += BATCH) await prisma.crawledLink.createMany({ data: links.slice(i, i + BATCH) });
 
     const detected = auditCrawl(result, { environment: site.environment, sitemapUrls });
     await syncIssues(site.id, run.id, detected);

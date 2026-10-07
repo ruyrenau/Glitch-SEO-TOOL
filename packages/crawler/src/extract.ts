@@ -20,7 +20,36 @@ export interface ExtractedPage {
   images: number;
   wordCount: number;
   contentHash: string | null;
+  /** Explorer details (Screaming Frog-style tabs). */
+  titleCount: number;
+  h2: string[];
+  metaKeywords: string | null;
+  metaDescriptionCount: number;
+  og: { title: string | null; description: string | null; image: string | null; type: string | null; url: string | null };
+  twitter: { card: string | null; title: string | null; description: string | null; image: string | null };
+  relNext: string | null;
+  relPrev: string | null;
+  imageList: ExtractedImage[];
+  links: ExtractedLink[];
 }
+
+export interface ExtractedImage {
+  src: string;
+  alt: string | null; // null = attribute missing, '' = decorative
+  width: string | null;
+  height: string | null;
+  loading: string | null;
+}
+
+export interface ExtractedLink {
+  url: string;
+  anchor: string;
+  internal: boolean;
+  nofollow: boolean;
+}
+
+export const MAX_LINKS_PER_PAGE = 500;
+export const MAX_IMAGES_PER_PAGE = 200;
 
 /** Strips fragment, lowercases host, drops default ports. Returns null for non-http(s). */
 export function normalizeUrl(href: string, base?: string): string | null {
@@ -69,6 +98,7 @@ export function extractPage(html: string, pageUrl: string): ExtractedPage {
 
   // Links
   const internal = new Set<string>();
+  const links: ExtractedLink[] = [];
   let external = 0;
   let nofollow = 0;
   $('a[href]').each((_, el) => {
@@ -76,13 +106,31 @@ export function extractPage(html: string, pageUrl: string): ExtractedPage {
     if (/^(mailto|tel|javascript):/i.test(href)) return;
     const abs = normalizeUrl(href, base);
     if (!abs) return;
-    if (/\bnofollow\b/i.test($(el).attr('rel') ?? '')) nofollow++;
-    if (new URL(abs).hostname === host) internal.add(abs);
+    const nf = /\bnofollow\b/i.test($(el).attr('rel') ?? '');
+    if (nf) nofollow++;
+    const isInternal = new URL(abs).hostname === host;
+    if (isInternal) internal.add(abs);
     else external++;
+    if (links.length < MAX_LINKS_PER_PAGE) {
+      const anchor = ($(el).text().replace(/\s+/g, ' ').trim() || $(el).find('img[alt]').first().attr('alt') || '').slice(0, 200);
+      links.push({ url: abs, anchor, internal: isInternal, nofollow: nf });
+    }
   });
 
   const imgs = $('img');
   const missingAlt = imgs.filter((_, el) => $(el).attr('alt') === undefined).length;
+  const imageList: ExtractedImage[] = imgs
+    .slice(0, MAX_IMAGES_PER_PAGE)
+    .map((_, el) => {
+      const raw = $(el).attr('src') ?? $(el).attr('data-src') ?? '';
+      return { src: normalizeUrl(raw, base) ?? raw.slice(0, 500), alt: $(el).attr('alt') ?? null, width: $(el).attr('width') ?? null, height: $(el).attr('height') ?? null, loading: $(el).attr('loading') ?? null };
+    })
+    .get();
+  const meta = (sel: string) => $(sel).first().attr('content')?.trim() || null;
+  const linkRel = (rel: string) => {
+    const h = $(`link[rel="${rel}" i]`).first().attr('href');
+    return h ? normalizeUrl(h, base) : null;
+  };
 
   // Main content: drop chrome before counting words / hashing (duplicate detection).
   const $c = cheerio.load(html);
@@ -115,6 +163,16 @@ export function extractPage(html: string, pageUrl: string): ExtractedPage {
     imagesMissingAlt: missingAlt,
     images: imgs.length,
     wordCount: words,
-    contentHash: words ? crypto.createHash('sha256').update(mainText.toLowerCase()).digest('hex').slice(0, 32) : null
+    contentHash: words ? crypto.createHash('sha256').update(mainText.toLowerCase()).digest('hex').slice(0, 32) : null,
+    titleCount: $('head title').length || $('title').length,
+    h2: $('h2').slice(0, 30).map((_, el) => $(el).text().replace(/\s+/g, ' ').trim().slice(0, 300)).get(),
+    metaKeywords: meta('meta[name="keywords" i]'),
+    metaDescriptionCount: $('meta[name="description" i]').length,
+    og: { title: meta('meta[property="og:title"]'), description: meta('meta[property="og:description"]'), image: meta('meta[property="og:image"]'), type: meta('meta[property="og:type"]'), url: meta('meta[property="og:url"]') },
+    twitter: { card: meta('meta[name="twitter:card"]'), title: meta('meta[name="twitter:title"]'), description: meta('meta[name="twitter:description"]'), image: meta('meta[name="twitter:image"]') },
+    relNext: linkRel('next'),
+    relPrev: linkRel('prev'),
+    imageList,
+    links
   };
 }

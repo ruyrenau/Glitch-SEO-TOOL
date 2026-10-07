@@ -9,3 +9,4 @@ export * from './wordpress-service';
 export * from './content-service';
 export * from './auth-service';
 export * from './errors';
+export * from './explorer-service';

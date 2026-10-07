@@ -42,6 +42,10 @@ import {
   dryRunPage,
   pushPageAsDraft,
   rollbackPublication,
+  explorerSummary,
+  explorerRows,
+  explorerPageDetail,
+  explorerCsv,
   importDataset,
   listDatasets,
   deleteDataset,
@@ -367,6 +371,51 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     const b = z.object({ cron: z.string().max(100).nullable(), options: crawlBody.optional() }).strict().parse(req.body);
     if (b.options) validatePatterns(b.options);
     return setSiteSchedule(id, b.cron?.trim() || null, b.options ?? crawlBody.parse({}));
+  });
+
+  // ------------------------------------------------------------------ SEO explorer (Screaming Frog-style)
+  const explorerQuery = z.object({
+    tab: z.string().max(40).default('internal'),
+    filter: z.string().max(40).optional(),
+    q: z.string().max(200).optional(),
+    sort: z.string().max(40).optional(),
+    dir: z.enum(['asc', 'desc']).optional(),
+    page: z.coerce.number().int().min(1).optional(),
+    pageSize: z.coerce.number().int().min(1).max(500).optional()
+  });
+  const requireRun = async (id: string) => {
+    const run = await prisma.crawlRun.findUnique({ where: { id } });
+    if (!run) throw new ApiError(404, 'CRAWL_NOT_FOUND', `Crawl ${id} not found`);
+    return run;
+  };
+
+  app.get('/api/v1/crawls/:id/explorer/summary', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireRun(id);
+    return explorerSummary(id);
+  });
+
+  app.get('/api/v1/crawls/:id/explorer', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireRun(id);
+    return explorerRows(id, explorerQuery.parse(req.query));
+  });
+
+  app.get('/api/v1/crawls/:id/explorer.csv', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    await requireRun(id);
+    const q = explorerQuery.parse(req.query);
+    const csv = await explorerCsv(id, q);
+    return reply
+      .header('content-type', 'text/csv; charset=utf-8')
+      .header('content-disposition', `attachment; filename="${q.tab}-${q.filter ?? 'all'}-${id.slice(0, 8)}.csv"`)
+      .send(csv);
+  });
+
+  app.get('/api/v1/crawls/:id/explorer/pages/:pageId', async req => {
+    const p = z.object({ id: z.string().uuid(), pageId: z.string().uuid() }).parse(req.params);
+    await requireRun(p.id);
+    return explorerPageDetail(p.id, p.pageId);
   });
 
   // ------------------------------------------------------------------ performance (Core Web Vitals)

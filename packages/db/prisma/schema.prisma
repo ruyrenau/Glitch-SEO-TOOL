@@ -208,6 +208,7 @@ model CrawlRun {
   startedAt      DateTime      @default(now())
   completedAt    DateTime?
   pages          CrawledPage[]
+  links          CrawledLink[]
   issues         Issue[]
   alerts         Alert[]
 }
@@ -247,9 +248,37 @@ model CrawledPage {
   indexabilityReason String?
   wordCount          Int       @default(0)
   depth              Int       @default(0)
+  // Explorer (Screaming Frog-style) details
+  titleCount         Int       @default(0)
+  metaDescriptionCount Int     @default(0)
+  h1All              Json?
+  h2                 Json?
+  metaKeywords       String?
+  og                 Json?
+  twitter            Json?
+  relNext            String?
+  relPrev            String?
+  images             Json?     // [{ src, alt, width, height, loading }] (max 200)
+  headers            Json?
+  htmlGz             Bytes?    // gzip of the HTML (max 2 MB raw)
   createdAt          DateTime  @default(now())
 
   @@index([crawlRunId, statusCode])
+}
+
+/// One <a href> found on a crawled page (max 500 per page).
+model CrawledLink {
+  id         String   @id @default(uuid())
+  crawlRunId String
+  crawlRun   CrawlRun @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
+  sourceUrl  String
+  targetUrl  String
+  anchor     String
+  internal   Boolean
+  nofollow   Boolean  @default(false)
+
+  @@index([crawlRunId, targetUrl])
+  @@index([crawlRunId, sourceUrl])
 }
 
 model Issue {
