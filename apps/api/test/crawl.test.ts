@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildAuthedApp } from './helpers';
+import { buildAuthedApp, waitForJob } from './helpers';
 import { prisma } from '@glitch/db';
 import { startFixtureSite, FixtureSite } from '@glitch/testing';
 
@@ -8,14 +8,11 @@ let app: FastifyInstance;
 let site: FixtureSite;
 let siteId: string;
 
-const waitForCrawl = async (runId: string) => {
-  for (let i = 0; i < 100; i++) {
-    const runs = (await app.inject(`/api/v1/sites/${siteId}/crawls`)).json() as Array<{ id: string; status: string }>;
-    const run = runs.find(r => r.id === runId);
-    if (run && run.status !== 'running') return run;
-    await new Promise(r => setTimeout(r, 100));
-  }
-  throw new Error('crawl did not finish');
+/** Waits for the crawl job and returns its CrawlRun. */
+const waitForCrawl = async (jobId: string) => {
+  const job = await waitForJob(app, jobId);
+  const runs = (await app.inject(`/api/v1/sites/${siteId}/crawls`)).json() as Array<{ id: string; status: string }>;
+  return { job, run: runs.find(r => r.id === (job.result as { crawlRunId?: string } | null)?.crawlRunId) };
 };
 
 beforeAll(async () => {
@@ -43,14 +40,16 @@ describe('crawl API (integration)', () => {
     expect(bad.json().error.code).toBe('INVALID_PATTERN');
   });
 
-  it('starts a background crawl and refuses a second concurrent one', async () => {
+  it('queues a crawl for the worker and refuses a second one for the same site', async () => {
     const r = await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/crawls`, payload: { rps: 20, concurrency: 4, maxDepth: 10 } });
     expect(r.statusCode).toBe(202);
-    runId = r.json().id;
     const again = await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/crawls`, payload: {} });
     expect(again.statusCode).toBe(409);
-    const run = await waitForCrawl(runId);
-    expect(run.status).toBe('completed');
+    expect(again.json().error.details.jobId).toBe(r.json().jobId);
+    const { job, run } = await waitForCrawl(r.json().jobId);
+    expect(job.status).toBe('COMPLETED');
+    expect(run!.status).toBe('completed');
+    runId = run!.id;
   });
 
   it('stores pages with filters and pagination', async () => {
@@ -73,7 +72,7 @@ describe('crawl API (integration)', () => {
     expect(ignored.json().status).toBe('ignored');
 
     const r = await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/crawls`, payload: { rps: 20, concurrency: 4, maxDepth: 10 } });
-    await waitForCrawl(r.json().id);
+    await waitForCrawl(r.json().jobId);
     const after = (await app.inject(`/api/v1/sites/${siteId}/issues`)).json() as Array<{ code: string; status: string }>;
     expect(after.find(i => i.code === 'CONTENT_THIN')?.status).toBe('ignored');
     expect(after.filter(i => i.code === 'HTTP_5XX')).toHaveLength(1); // upserted, not duplicated
@@ -81,7 +80,7 @@ describe('crawl API (integration)', () => {
 
   it('resolves issues that disappear when the crawl scope changes', async () => {
     const r = await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/crawls`, payload: { rps: 20, maxDepth: 0, seedFromSitemap: false } });
-    await waitForCrawl(r.json().id);
+    await waitForCrawl(r.json().jobId);
     const issues = (await app.inject(`/api/v1/sites/${siteId}/issues?status=resolved`)).json() as Array<{ code: string }>;
     expect(issues.map(i => i.code)).toContain('HTTP_5XX');
   });

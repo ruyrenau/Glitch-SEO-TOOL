@@ -9,6 +9,7 @@ import { AuthProvider, useAuth } from '@/lib/auth';
 import type { User, Permission } from '@/lib/types';
 import { LoginView, ForcedPasswordView } from '@/components/AuthViews';
 import { UsersView, AccountView } from '@/components/UsersView';
+import { JobsView } from '@/components/JobsView';
 import type { Site } from '@/lib/types';
 import { ErrorBox, Roadmap, Skeleton } from '@/components/ui';
 import { OverviewView } from '@/components/OverviewView';
@@ -37,7 +38,7 @@ const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ classNa
   { id: 'wordpress', label: 'WordPress', icon: Send, ready: true },
   { id: 'gsc', label: 'Search Console', icon: Search, ready: false },
   { id: 'geo', label: 'GEO / motores de IA', icon: Sparkles, ready: false },
-  { id: 'automations', label: 'Jobs y automatizaciones', icon: Cpu, ready: false },
+  { id: 'automations', label: 'Jobs y automatizaciones', icon: Cpu, ready: true },
   { id: 'audit', label: 'Audit log', icon: History, ready: true },
   { id: 'users', label: 'Usuarios', icon: Users, ready: true, perm: 'users:manage' }
 ];
@@ -46,7 +47,6 @@ const ROADMAP: Partial<Record<NavId, { status: string; items: string[] }>> = {
   vitals: { status: 'Sin integración con PageSpeed Insights ni CrUX.', items: ['PSI API con clave opcional', 'Separar datos de campo (CrUX) y laboratorio (Lighthouse)'] },
   gsc: { status: 'Sin OAuth. No se muestran datos de ejemplo para no confundirlos con datos reales.', items: ['OAuth 2.0', 'Search Analytics por query, página, país y dispositivo', 'Cruce con logs: URLs con impresiones que Googlebot casi no rastrea'] },
   geo: { status: 'Sin proveedores configurados.', items: ['Prompts objetivo y repeticiones', 'Menciones, citas y competidores por respuesta', 'Mostrar volatilidad, no rankings'] },
-  automations: { status: 'La importación corre dentro de la petición HTTP. Aún no hay cola.', items: ['BullMQ + Redis para importaciones grandes', 'Progreso, cancelación y reintentos', 'Retención programada'] }
 };
 
 function Dashboard() {
@@ -124,7 +124,7 @@ function Dashboard() {
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center font-black text-sm" aria-hidden>G</div>
             <div>
               <div className="font-bold text-sm">Glitch SEO Ops</div>
-              <div className="text-[10px] text-slate-500 font-mono">v0.7 · local</div>
+              <div className="text-[10px] text-slate-500 font-mono">v0.8 · local</div>
             </div>
           </div>
 
@@ -226,6 +226,7 @@ function Dashboard() {
                 {nav === 'schema' && <SchemaView />}
                 {nav === 'programmatic' && <ContentView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'wordpress' && <WordPressView key={siteId} siteId={siteId} go={go} />}
+                {nav === 'automations' && <JobsView sites={sites} />}
                 {nav === 'audit' && <AuditView />}
                 {nav === 'users' && can('users:manage') && <UsersView />}
                 {nav === 'account' && <AccountView />}

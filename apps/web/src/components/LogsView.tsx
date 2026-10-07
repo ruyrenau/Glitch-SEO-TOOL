@@ -2,8 +2,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, Trash2, Upload, Map as MapIcon } from 'lucide-react';
-import { API_URL, ApiRequestError, apiGet, apiSend, fmt, fmtDate, pct } from '@/lib/api';
-import type { LogImport, LogReport } from '@/lib/types';
+import { API_URL, ApiRequestError, apiGet, apiSend, fmt, fmtDate, pct, waitForJob } from '@/lib/api';
+import type { JobRow, LogImport, LogReport } from '@/lib/types';
 import { BarList, Badge, Button, Card, Columns, Empty, ErrorBox, Kpi, Skeleton, UrlTable, inputCls } from './ui';
 
 const toItems = (r: Record<string, number>) =>
@@ -51,14 +51,26 @@ export function LogsView({ siteId, onChanged }: { siteId: string; onChanged: () 
     setStatus(`Subiendo y procesando ${file.name} (${(file.size / 1024 ** 2).toFixed(1)} MB) por streams…`);
     const t0 = performance.now();
     try {
-      const res = await apiSend<{ importId: string; analysis: { validLines: number; invalidLines: number } }>(
+      const res = await apiSend<{ jobId: string }>(
         'POST',
         `/api/v1/sites/${siteId}/log-imports?fileName=${encodeURIComponent(file.name)}${replace ? '&replace=true' : ''}`,
         file,
         'application/octet-stream'
       );
-      setStatus(`✓ ${fmt(res.analysis.validLines)} líneas válidas, ${fmt(res.analysis.invalidLines)} inválidas, en ${((performance.now() - t0) / 1000).toFixed(1)} s.`);
-      setImportId(res.importId);
+      // The worker parses the file; follow its progress.
+      const job = await waitForJob<JobRow>(res.jobId, j =>
+        setStatus(
+          j.status === 'QUEUED'
+            ? 'Archivo recibido. En cola, esperando al worker…'
+            : j.status === 'RETRYING'
+              ? `Reintentando (intento ${j.attempts + 1} de ${j.maxAttempts})…`
+              : `Procesando por streams… ${fmt(j.progressDetail?.lines ?? 0)} líneas leídas`
+        )
+      );
+      if (job.status !== 'COMPLETED') throw new Error(job.status === 'CANCELLED' ? 'Importación cancelada.' : `La importación falló: ${job.error ?? 'error desconocido'}`);
+      const r = job.result as { importId: string; validLines: number; invalidLines: number };
+      setStatus(`✓ ${fmt(r.validLines)} líneas válidas, ${fmt(r.invalidLines)} inválidas, en ${((performance.now() - t0) / 1000).toFixed(1)} s.`);
+      setImportId(r.importId);
       onChanged();
       await load();
     } catch (err) {

@@ -67,7 +67,7 @@ const SECTIONS: Section[] = [
     why: 'Search Console no muestra cada petición de Googlebot; los logs sí. Así ves URLs importantes que nunca se rastrean, errores que solo ven los bots y rastreo desperdiciado en parámetros o redirecciones.',
     steps: [
       'Pide a tu hosting o equipo de sistemas el access log (.log, .txt o .gz). Sirve el formato "combined" de Nginx o Apache, con o sin tiempo de respuesta.',
-      'Pulsa "Subir log". El archivo se procesa por streams: puede pesar cientos de MB.',
+      'Pulsa "Subir log". El worker lo procesa por streams en segundo plano: puede pesar cientos de MB y verás el avance en líneas.',
       'Carga el sitemap: pega su URL y pulsa "Descargar sitemap", o sube el archivo sitemap.xml.',
       'Revisa el reporte de arriba hacia abajo y exporta a CSV lo que vayas a trabajar.'
     ],
@@ -95,7 +95,7 @@ const SECTIONS: Section[] = [
       'Ajusta los límites: máximo de URLs, profundidad, concurrencia y solicitudes por segundo. Para sitios en producción, empieza con 1 o 2 solicitudes por segundo.',
       'Deja marcado "Respetar robots.txt" y "Usar URLs del sitemap como semillas".',
       'Si quieres excluir secciones, escribe una expresión regular por línea (por ejemplo ^/tag/).',
-      'Pulsa "Iniciar crawl" y sigue el progreso. Puedes cancelarlo; lo rastreado se guarda.',
+      'Pulsa "Iniciar crawl". Lo ejecuta el worker: puedes cerrar la página y volver. Puedes cancelarlo; lo rastreado se guarda.',
       'En el historial, pulsa "Ver detalle" para ver los cambios respecto al crawl anterior y la tabla de páginas.'
     ],
     read: [
@@ -107,7 +107,7 @@ const SECTIONS: Section[] = [
       'Logout, carrito, checkout, wp-admin y búsquedas internas nunca se solicitan.',
       'Solo se rastrea el mismo dominio. Las direcciones privadas están bloqueadas por seguridad.'
     ],
-    limits: ['El crawl corre dentro de la API: si la API se reinicia, el crawl en curso queda como fallido.', 'No ve contenido que se genera con JavaScript en el navegador.']
+    limits: ['No ve contenido que se genera con JavaScript en el navegador.', 'Un solo crawl a la vez por sitio.']
   },
   {
     id: 'issues',
@@ -243,11 +243,37 @@ const SECTIONS: Section[] = [
     tips: ['Cada evento muestra el usuario que hizo la acción.']
   },
   {
-    id: 'pending',
+    id: 'automations',
+    nav: 'automations',
     icon: Cpu,
+    title: 'Jobs y automatizaciones',
+    status: 'ready',
+    what: 'Las importaciones de logs, los crawls y la limpieza de datos se ejecutan en un proceso aparte (el worker), no en la API. Aquí ves el estado de la cola (Redis) y del worker, y el historial de cada trabajo con su progreso, intentos, resultado y registro.',
+    why: 'Los trabajos largos no se pierden si cierras el navegador o se reinicia la API, los errores pasajeros se reintentan solos, y puedes programar crawls para detectar regresiones sin acordarte.',
+    steps: [
+      'Revisa arriba que Redis diga "Conectado" y el worker "Activo". Si el worker está detenido, los trabajos esperan en cola hasta que arranque.',
+      'Abre un trabajo para ver su registro y el error, si lo hubo.',
+      'Cancela un trabajo en cola o corriendo; reintenta uno fallido o cancelado.',
+      'Para programar crawls: Crawl y auditoría → Crawl programado → elige una frecuencia y guarda.'
+    ],
+    read: [
+      ['En cola', 'Esperando al worker.'],
+      ['Reintentando', 'Falló por un error pasajero; se volverá a intentar con una espera creciente.'],
+      ['Fallido', 'Agotó sus intentos o tuvo un error que no cambia al reintentar (por ejemplo, un archivo duplicado).'],
+      ['Programado / manual', 'Quién lo lanzó: una programación, una persona o el sistema (limpieza diaria).']
+    ],
+    tips: [
+      'Para arrancar todo junto (Redis, API, worker y dashboard) usa: pnpm start:local.',
+      'La limpieza diaria (03:30) borra logs de más de 90 días, sesiones expiradas y archivos temporales; cada borrado queda en el audit log.'
+    ],
+    limits: ['Los crawls programados se ejecutan como máximo una vez por hora por sitio.', 'Una importación de log fallida se reintenta subiendo el archivo otra vez.']
+  },
+  {
+    id: 'pending',
+    icon: Gauge,
     title: 'Secciones marcadas "PRONTO"',
     status: 'pending',
-    what: 'Core Web Vitals, Search Console, GEO / motores de IA y Jobs y automatizaciones todavía no están construidas. Al abrirlas verás qué falta; no muestran números inventados.',
+    what: 'Core Web Vitals, Search Console y GEO / motores de IA todavía no están construidas. Al abrirlas verás qué falta; no muestran números inventados.',
     why: 'Están en el roadmap del proyecto.'
   }
 ];
@@ -258,7 +284,7 @@ const STATUS_BADGE = {
   pending: <Badge tone="warn">Pendiente</Badge>
 };
 
-const PENDING_ICONS = [Gauge, Search, Sparkles, Cpu];
+const PENDING_ICONS = [Gauge, Search, Sparkles];
 
 export function ManualView({ go }: { go: (nav: string) => void }) {
   const jump = (id: string) => document.getElementById(`manual-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -389,7 +415,8 @@ export function ManualView({ go }: { go: (nav: string) => void }) {
             ['¿Dónde consigo el log del servidor?', 'En el panel de tu hosting (cPanel, Plesk) suele estar en "Logs" o "Raw Access". En un VPS, en /var/log/nginx/access.log o /var/log/apache2/access.log. Pide al menos una o dos semanas.'],
             ['¿Puedo rastrear cualquier sitio?', 'Sí, sitios públicos. Respeta robots.txt y no supera las solicitudes por segundo que elijas. Rastrea sitios propios o de clientes con permiso.'],
             ['¿Se publica algo en WordPress automáticamente?', 'No. Solo se crean o actualizan borradores, y solo de páginas que una persona aprobó.'],
-            ['Dice "No se pudo contactar la API"', 'La API no está corriendo. Ábrela en una terminal con "node apps/api/dist/index.js" desde la carpeta del proyecto.'],
+            ['Dice "No se pudo contactar la API"', 'La API no está corriendo. Desde la carpeta del proyecto ejecuta "pnpm start:local": levanta Redis, la API, el worker y el dashboard juntos.'],
+            ['Un crawl o una importación se queda "En cola"', 'El worker no está corriendo. Revisa Jobs y automatizaciones; con "pnpm start:local" arranca solo.'],
             ['Olvidé mi contraseña', 'Pide a un Owner o Admin que la restablezca desde Usuarios. Si eres el único Owner, desde la terminal: GLITCH_USER_PASSWORD=... pnpm cli users:reset-password --username tu-usuario.'],
             ['¿Qué significan los datos marcados DEMO?', 'Son datos sintéticos para probar la herramienta. Pasan por los mismos procesos que los datos reales.']
           ].map(([q, a]) => (

@@ -3,7 +3,7 @@ import path from 'path';
 import zlib from 'zlib';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildAuthedApp } from './helpers';
+import { buildAuthedApp, waitForJob } from './helpers';
 import { prisma } from '@glitch/db';
 
 const fixture = fs.readFileSync(path.resolve(__dirname, '../../../fixtures/sample_nginx.log'));
@@ -54,8 +54,10 @@ describe('API v1 (integration, real SQLite)', () => {
       });
 
     const first = await up('access.log.gz');
-    expect(first.statusCode).toBe(201);
-    expect(first.json().analysis.validLines).toBe(5);
+    expect(first.statusCode).toBe(202); // queued; the worker parses it
+    const job = await waitForJob(app, first.json().jobId);
+    expect(job.status).toBe('COMPLETED');
+    expect(job.result).toMatchObject({ validLines: 5 });
 
     const dup = await up('access-copy.log.gz');
     expect(dup.statusCode).toBe(409);

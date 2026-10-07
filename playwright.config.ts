@@ -38,10 +38,12 @@ export default defineConfig({
     trace: 'retain-on-failure'
   },
   webServer: [
+    // Redis for the job queue (already-running instances, e.g. a CI service, are reused).
+    { command: 'node scripts/redis-local.mjs', port: 6379, reuseExistingServer: true, timeout: 120_000 },
     {
       command: 'node apps/api/dist/index.js',
       url: 'http://localhost:4000/health/ready',
-      env: { DATABASE_URL: e2eDb, DEMO_MODE: 'false', PORT: '4000', CRAWL_ALLOW_PRIVATE_HOSTS: '127.0.0.1' },
+      env: { DATABASE_URL: e2eDb, DEMO_MODE: 'false', PORT: '4000', CRAWL_ALLOW_PRIVATE_HOSTS: '127.0.0.1', EMBEDDED_WORKER: 'true', QUEUE_PREFIX: `glitch-e2e-${Date.now()}` },
       reuseExistingServer: false,
       timeout: 60_000
     },

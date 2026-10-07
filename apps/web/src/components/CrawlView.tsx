@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Play, Square } from 'lucide-react';
+import { CalendarClock, Play, Square } from 'lucide-react';
 import { apiGet, apiSend, fmt, fmtDate } from '@/lib/api';
-import type { CrawlRun, CrawledPage } from '@/lib/types';
+import type { CrawlRun, CrawledPage, JobRow } from '@/lib/types';
+import { ACTIVE_JOB } from '@/lib/types';
+import { useAuth } from '@/lib/auth';
 import { Badge, Button, Card, Empty, ErrorBox, Skeleton, inputCls } from './ui';
 import { DiffPanel } from './DiffPanel';
 
@@ -15,14 +17,21 @@ export function CrawlView({ siteId, onFinished }: { siteId: string; onFinished: 
   const [error, setError] = useState<unknown>(null);
   const [form, setForm] = useState({ maxUrls: 500, maxDepth: 5, concurrency: 2, rps: 2, respectRobots: true, seedFromSitemap: true, exclude: '' });
   const [selected, setSelected] = useState<string>('');
+  const [job, setJob] = useState<JobRow | null>(null);
+  const { can } = useAuth();
 
   const load = useCallback(async () => {
     try {
-      const list = await apiGet<CrawlRun[]>(`/api/v1/sites/${siteId}/crawls`);
-      setRuns(prev => {
-        if (prev?.some(r => r.status === 'running') && !list.some(r => r.status === 'running')) onFinished();
-        return list;
+      const [list, jobs] = await Promise.all([
+        apiGet<CrawlRun[]>(`/api/v1/sites/${siteId}/crawls`),
+        apiGet<JobRow[]>(`/api/v1/jobs?siteId=${siteId}&type=crawl&take=5`)
+      ]);
+      const active = jobs.find(j => ACTIVE_JOB.includes(j.status)) ?? null;
+      setJob(prev => {
+        if (prev && !active) onFinished();
+        return active;
       });
+      setRuns(list);
       setSelected(cur => cur || list.find(r => r.status !== 'running')?.id || '');
     } catch (err) {
       setError(err);
@@ -33,12 +42,12 @@ export function CrawlView({ siteId, onFinished }: { siteId: string; onFinished: 
     load();
   }, [load]);
 
-  const running = runs?.find(r => r.status === 'running');
+  // Poll while a crawl job is queued or running in the worker.
   useEffect(() => {
-    if (!running) return;
+    if (!job) return;
     const t = setInterval(load, 1000);
     return () => clearInterval(t);
-  }, [running, load]);
+  }, [job, load]);
 
   const start = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,9 +61,9 @@ export function CrawlView({ siteId, onFinished }: { siteId: string; onFinished: 
       setError(err);
     }
   };
-  const cancel = async (id: string) => {
+  const cancel = async (jobId: string) => {
     try {
-      await apiSend('POST', `/api/v1/crawls/${id}/cancel`);
+      await apiSend('POST', `/api/v1/jobs/${jobId}/cancel`);
       await load();
     } catch (err) {
       setError(err);
@@ -87,22 +96,35 @@ export function CrawlView({ siteId, onFinished }: { siteId: string; onFinished: 
             <textarea rows={2} className={`${inputCls} font-mono`} placeholder="^/tag/" value={form.exclude} onChange={e => setForm({ ...form, exclude: e.target.value })} />
           </label>
           <div className="flex gap-2 items-center">
-            <Button type="submit" disabled={!!running}><Play className="w-3.5 h-3.5" aria-hidden /> Iniciar crawl</Button>
-            <span className="text-[11px] text-slate-500">Se ejecuta en segundo plano dentro de la API. User agent identificable, sin JavaScript.</span>
+            <Button type="submit" disabled={!!job || !can('seo:operate')}><Play className="w-3.5 h-3.5" aria-hidden /> Iniciar crawl</Button>
+            <span className="text-[11px] text-slate-500">Lo ejecuta el worker en segundo plano: puedes cerrar esta página. User agent identificable, sin JavaScript.</span>
           </div>
           <ErrorBox error={error} />
         </form>
       </Card>
 
-      {running && (
-        <Card title="Crawl en curso" actions={<Button variant="danger" onClick={() => cancel(running.id)}><Square className="w-3.5 h-3.5" aria-hidden /> Cancelar</Button>}>
+      {job && (
+        <Card
+          title={job.status === 'QUEUED' ? 'Crawl en cola' : job.status === 'RETRYING' ? 'Crawl reintentando' : 'Crawl en curso'}
+          actions={can('seo:operate') && <Button variant="danger" disabled={job.cancelRequested} onClick={() => cancel(job.id)}><Square className="w-3.5 h-3.5" aria-hidden /> {job.cancelRequested ? 'Cancelando…' : 'Cancelar'}</Button>}
+        >
           <div role="status" aria-live="polite" className="text-xs space-y-2">
-            <div>{fmt(running.progress?.crawled ?? 0)} páginas rastreadas · {fmt(running.progress?.queued ?? 0)} en cola</div>
-            <div className="font-mono text-[11px] text-slate-500 truncate">{running.progress?.current}</div>
-            <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden" aria-hidden><div className="h-full w-1/3 bg-indigo-500 animate-pulse" /></div>
+            {job.status === 'QUEUED' ? (
+              <div>Esperando a que el worker lo tome. Si no avanza, revisa en "Jobs y automatizaciones" que el worker esté activo.</div>
+            ) : (
+              <>
+                <div>{fmt(job.progressDetail?.crawled ?? 0)} páginas rastreadas · {fmt(job.progressDetail?.queued ?? 0)} en cola · intento {job.attempts} de {job.maxAttempts}</div>
+                <div className="font-mono text-[11px] text-slate-500 truncate">{job.progressDetail?.current}</div>
+              </>
+            )}
+            <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={job.progress}>
+              <div className="h-full bg-indigo-500 transition-all" style={{ width: `${Math.max(job.status === 'QUEUED' ? 0 : 3, job.progress)}%` }} />
+            </div>
           </div>
         </Card>
       )}
+
+      <ScheduleCard siteId={siteId} editable={can('seo:operate')} />
 
       <Card title="Historial de crawls">
         {!runs ? (
@@ -230,6 +252,70 @@ function PagesTable({ runId }: { runId: string }) {
         <span>Página {page} de {pages}</span>
         <Button variant="secondary" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>Siguiente</Button>
       </nav>
+    </Card>
+  );
+}
+
+const PRESETS: Array<[string, string]> = [
+  ['', 'Desactivado'],
+  ['0 3 * * *', 'Diario a las 03:00'],
+  ['0 3 * * 1', 'Semanal: lunes 03:00'],
+  ['0 3 1 * *', 'Mensual: día 1, 03:00']
+];
+
+function ScheduleCard({ siteId, editable }: { siteId: string; editable: boolean }) {
+  const [sched, setSched] = useState<{ cron: string | null; timezone: string; nextRuns: string[] } | null>(null);
+  const [cron, setCron] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    apiGet<{ cron: string | null; timezone: string; nextRuns: string[] }>(`/api/v1/sites/${siteId}/schedule`)
+      .then(s => {
+        setSched(s);
+        setCron(s.cron ?? '');
+      })
+      .catch(setError);
+  }, [siteId]);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSaved(false);
+    try {
+      const s = await apiSend<{ cron: string | null; timezone: string; nextRuns: string[] }>('PUT', `/api/v1/sites/${siteId}/schedule`, { cron: cron.trim() || null });
+      setSched(s);
+      setSaved(true);
+    } catch (err) {
+      setError(err);
+    }
+  };
+
+  return (
+    <Card title={<span className="flex items-center gap-2"><CalendarClock className="w-4 h-4" aria-hidden /> Crawl programado</span>}>
+      <form onSubmit={save} className="flex flex-col md:flex-row gap-2 md:items-end text-xs">
+        <label className="font-semibold space-y-1">
+          <span>Frecuencia</span>
+          <select aria-label="Frecuencia predefinida" className={inputCls} disabled={!editable} value={PRESETS.some(([v]) => v === cron) ? cron : 'custom'} onChange={e => e.target.value !== 'custom' && setCron(e.target.value)}>
+            {PRESETS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            <option value="custom">Personalizada (cron)</option>
+          </select>
+        </label>
+        <label className="font-semibold space-y-1 flex-1">
+          <span>Expresión cron (minuto hora día mes día-semana), zona {sched?.timezone ?? 'UTC'}</span>
+          <input className={`${inputCls} font-mono`} disabled={!editable} placeholder="0 3 * * 1" value={cron} onChange={e => setCron(e.target.value)} />
+        </label>
+        {editable && <Button type="submit">Guardar</Button>}
+      </form>
+      <div className="mt-3 text-xs space-y-1" aria-live="polite">
+        <ErrorBox error={error} />
+        {saved && <p className="text-emerald-700 dark:text-emerald-400">✓ Programación guardada.</p>}
+        {sched?.cron ? (
+          <p className="text-slate-600 dark:text-slate-400">Próximas ejecuciones: {sched.nextRuns.map(d => fmtDate(d)).join(' · ')}. Usa las opciones por defecto (500 URLs, 2 solicitudes/segundo); cada crawl genera alertas si algo cambió.</p>
+        ) : (
+          <p className="text-slate-500">Sin programación. Un crawl semanal detecta regresiones después de cada deploy sin tener que acordarte.</p>
+        )}
+      </div>
     </Card>
   );
 }

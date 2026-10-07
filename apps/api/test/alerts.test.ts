@@ -2,7 +2,7 @@ import http from 'http';
 import type { AddressInfo } from 'net';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildAuthedApp } from './helpers';
+import { buildAuthedApp, waitForJob } from './helpers';
 import { prisma } from '@glitch/db';
 import { startFixtureSite, FixtureSite } from '@glitch/testing';
 
@@ -14,13 +14,8 @@ const received: unknown[] = [];
 
 const crawl = async () => {
   const r = await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/crawls`, payload: { rps: 20, concurrency: 4, maxDepth: 10 } });
-  const id = r.json().id as string;
-  for (let i = 0; i < 100; i++) {
-    const runs = (await app.inject(`/api/v1/sites/${siteId}/crawls`)).json() as Array<{ id: string; status: string }>;
-    if (runs.find(x => x.id === id)?.status !== 'running') return id;
-    await new Promise(res => setTimeout(res, 100));
-  }
-  throw new Error('crawl did not finish');
+  const job = await waitForJob(app, r.json().jobId);
+  return (job.result as { crawlRunId: string }).crawlRunId;
 };
 
 beforeAll(async () => {

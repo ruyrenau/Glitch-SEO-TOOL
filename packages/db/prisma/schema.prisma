@@ -127,6 +127,9 @@ model Site {
   alerts             Alert[]
   generatedPages     GeneratedPage[]
   datasets           Dataset[]
+  jobs               Job[]
+  crawlSchedule      String?   // cron expression in the site's timezone, null = off
+  crawlScheduleOptions Json?
   crawls             CrawlRun[]
   issues             Issue[]
   wpConnection       WordPressConnection?
@@ -431,17 +434,35 @@ model GeoObservation {
   observedAt     DateTime  @default(now())
 }
 
+/// Durable record of every background job. BullMQ (Redis) runs it; this table keeps the history.
 model Job {
-  id          String     @id @default(uuid())
-  type        String
-  status      JobStatus  @default(QUEUED)
-  progress    Int        @default(0)
-  payload     Json?
-  result      Json?
-  error       String?
-  startedAt   DateTime?
-  completedAt DateTime?
-  createdAt   DateTime   @default(now())
+  id              String     @id @default(uuid())
+  type            String     // log-import, crawl, retention
+  queue           String
+  status          JobStatus  @default(QUEUED)
+  siteId          String?
+  site            Site?      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  workspaceId     String?
+  createdById     String?
+  trigger         String     @default("manual") // manual, schedule, system
+  idempotencyKey  String?    @unique
+  progress        Int        @default(0) // 0-100 when known
+  progressDetail  Json?
+  payload         Json?
+  result          Json?
+  error           String?
+  logs            Json?      // last lines: [{ at, level, msg }]
+  attempts        Int        @default(0)
+  maxAttempts     Int        @default(1)
+  cancelRequested Boolean    @default(false)
+  retryOfId       String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([siteId, createdAt])
+  @@index([status])
 }
 
 model AuditEvent {

@@ -18,13 +18,11 @@ import {
   setSiteArchived,
   getSiteOverview,
   listLogImports,
-  importLogFile,
   deleteLogImport,
   getLogReport,
   getBotUrlRows,
   replaceSitemapUrls,
   listAuditEvents,
-  runCrawl,
   listCrawlRuns,
   listCrawledPages,
   listIssues,
@@ -61,6 +59,7 @@ import { validateJsonLd } from '@glitch/schema-engine';
 import { renderTemplate, computeJaccardSimilarity, evaluateQualityGate } from '@glitch/content-engine';
 import { GoogleSearchConsoleClient } from '@glitch/connectors';
 import { registerAuth } from './auth';
+import { enqueue, cancelJob, retryJob, listJobs, queueHealth, setSiteSchedule, getSiteSchedule, closeProducer, uploadDir } from '@glitch/jobs';
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public details: Record<string, unknown> = {}) {
@@ -163,11 +162,14 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   app.get('/health/ready', async (_req, reply) => {
     try {
       await prisma.$queryRaw`SELECT 1`;
-      return { status: 'ready', db: 'ok' };
     } catch (e) {
       return reply.status(503).send({ status: 'not_ready', db: 'error', message: (e as Error).message });
     }
+    // The API can serve reads without Redis; queue state is reported, not required.
+    const q = await queueHealth();
+    return { status: 'ready', db: 'ok', queue: q.redis, worker: q.worker ? 'ok' : 'none', workerSeenAt: q.worker?.at ?? null };
   });
+  app.addHook('onClose', async () => closeProducer());
 
   // ------------------------------------------------------------------ sites
   app.get('/api/v1/sites', async req => jsonSafe(await listSites(req.auth!.workspaceId)));
@@ -205,33 +207,41 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
 
   /**
    * Upload: raw body (application/octet-stream), original name in ?fileName=.
-   * The stream is written to a temp file with a byte cap, then parsed by streaming.
+   * The file is streamed to the upload directory (size-capped, checksummed) and a
+   * background job parses it. Responds 202 with the job id.
    */
   app.post('/api/v1/sites/:id/log-imports', async (req, reply) => {
     const { id } = idParam.parse(req.params);
     const q = z.object({ fileName: z.string().min(1).max(200), replace: z.enum(['true', 'false']).optional() }).parse(req.query);
-    await requireSite(id);
+    const site = await requireSite(id);
     const baseName = path.basename(q.fileName);
     if (!ALLOWED_LOG_EXT.test(baseName)) throw new ApiError(415, 'UNSUPPORTED_FILE', 'Only .log, .txt and .gz files are accepted');
     if (!(req.body instanceof Readable)) throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Send the file as application/octet-stream');
 
-    await fs.promises.mkdir(UPLOAD_DIR, { recursive: true });
-    const tmp = path.join(UPLOAD_DIR, `${crypto.randomUUID()}.upload`); // never trust the client name for paths
+    const dir = uploadDir();
+    await fs.promises.mkdir(dir, { recursive: true });
+    const stored = path.join(dir, `${crypto.randomUUID()}.upload`); // never trust the client name for paths
     let written = 0;
+    const hash = crypto.createHash('sha256');
     const limiter = new Transform({
       transform(chunk: Buffer, _enc, cb) {
         written += chunk.length;
+        hash.update(chunk);
         if (written > MAX_UPLOAD_BYTES) cb(new ApiError(413, 'FILE_TOO_LARGE', `File exceeds ${MAX_UPLOAD_BYTES} bytes`));
         else cb(null, chunk);
       }
     });
     try {
-      await pipeline(req.body, limiter, fs.createWriteStream(tmp));
+      await pipeline(req.body, limiter, fs.createWriteStream(stored));
       if (written === 0) throw new ApiError(400, 'EMPTY_FILE', 'Uploaded file is empty');
-      const result = await importLogFile({ siteId: id, filePath: tmp, fileName: baseName, replaceExisting: q.replace === 'true' });
-      return reply.status(201).send(jsonSafe(result));
-    } finally {
-      await fs.promises.rm(tmp, { force: true });
+      // Same checksum the parser computes: reject duplicates now, not minutes later in the worker.
+      const existing = await prisma.logImport.findUnique({ where: { siteId_checksum: { siteId: id, checksum: hash.digest('hex') } } });
+      if (existing && q.replace !== 'true') throw new DuplicateImportError(existing.id);
+      const job = await enqueue('log-import', { siteId: id, filePath: stored, fileName: baseName, replaceExisting: q.replace === 'true', fileSize: written }, { siteId: id, workspaceId: site.workspaceId });
+      return reply.status(202).send({ jobId: job.id, status: job.status });
+    } catch (e) {
+      await fs.promises.rm(stored, { force: true });
+      throw e;
     }
   });
 
@@ -288,13 +298,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     return { urls: count, fetched: res.fetched, errors: res.errors };
   });
 
-  // ------------------------------------------------------------------ crawls
-  // Crawls run in-process in the background (no queue yet). State lives in this map;
-  // runs left "running" by a previous process are marked failed at startup.
-  const activeCrawls = new Map<string, { siteId: string; controller: AbortController; progress: { crawled: number; queued: number; current: string } }>();
-  await prisma.crawlRun.updateMany({ where: { status: 'running' }, data: { status: 'failed', error: 'Interrupted: API restarted', completedAt: new Date() } });
-  app.addHook('onClose', async () => activeCrawls.forEach(c => c.controller.abort()));
-
+  // ------------------------------------------------------------------ crawls (run by the worker)
   const crawlBody = z
     .object({
       maxUrls: z.number().int().min(1).max(5000).default(500),
@@ -307,58 +311,92 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
       seedFromSitemap: z.boolean().default(true)
     })
     .strict();
+  const ACTIVE = ['QUEUED', 'RUNNING', 'RETRYING'] as const;
 
-  app.post('/api/v1/sites/:id/crawls', async (req, reply) => {
-    const { id } = idParam.parse(req.params);
-    const body = crawlBody.parse(req.body ?? {});
-    await requireSite(id);
-    for (const r of body.include.concat(body.exclude)) {
+  const validatePatterns = (b: { include: string[]; exclude: string[] }) => {
+    for (const r of b.include.concat(b.exclude)) {
       try {
         new RegExp(r);
       } catch {
         throw new ApiError(400, 'INVALID_PATTERN', `Invalid regular expression: ${r}`);
       }
     }
-    if ([...activeCrawls.values()].some(c => c.siteId === id)) throw new ApiError(409, 'CRAWL_RUNNING', 'A crawl is already running for this site');
-    const allowHosts = (process.env.CRAWL_ALLOW_PRIVATE_HOSTS ?? '').split(',').map(s => s.trim()).filter(Boolean);
-    const controller = new AbortController();
-    const state = { siteId: id, controller, progress: { crawled: 0, queued: 0, current: '' } };
-    const started = new Promise<string>((resolve, reject) => {
-      runCrawl({
-        siteId: id,
-        ...body,
-        allowHosts,
-        signal: controller.signal,
-        onStarted: runId => {
-          activeCrawls.set(runId, state);
-          resolve(runId);
-        },
-        onProgress: p => (state.progress = p)
-      })
-        .catch(err => {
-          req.log.error({ err }, 'crawl failed');
-          reject(err);
-        })
-        .finally(() => {
-          for (const [k, v] of activeCrawls) if (v === state) activeCrawls.delete(k);
-        });
-    });
-    const runId = await started;
-    return reply.status(202).send({ id: runId, status: 'running' });
+  };
+
+  app.post('/api/v1/sites/:id/crawls', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const body = crawlBody.parse(req.body ?? {});
+    const site = await requireSite(id);
+    validatePatterns(body);
+    const active = await prisma.job.findFirst({ where: { siteId: id, type: 'crawl', status: { in: [...ACTIVE] } } });
+    if (active) throw new ApiError(409, 'CRAWL_RUNNING', 'A crawl is already queued or running for this site', { jobId: active.id });
+    const job = await enqueue('crawl', { siteId: id, options: body }, { siteId: id, workspaceId: site.workspaceId });
+    return reply.status(202).send({ jobId: job.id, status: job.status });
   });
 
   app.get('/api/v1/sites/:id/crawls', async req => {
     const { id } = idParam.parse(req.params);
     await requireSite(id);
-    return (await listCrawlRuns(id)).map(r => ({ ...r, progress: activeCrawls.get(r.id)?.progress ?? null }));
+    const running = await prisma.job.findMany({ where: { siteId: id, type: 'crawl', status: { in: [...ACTIVE] } } });
+    const byRun = new Map(running.map(j => [(j.progressDetail as { crawlRunId?: string } | null)?.crawlRunId, j]));
+    return (await listCrawlRuns(id)).map(r => {
+      const j = byRun.get(r.id);
+      return { ...r, jobId: j?.id ?? null, progress: j ? (j.progressDetail as object) : null };
+    });
   });
 
+  /** Kept for API compatibility: cancels the job that runs this crawl. */
   app.post('/api/v1/crawls/:id/cancel', async req => {
     const { id } = idParam.parse(req.params);
-    const c = activeCrawls.get(id);
-    if (!c) throw new ApiError(409, 'CRAWL_NOT_RUNNING', 'This crawl is not running');
-    c.controller.abort();
-    return { id, status: 'cancelling' };
+    const jobs = await prisma.job.findMany({ where: { type: 'crawl', status: { in: [...ACTIVE] } } });
+    const job = jobs.find(j => (j.progressDetail as { crawlRunId?: string } | null)?.crawlRunId === id);
+    if (!job) throw new ApiError(409, 'CRAWL_NOT_RUNNING', 'This crawl is not running');
+    await cancelJob(job.id);
+    return { id, jobId: job.id, status: 'cancelling' };
+  });
+
+  app.get('/api/v1/sites/:id/schedule', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return getSiteSchedule(id);
+  });
+
+  app.put('/api/v1/sites/:id/schedule', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    const b = z.object({ cron: z.string().max(100).nullable(), options: crawlBody.optional() }).strict().parse(req.body);
+    if (b.options) validatePatterns(b.options);
+    return setSiteSchedule(id, b.cron?.trim() || null, b.options ?? crawlBody.parse({}));
+  });
+
+  // ------------------------------------------------------------------ jobs
+  app.get('/api/v1/jobs', async req => {
+    const q = z
+      .object({ siteId: z.string().uuid().optional(), status: z.enum(['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED', 'RETRYING']).optional(), type: z.string().max(40).optional(), take: z.coerce.number().int().min(1).max(500).optional() })
+      .parse(req.query);
+    return listJobs(req.auth!.workspaceId, q);
+  });
+
+  app.get('/api/v1/jobs/:id', async req => {
+    const { id } = idParam.parse(req.params);
+    const job = await prisma.job.findUnique({ where: { id } });
+    if (!job || job.workspaceId !== req.auth!.workspaceId) throw new ApiError(404, 'JOB_NOT_FOUND', `Job ${id} not found`);
+    return job;
+  });
+
+  app.post('/api/v1/jobs/:id/cancel', async req => {
+    const { id } = idParam.parse(req.params);
+    return cancelJob(id);
+  });
+
+  app.post('/api/v1/jobs/:id/retry', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    return reply.status(202).send(await retryJob(id));
+  });
+
+  app.post('/api/v1/maintenance/retention', async (req, reply) => {
+    const job = await enqueue('retention', {}, { workspaceId: req.auth!.workspaceId, trigger: 'manual' });
+    return reply.status(202).send({ jobId: job.id, status: job.status });
   });
 
   app.get('/api/v1/crawls/:id/pages', async req => {

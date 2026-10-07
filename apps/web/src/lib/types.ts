@@ -253,3 +253,29 @@ export interface User {
   lastLoginAt: string | null;
   permissions: Permission[];
 }
+
+export type JobStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'RETRYING';
+
+export interface JobRow {
+  id: string;
+  type: 'log-import' | 'crawl' | 'retention' | string;
+  queue: string;
+  status: JobStatus;
+  siteId: string | null;
+  trigger: 'manual' | 'schedule' | 'system' | string;
+  progress: number;
+  progressDetail: { lines?: number; crawled?: number; queued?: number; current?: string; crawlRunId?: string } | null;
+  payload: Record<string, unknown> | null;
+  result: Record<string, unknown> | null;
+  error: string | null;
+  logs: Array<{ at: string; level: string; msg: string }> | null;
+  attempts: number;
+  maxAttempts: number;
+  cancelRequested: boolean;
+  retryOfId: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+export const ACTIVE_JOB: JobStatus[] = ['QUEUED', 'RUNNING', 'RETRYING'];

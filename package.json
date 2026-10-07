@@ -19,7 +19,10 @@
     "bench:logs": "tsx scripts/bench-1m.ts",
     "test:e2e": "playwright test",
     "demo:site": "tsx scripts/demo-site.ts",
-    "wp:local": "node scripts/wp-local.mjs"
+    "wp:local": "node scripts/wp-local.mjs",
+    "redis:local": "node scripts/redis-local.mjs",
+    "worker": "node apps/worker/dist/index.js",
+    "start:local": "node scripts/start-local.mjs"
   },
   "devDependencies": {
     "@playwright/test": "~1.56.1",

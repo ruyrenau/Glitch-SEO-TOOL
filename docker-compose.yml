@@ -1,23 +1,47 @@
-# Local stack: API (SQLite on a volume) + web.
-# Postgres and Redis return when the BullMQ worker lands (see README roadmap).
+# Local stack: Redis (job queue) + API + worker + web. SQLite lives on a shared volume.
 services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+
   api:
     build:
       context: .
       dockerfile: ./apps/api/Dockerfile
     restart: unless-stopped
-    environment:
+    environment: &appenv
       DATABASE_URL: "file:/data/glitch.db"
+      REDIS_URL: "redis://redis:6379"
+      UPLOAD_DIR: "/data/uploads"
       HOST: "0.0.0.0"
       PORT: 4000
       NODE_ENV: production
       DEMO_MODE: "false"
       WEB_ORIGIN: "http://localhost:3000"
-      SALT_SECRET: "${SALT_SECRET:-change-me-in-.env}"
+      COOKIE_SECURE: "false" # plain http on localhost; set true behind HTTPS
+      SALT_SECRET: "${SALT_SECRET:?set SALT_SECRET in .env}"
+      CREDENTIALS_KEY: "${CREDENTIALS_KEY:?set CREDENTIALS_KEY in .env}"
     ports:
       - "4000:4000"
     volumes:
       - glitchdata:/data
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: .
+      dockerfile: ./apps/worker/Dockerfile
+    restart: unless-stopped
+    environment: *appenv
+    volumes:
+      - glitchdata:/data
+    depends_on:
+      - redis
+      - api
 
   web:
     build:
@@ -31,3 +55,4 @@ services:
 
 volumes:
   glitchdata:
+  redisdata:

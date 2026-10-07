@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import type { Role } from '@glitch/db';
 import { createUser } from '@glitch/db';
+import { startWorkers } from '@glitch/jobs';
 import { buildApp } from '../src/app';
 
 export const TEST_PASSWORD = 'Test-password-123';
@@ -20,7 +21,12 @@ export async function loginAs(app: FastifyInstance, role: Role = 'OWNER') {
  * session cookie unless the test sets its own cookie header.
  */
 export async function buildAuthedApp(role: Role = 'OWNER') {
+  // Each test file gets its own queue namespace in the shared Redis.
+  process.env.QUEUE_PREFIX = `glitch-test-${crypto.randomBytes(4).toString('hex')}`;
   const app = await buildApp({ logger: false });
+  // A real worker in this process, so queued jobs actually run.
+  const workers = await startWorkers({ scheduleRetention: false });
+  app.addHook('onClose', async () => workers.close());
   const session = await loginAs(app, role);
   const inject = app.inject.bind(app);
   const withCookie = (opts: InjectOptions | string) => {
@@ -31,4 +37,17 @@ export async function buildAuthedApp(role: Role = 'OWNER') {
   };
   (app as unknown as { inject: typeof withCookie }).inject = withCookie;
   return { app, ...session };
+}
+
+type Injectable = { inject: (o: InjectOptions | string) => Promise<{ json: () => unknown }> };
+
+/** Polls a job until it leaves QUEUED/RUNNING/RETRYING. */
+export async function waitForJob(app: Injectable, jobId: string, timeoutMs = 30_000) {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    const job = (await app.inject(`/api/v1/jobs/${jobId}`)).json() as { status: string; result: Record<string, unknown> | null; error: string | null };
+    if (!['QUEUED', 'RUNNING', 'RETRYING'].includes(job.status)) return job;
+    await new Promise(r => setTimeout(r, 150));
+  }
+  throw new Error(`Job ${jobId} did not finish in ${timeoutMs} ms`);
 }

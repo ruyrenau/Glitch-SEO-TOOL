@@ -39,3 +39,13 @@ export async function apiSend<T>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', pa
 export const fmt = (n: number | null | undefined) => (n === null || n === undefined ? '—' : n.toLocaleString('es-MX'));
 export const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 export const fmtDate = (d: string | null | undefined) => (d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
+
+/** Polls a background job until it finishes; `onUpdate` sees every intermediate state. */
+export async function waitForJob<T extends { status: string }>(jobId: string, onUpdate?: (job: T) => void, intervalMs = 1000): Promise<T> {
+  for (;;) {
+    const job = await apiGet<T>(`/api/v1/jobs/${jobId}`);
+    onUpdate?.(job);
+    if (!['QUEUED', 'RUNNING', 'RETRYING'].includes(job.status)) return job;
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+}
