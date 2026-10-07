@@ -498,3 +498,11 @@ model Alert {
 
   @@index([siteId, status])
 }
+
+/// Cache of crawler DNS verification. Keyed by family + HMAC of the IP: no raw IP or hostname is stored.
+model BotIpVerification {
+  key       String   @id // `${family}:${hmac(ip)}`
+  family    String
+  result    String   // verified | spoofed
+  checkedAt DateTime @default(now())
+}

@@ -61,7 +61,16 @@ export function syntheticLogLine(rand: () => number, ts: Date): string {
   else if (r < 0.115) { path = `/${section}/removed-${item}/`; status = 404; }
   else if (r < 0.122) { status = 500; }
   else if (r < 0.13) { path = `/search?q=item${item}&email=user${item}@example.com`; }
-  const ip = `203.0.113.${Math.floor(rand() * 254) + 1}`;
+  // Real crawler ranges for Google and Bing (so DNS verification has something true to verify),
+  // with ~4% of "Googlebot" traffic from a documentation range to simulate spoofers.
+  const isGoogle = /Googlebot/.test(ua);
+  const isBing = /bingbot/.test(ua);
+  const ip =
+    isGoogle && rand() > 0.04
+      ? `66.249.66.${1 + Math.floor(rand() * 12)}`
+      : isBing
+        ? `157.55.39.${10 + Math.floor(rand() * 8)}`
+        : `203.0.113.${Math.floor(rand() * 254) + 1}`;
   const bytes = status === 200 ? 3000 + Math.floor(rand() * 40000) : 400;
   const rt = (status === 500 ? 1.5 + rand() * 3 : 0.04 + Math.pow(rand(), 3) * 1.8).toFixed(3);
   const referer = !/bot|Googlebot/i.test(ua) && rand() < 0.04

@@ -75,6 +75,7 @@ export interface LogReport {
   totals: { requests: number; botRequests: number; googlebotRequests: number; aiBotRequests: number; uniqueBotUrls: number };
   statusDistribution: Record<string, number>;
   botDistribution: Record<string, number>;
+  botVerification: Record<string, { claimedHits: number; verifiedHits: number; spoofedHits: number; errorHits: number; uncheckedHits: number; ipsChecked: number }> | null;
   hourlyBotHits: number[];
   responseTime: { p50: number | null; p90: number | null; p99: number | null; samples: number };
   aiReferrals: Record<string, number>;

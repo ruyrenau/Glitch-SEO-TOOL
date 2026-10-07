@@ -22,7 +22,7 @@ export default defineConfig({
   test: {
     include: ['packages/*/test/**/*.test.ts', 'apps/*/test/**/*.test.ts'],
     globalSetup: ['./scripts/test-global-setup.ts'],
-    env: { DATABASE_URL: `file:${testDb}`, DEMO_MODE: 'false', LOG_LEVEL: 'silent', NODE_ENV: 'test' },
+    env: { DATABASE_URL: `file:${testDb}`, DEMO_MODE: 'false', LOG_LEVEL: 'silent', NODE_ENV: 'test', BOT_DNS_VERIFICATION: 'false' },
     fileParallelism: false,
     testTimeout: 30_000
   }

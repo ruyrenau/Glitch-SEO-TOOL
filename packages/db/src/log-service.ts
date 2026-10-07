@@ -1,6 +1,8 @@
+import { Prisma } from '@prisma/client';
 import fs from 'fs';
 import path from 'path';
-import { analyzeLogFile, LogAnalysis, FileAnalysisOptions } from '@glitch/log-parser';
+import crypto from 'crypto';
+import { analyzeLogFile, LogAnalysis, FileAnalysisOptions, verifyBotIps, BotVerificationSummary, DnsLookups } from '@glitch/log-parser';
 import { prisma } from './client';
 import { recordAuditEvent } from './audit';
 
@@ -22,11 +24,44 @@ export interface ImportLogOptions extends FileAnalysisOptions {
   actorUserId?: string | null;
   /** Re-import even if the same checksum already exists (replaces the old import). */
   replaceExisting?: boolean;
+  /** Verify search-engine crawlers by reverse+forward DNS (default: BOT_DNS_VERIFICATION env, on unless "false"). */
+  verifyBots?: boolean;
+  /** Injected DNS for tests. */
+  dns?: DnsLookups;
 }
 
 export interface ImportLogResult {
   importId: string;
-  analysis: Omit<LogAnalysis, 'aggregates'> & { aggregateRows: number };
+  analysis: Omit<LogAnalysis, 'aggregates' | 'botIps' | 'botIpsOverflow'> & { aggregateRows: number; botVerification: Record<string, BotVerificationSummary> | null };
+}
+
+const VERIFICATION_TTL_MS = 7 * 86400_000;
+
+/** Verifies DNS-verifiable crawlers; raw IPs stay in memory, the cache only sees an HMAC. */
+async function verifyCrawlers(analysis: LogAnalysis, salt: string, dns?: DnsLookups) {
+  if (!analysis.botIps.size) return null;
+  const keyOf = (ip: string) => crypto.createHmac('sha256', `${salt}:dnsv`).update(ip).digest('hex').slice(0, 32);
+  const summary = await verifyBotIps(analysis.botIps, {
+    dns,
+    keyOf,
+    cache: {
+      get: async (key, family) => {
+        const row = await prisma.botIpVerification.findUnique({ where: { key: `${family}:${key}` } });
+        return row && Date.now() - row.checkedAt.getTime() < VERIFICATION_TTL_MS ? (row.result as 'verified' | 'spoofed') : null;
+      },
+      set: async (key, family, result) => {
+        await prisma.botIpVerification.upsert({ where: { key: `${family}:${key}` }, create: { key: `${family}:${key}`, family, result }, update: { result, checkedAt: new Date() } });
+      }
+    }
+  });
+  for (const [bot, hits] of Object.entries(analysis.botIpsOverflow)) {
+    if (summary[bot]) {
+      summary[bot].uncheckedHits += hits;
+      summary[bot].claimedHits += hits;
+    }
+  }
+  analysis.botIps.clear();
+  return summary;
 }
 
 /**
@@ -51,7 +86,11 @@ export async function importLogFile(opts: ImportLogOptions): Promise<ImportLogRe
     await prisma.logImport.delete({ where: { id: existing.id } });
   }
 
-  const { aggregates, ...summary } = analysis;
+  const verify = opts.verifyBots ?? process.env.BOT_DNS_VERIFICATION !== 'false';
+  const botVerification = verify ? await verifyCrawlers(analysis, salt ?? 'dev-only-salt', opts.dns).catch(() => null) : null;
+  const { aggregates, botIps: _ips, botIpsOverflow: _overflow, ...summary } = analysis;
+  void _ips;
+  void _overflow;
   const imp = await prisma.logImport.create({
     data: {
       siteId: site.id,
@@ -69,7 +108,7 @@ export async function importLogFile(opts: ImportLogOptions): Promise<ImportLogRe
       googlebotRequests: analysis.googlebotRequests,
       aiBotRequests: analysis.aiBotRequests,
       errorsSummary: { samples: analysis.errorSamples },
-      stats: {
+      stats: ({
         botRequests: analysis.botRequests,
         statusDistribution: analysis.statusDistribution,
         botDistribution: analysis.botDistribution,
@@ -77,8 +116,9 @@ export async function importLogFile(opts: ImportLogOptions): Promise<ImportLogRe
         aiReferrals: analysis.aiReferrals,
         crawledParameters: analysis.crawledParameters,
         responseTime: analysis.responseTime,
-        aggregatesTruncated: analysis.aggregatesTruncated
-      }
+        aggregatesTruncated: analysis.aggregatesTruncated,
+        botVerification
+      } as unknown as Prisma.InputJsonValue)
     }
   });
 
@@ -115,7 +155,7 @@ export async function importLogFile(opts: ImportLogOptions): Promise<ImportLogRe
     details: { fileName: imp.fileName, totalLines: analysis.totalLines, checksum: analysis.checksum }
   });
 
-  return { importId: imp.id, analysis: { ...summary, aggregateRows: aggregates.length } };
+  return { importId: imp.id, analysis: { ...summary, aggregateRows: aggregates.length, botVerification } };
 }
 
 export async function deleteLogImport(importId: string, actorUserId?: string | null): Promise<void> {
@@ -178,6 +218,7 @@ interface StoredStats {
   crawledParameters: Record<string, number>;
   responseTime: { p50: number | null; p90: number | null; p99: number | null; samples: number };
   aggregatesTruncated: boolean;
+  botVerification?: Record<string, BotVerificationSummary> | null;
 }
 
 export interface UrlHits {
@@ -274,6 +315,7 @@ export async function getLogReport(siteId: string, importId?: string) {
     },
     statusDistribution: stats.statusDistribution,
     botDistribution: stats.botDistribution,
+    botVerification: stats.botVerification ?? null,
     hourlyBotHits: stats.hourlyBotHits,
     responseTime: stats.responseTime,
     aiReferrals: stats.aiReferrals,

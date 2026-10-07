@@ -232,7 +232,45 @@ export function LogsView({ siteId, onChanged }: { siteId: string; onChanged: () 
             </Card>
             <Card title="Bots identificados (user agent declarado)">
               <BarList label="Hits por bot" items={toItems(report.botDistribution)} />
-              <p className="text-[11px] text-slate-500 mt-3">La verificación por DNS inverso aún no está implementada: un user agent puede ser falso.</p>
+            </Card>
+            <Card title="Verificación de crawlers por DNS">
+              {!report.botVerification || !Object.keys(report.botVerification).length ? (
+                <Empty>
+                  {report.botVerification === null
+                    ? 'La verificación no se ejecutó en esta importación (desactivada con BOT_DNS_VERIFICATION=false o sin acceso a DNS).'
+                    : 'No hay visitas de buscadores que publiquen verificación por DNS.'}
+                </Empty>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <caption className="sr-only">Visitas verificadas y falsas por bot</caption>
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500">
+                        <th scope="col" className="py-2">Bot declarado</th>
+                        <th scope="col" className="text-right">Verificadas</th>
+                        <th scope="col" className="text-right">Falsas</th>
+                        <th scope="col" className="text-right">Sin comprobar</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {Object.entries(report.botVerification)
+                        .sort((a, b) => b[1].claimedHits - a[1].claimedHits)
+                        .map(([bot, v]) => (
+                          <tr key={bot}>
+                            <td className="py-1.5 font-medium">{bot}</td>
+                            <td className="text-right tabular-nums">{fmt(v.verifiedHits)} <span className="text-slate-500">({pct(v.verifiedHits / Math.max(1, v.claimedHits))})</span></td>
+                            <td className="text-right tabular-nums">{v.spoofedHits ? <Badge tone="bad">{fmt(v.spoofedHits)}</Badge> : '0'}</td>
+                            <td className="text-right tabular-nums text-slate-500">{fmt(v.uncheckedHits + v.errorHits)}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <p className="text-[11px] text-slate-500 mt-3">
+                DNS inverso + directo, el método que documentan Google, Bing, Apple, Yandex y Baidu. "Falsas" son visitas que usan el user agent del bot desde IPs que no son suyas: no
+                cuentan como rastreo real. Los bots de IA (GPTBot, ClaudeBot…) no publican verificación por DNS y se muestran solo como declarados. Las IP no se guardan.
+              </p>
             </Card>
             <Card title="Códigos HTTP (todo el tráfico)">
               <BarList label="Solicitudes por código HTTP" items={statusItems} />

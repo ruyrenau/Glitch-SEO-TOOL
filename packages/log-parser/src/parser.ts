@@ -5,9 +5,12 @@ import zlib from 'zlib';
 import { Readable } from 'stream';
 import { anonymizeIp, sanitizeQueryString } from '@glitch/core';
 import { identifyBot, identifyAiReferrer, isAiBot, isGooglebot, BotCategory } from './bots';
+import { isDnsVerifiable } from './verify';
 
 export interface ParsedLogEntry {
   ipHash: string;
+  /** Raw client IP: kept in memory only for DNS verification of crawlers, never persisted. */
+  rawIp: string;
   timestamp: Date;
   method: string;
   url: string;
@@ -70,6 +73,7 @@ export function parseLogLine(line: string, salt: string, customSensitiveParams: 
 
   return {
     ipHash: anonymizeIp(match[1], salt),
+    rawIp: match[1],
     timestamp,
     method: match[3],
     url: path + query,
@@ -124,12 +128,20 @@ export interface LogAnalysis {
   aggregates: LogAggregateRow[];
   /** True if the distinct-key cap was hit and some paths were folded into "(other)". */
   aggregatesTruncated: boolean;
+  /**
+   * IN MEMORY ONLY: botName -> (raw IP -> hits) for DNS-verifiable crawlers, used to verify
+   * them after parsing. Callers must not persist it. Capped at MAX_VERIFY_IPS distinct IPs.
+   */
+  botIps: Map<string, Map<string, number>>;
+  /** Hits of verifiable bots whose IP did not fit in botIps (reported as unchecked). */
+  botIpsOverflow: Record<string, number>;
   cancelled: boolean;
 }
 
 /** Upper bound of distinct (day, bot, status, path) keys kept in memory. */
 const MAX_AGGREGATE_KEYS = 250_000;
 const MAX_PARAM_KEYS = 500;
+const MAX_VERIFY_IPS = 20_000;
 /** Fixed histogram buckets (ms) so percentiles use constant memory. */
 const LATENCY_BUCKETS = [10, 25, 50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000, 10000, Infinity];
 
@@ -187,7 +199,7 @@ export async function analyzeLogStream(input: Readable, options: ParseOptions = 
   const salt = options.salt ?? 'glitch-salt';
   const rl = readLines(input);
 
-  const res: Omit<LogAnalysis, 'checksum' | 'aggregates'> = {
+  const res: Omit<LogAnalysis, 'checksum' | 'aggregates' | 'botIps' | 'botIpsOverflow'> = {
     totalLines: 0, validLines: 0, invalidLines: 0, skippedLines: 0,
     botRequests: 0, googlebotRequests: 0, aiBotRequests: 0,
     startDate: null, endDate: null,
@@ -197,6 +209,9 @@ export async function analyzeLogStream(input: Readable, options: ParseOptions = 
     errorSamples: [], aggregatesTruncated: false, cancelled: false
   };
   const agg = new Map<string, LogAggregateRow>();
+  const botIps = new Map<string, Map<string, number>>();
+  const botIpsOverflow: Record<string, number> = {};
+  let botIpCount = 0;
   const hist = new Array(LATENCY_BUCKETS.length).fill(0);
   let minTs = Infinity;
   let maxTs = -Infinity;
@@ -240,6 +255,16 @@ export async function analyzeLogStream(input: Readable, options: ParseOptions = 
       res.botDistribution[e.botName] = (res.botDistribution[e.botName] ?? 0) + 1;
       res.hourlyBotHits[e.timestamp.getUTCHours()]++;
       if (isGooglebot(e.botName)) res.googlebotRequests++;
+      if (isDnsVerifiable(e.botName)) {
+        let m = botIps.get(e.botName);
+        if (!m) botIps.set(e.botName, (m = new Map()));
+        const seen = m.get(e.rawIp);
+        if (seen !== undefined) m.set(e.rawIp, seen + 1);
+        else if (botIpCount < MAX_VERIFY_IPS) {
+          m.set(detach(e.rawIp), 1);
+          botIpCount++;
+        } else botIpsOverflow[e.botName] = (botIpsOverflow[e.botName] ?? 0) + 1;
+      }
       if (isAiBot(e.botCategory)) res.aiBotRequests++;
       if (e.query) {
         for (const key of new URLSearchParams(e.query.slice(1)).keys()) {
@@ -284,7 +309,7 @@ export async function analyzeLogStream(input: Readable, options: ParseOptions = 
   res.startDate = Number.isFinite(minTs) ? new Date(minTs) : null;
   res.endDate = Number.isFinite(maxTs) ? new Date(maxTs) : null;
 
-  return { ...res, aggregates: [...agg.values()] };
+  return { ...res, aggregates: [...agg.values()], botIps, botIpsOverflow };
 }
 
 async function readMagic(filePath: string): Promise<Buffer> {
