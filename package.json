@@ -17,6 +17,7 @@
     "cli": "pnpm --filter @glitch/cli run start",
     "test:watch": "vitest",
     "bench:logs": "tsx scripts/bench-1m.ts",
+    "bench:crawl": "tsx scripts/bench-crawl.ts",
     "test:e2e": "playwright test",
     "demo:site": "tsx scripts/demo-site.ts",
     "wp:local": "node scripts/wp-local.mjs",

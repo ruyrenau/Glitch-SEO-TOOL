@@ -34,7 +34,7 @@ describe('crawl API (integration)', () => {
   let runId: string;
 
   it('validates options and rejects unknown fields', async () => {
-    const r = await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/crawls`, payload: { maxUrls: 99999 } });
+    const r = await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/crawls`, payload: { maxUrls: 100_001 } });
     expect(r.statusCode).toBe(400);
     const bad = await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/crawls`, payload: { exclude: ['('] } });
     expect(bad.json().error.code).toBe('INVALID_PATTERN');

@@ -501,7 +501,7 @@ async function loadPages(crawlRunId: string): Promise<ExplorerPage[]> {
     js: (r.js as JsInfo | null) ?? null
   }));
   cache.set(crawlRunId, { at: Date.now(), pages });
-  if (cache.size > 20) cache.delete(cache.keys().next().value!);
+  if (cache.size > 3) cache.delete(cache.keys().next().value!); // a 100k-URL crawl takes hundreds of MB
   return pages;
 }
 
@@ -598,12 +598,23 @@ async function loadResources(crawlRunId: string): Promise<Res[]> {
   if (hit && Date.now() - hit.at < 60_000) return hit.rows;
   const rows = (await prisma.crawledResource.findMany({ where: { crawlRunId } })).map(r => ({ ...r, foundOn: (r.foundOn as string[]) ?? [] }));
   resCache.set(crawlRunId, { at: Date.now(), rows });
-  if (resCache.size > 20) resCache.delete(resCache.keys().next().value!);
+  if (resCache.size > 3) resCache.delete(resCache.keys().next().value!);
   return rows;
 }
 const resRow = (r: Res) => ({ url: r.url, type: KIND_LABEL[r.kind] ?? r.kind, contentType: r.contentType || '—', status: resStatus(r), sizeKb: r.sizeBytes === null ? null : Math.round(r.sizeBytes / 102.4) / 10, responseMs: r.responseTimeMs, foundOnCount: r.foundOnCount, foundOn: r.foundOn[0] ?? '', finalUrl: r.finalUrl !== r.url ? r.finalUrl : '' });
 
+const summaryCache = new Map<string, { at: number; value: Awaited<ReturnType<typeof computeSummary>> }>();
+/** Tab and filter counts. Cached for 10 minutes: a finished crawl does not change. */
 export async function explorerSummary(crawlRunId: string) {
+  const hit = summaryCache.get(crawlRunId);
+  if (hit && Date.now() - hit.at < 600_000) return hit.value;
+  const value = await computeSummary(crawlRunId);
+  summaryCache.set(crawlRunId, { at: Date.now(), value });
+  if (summaryCache.size > 20) summaryCache.delete(summaryCache.keys().next().value!);
+  return value;
+}
+
+async function computeSummary(crawlRunId: string) {
   const pages = await loadPages(crawlRunId);
   const ctx = context(pages);
   const images = imageRows(pages);
@@ -742,7 +753,7 @@ export interface CustomExtractRule {
   attr?: string;
 }
 
-const MAX_CUSTOM_PAGES = 5_000;
+const MAX_CUSTOM_PAGES = 100_000;
 const MAX_HTML_FOR_REGEX = 2 * 1024 * 1024;
 
 function compile(pattern: string): RegExp {
@@ -780,9 +791,16 @@ export async function explorerCustom(crawlRunId: string, input: { search?: Custo
     }
   }
 
-  const rows = await prisma.crawledPage.findMany({ where: { crawlRunId, htmlGz: { not: null } }, select: { id: true, url: true, htmlGz: true }, take: MAX_CUSTOM_PAGES });
   const out: Array<Record<string, unknown>> = [];
-  for (const r of rows) {
+  let scanned = 0;
+  let cursor: string | undefined;
+  // Read the stored HTML in batches so memory stays flat on large crawls.
+  for (;;) {
+    const batch = await prisma.crawledPage.findMany({ where: { crawlRunId, htmlGz: { not: null } }, select: { id: true, url: true, htmlGz: true }, orderBy: { id: 'asc' }, take: 200, ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}) });
+    if (!batch.length || scanned >= MAX_CUSTOM_PAGES) break;
+    cursor = batch[batch.length - 1].id;
+  for (const r of batch) {
+    scanned++;
     const html = zlib.gunzipSync(r.htmlGz!).toString('utf8').slice(0, MAX_HTML_FOR_REGEX);
     const $ = cheerio.load(html);
     let text: string | null = null;
@@ -834,6 +852,7 @@ export async function explorerCustom(crawlRunId: string, input: { search?: Custo
     row._match = match;
     out.push(row);
   }
+  }
   const columns: Column[] = [
     { key: 'url', label: 'Dirección', type: 'url' },
     ...search.map((s): Column => ({ key: s.name, label: s.name, ...(s.mode === 'contains' || s.mode === 'regex' ? { type: 'number' as const } : {}) })),
@@ -842,7 +861,7 @@ export async function explorerCustom(crawlRunId: string, input: { search?: Custo
       { key: `${e.name} (n)`, label: `${e.name} (nº)`, type: 'number' }
     ])
   ];
-  return { columns, scanned: rows.length, matched: out.filter(r => r._match).length, rows: out };
+  return { columns, scanned, matched: out.filter(r => r._match).length, rows: out };
 }
 
 // ---------------------------------------------------------------------------

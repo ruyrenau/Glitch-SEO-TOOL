@@ -43,6 +43,15 @@ Internal SEO operations tool in TypeScript. It streams Nginx/Apache access logs,
 | 1,000,000 | 216 MB | 16 s | 87 MB | none |
 | 2,000,000 | 432 MB | 31 s | 103 MB | `--max-old-space-size=128` (passes) |
 
+`pnpm bench:crawl [pages]` crawls a synthetic local site (~60 internal links, 6 images, CSS and JS per page) through the full pipeline (fetch, parse, store, issues, alerts) into a throwaway SQLite file, with the rate limit lifted:
+
+| Pages | Stored links | Time | Retained heap after GC | Peak RSS | DB size | Explorer summary |
+|---|---|---|---|---|---|---|
+| 10,000 | 600,000 | 3 min | 72 MB | 511 MB | ~260 MB | — |
+| 20,000 | 1,200,000 | 6 min | — | 900 MB | 524 MB | 3.6 s (then cached) |
+
+Pages, HTML and links are written to the database as they are crawled and released from memory; what stays per page is about 3.5 KB (the fields the issue detector needs, interned link lists, an integer link graph), so a 100,000-page crawl needs roughly 350 MB of retained heap. The limit is `CRAWL_HARD_MAX_URLS` (default 100,000). On a real site the rate limit (default ≤ 20 requests per second, `CRAWL_MAX_RPS`) dominates: 100,000 pages at 20 req/s take about 1.5 hours.
+
 Memory is bounded by the number of distinct `(day, bot, status, URL)` keys, capped at 250,000; beyond that, rare URLs fold into `(other)` and the report says so. The cap matters: an earlier version leaked ~240 bytes per line because V8 substrings kept 64 KB read chunks alive; the fix is in `packages/log-parser/src/parser.ts`.
 
 ## Quickstart (no Docker needed)
@@ -129,6 +138,7 @@ packages/schema-engine, content-engine, connectors, config
 
 - No password recovery by email yet (an Admin resets passwords). Login throttling is in memory (per API process).
 - WordPress drafts: posts only (no pages, media upload or featured images). SEO edits on live content cover posts and pages, but not the home page or archives; Yoast/Rank Math fields need the mu-plugin in `docs/wordpress/`. Changing a media alt does not update images already inserted in a post's HTML.
+- Large crawls: up to 100,000 URLs per crawl. Each crawl stores its HTML (gzip) and every link, about 26 KB per page on disk; a 100,000-page crawl takes ~2.6 GB in SQLite and nothing prunes old crawls yet. The explorer keeps up to 3 crawls in memory (a 100,000-page crawl uses a few hundred MB).
 - JavaScript rendering is opt-in and needs Chrome, Chromium or Edge on the machine that runs the worker; it is several times slower than a plain crawl. Custom extraction supports CSS selectors and regular expressions, not XPath; regular expressions with nested quantifiers are refused.
 - SQLite is shared by the API and worker processes on one machine; several machines need PostgreSQL (switch the Prisma provider) and a shared upload store.
 - Retrying a failed log import requires uploading the file again (temp files are deleted after a final failure).

@@ -32,6 +32,12 @@ export interface CrawlOptions {
   maxResources?: number;
   /** Render pages in headless Chrome/Edge and analyse the DOM after JavaScript (default false). */
   renderJs?: boolean;
+  /**
+   * Called once per crawled page, as soon as it is processed (awaited: slow storage slows the crawl down).
+   * After it returns, the heavy parts of the page (HTML, link list, resources, images, H2, OG) are released
+   * from memory, so large crawls must persist them here.
+   */
+  onPage?: (page: CrawledPageData) => void | Promise<void>;
 }
 
 /** What JavaScript changed on a rendered page, compared with the HTML the server sent. */
@@ -108,7 +114,10 @@ export interface CrawlResult {
   limitReached: boolean;
 }
 
-export const HARD_MAX_URLS = 5_000;
+/** Upper bound for one crawl (CRAWL_HARD_MAX_URLS overrides). */
+export const HARD_MAX_URLS = Number(process.env.CRAWL_HARD_MAX_URLS) || 100_000;
+/** Upper bound for requests per second (CRAWL_MAX_RPS overrides; keep it polite on sites you do not own). */
+export const MAX_RPS = Number(process.env.CRAWL_MAX_RPS) || 20;
 
 /** Never crawled: state-changing or private areas and internal search. */
 export const DEFAULT_EXCLUDES = [
@@ -241,7 +250,7 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
   const maxUrls = Math.min(options.maxUrls ?? 500, HARD_MAX_URLS);
   const maxDepth = options.maxDepth ?? 5;
   const concurrency = Math.min(Math.max(options.concurrency ?? 2, 1), 8);
-  const throttle = new Throttle(1000 / Math.min(Math.max(options.rps ?? 2, 0.1), 20));
+  const throttle = new Throttle(1000 / Math.min(Math.max(options.rps ?? 2, 0.1), MAX_RPS));
   const fetchOpts = {
     userAgent,
     timeoutMs: options.timeoutMs ?? 15_000,
@@ -274,7 +283,49 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
   const pages: CrawledPageData[] = [];
   const visited = new Set<string>();
   const queue: Array<{ url: string; depth: number }> = [];
-  const linkGraph = new Map<string, Set<string>>(); // target -> sources
+  // Link graph with integer ids (target -> source ids) and interned URL strings: memory stays flat on 100k-page sites.
+  const ids = new Map<string, number>();
+  const idOf = (u: string) => {
+    let i = ids.get(u);
+    if (i === undefined) ids.set(u, (i = ids.size));
+    return i;
+  };
+  const intern = new Map<string, string>();
+  const shared = (u: string) => {
+    const hit = intern.get(u);
+    if (hit !== undefined) return hit;
+    intern.set(u, u);
+    return u;
+  };
+  const linkGraph = new Map<number, Set<number>>();
+  const addEdge = (target: string, source: string) => {
+    const t = idOf(target);
+    let set = linkGraph.get(t);
+    if (!set) linkGraph.set(t, (set = new Set()));
+    set.add(idOf(source));
+  };
+  // Resources and external links, aggregated as pages are crawled.
+  const found = new Map<string, { kind: CrawledResource['kind']; internal: boolean; isLink: boolean; pages: string[]; count: number }>();
+  const wantRes = options.checkResources !== false;
+  const wantExt = options.checkExternalLinks !== false;
+  const addFound = (u: string, kind: CrawledResource['kind'], isLink: boolean, page: string) => {
+    let internal: boolean;
+    try {
+      internal = new URL(u).hostname === host;
+    } catch {
+      return;
+    }
+    let e = found.get(u);
+    if (!e) {
+      if (found.size >= 50_000) return;
+      found.set(u, (e = { kind, internal, isLink, pages: [], count: 0 }));
+    }
+    e.isLink = e.isLink && isLink;
+    if (e.pages[e.pages.length - 1] !== page) {
+      e.count++;
+      if (e.pages.length < 20) e.pages.push(page);
+    }
+  };
   let limitReached = false;
 
   const allowedByFilters = (u: string) => {
@@ -304,7 +355,9 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
   const crawlOne = async ({ url, depth }: { url: string; depth: number }) => {
     const u = new URL(url);
     if (respectRobots && !isAllowedByRobots(robots, userAgent, u.pathname + u.search)) {
-      pages.push({ url, finalUrl: url, statusCode: 0, responseTimeMs: 0, mimeType: '', sizeBytes: 0, xRobotsTag: null, redirectChain: [], depth, blockedByRobots: true, error: 'Blocked by robots.txt', extracted: null, inlinks: 0, html: null, headers: {} });
+      const blocked: CrawledPageData = { url, finalUrl: url, statusCode: 0, responseTimeMs: 0, mimeType: '', sizeBytes: 0, xRobotsTag: null, redirectChain: [], depth, blockedByRobots: true, error: 'Blocked by robots.txt', extracted: null, inlinks: 0, html: null, headers: {} };
+      pages.push(blocked);
+      await options.onPage?.(blocked);
       return;
     }
     const res = await fetchWithRedirects(url, fetchOpts);
@@ -315,8 +368,7 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
     if (res.chain.length) {
       // The redirect target is crawled as its own page (same depth) so its status and content are recorded once.
       if (finalSameHost) {
-        if (!linkGraph.has(res.finalUrl)) linkGraph.set(res.finalUrl, new Set());
-        linkGraph.get(res.finalUrl)!.add(url);
+        addEdge(res.finalUrl, url);
         enqueue(res.finalUrl, depth);
       }
     } else if (res.body && res.status >= 200 && res.status < 300) {
@@ -335,14 +387,18 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
           js = { rendered: false, renderMs: 0, error: (e as Error).message.slice(0, 300), errors: [], blockedRequests: 0, raw: rawInfo, jsOnlyLinks: [] };
         }
       }
+      extracted.internalLinks = extracted.internalLinks.map(shared);
       for (const link of extracted.internalLinks) {
-        if (!linkGraph.has(link)) linkGraph.set(link, new Set());
-        linkGraph.get(link)!.add(url);
+        addEdge(link, url);
         // Files (PDF, images, docs…) are checked as resources, not crawled as pages.
         if (!resourceKindFromUrl(link)) enqueue(link, depth + 1);
       }
     }
-    pages.push({
+    if (extracted) {
+      if (wantRes) for (const x of extracted.resources) addFound(x.url, x.kind, false, url);
+      if (wantExt) for (const l of extracted.links) if (!l.internal) addFound(l.url, resourceKindFromUrl(l.url) ?? 'html', true, url);
+    }
+    const page: CrawledPageData = {
       url,
       finalUrl: res.finalUrl,
       statusCode: res.status,
@@ -359,7 +415,12 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
       html: extracted ? html : null,
       js,
       headers: Object.fromEntries(['content-type', 'cache-control', 'content-encoding', 'last-modified', 'etag', 'x-robots-tag', 'link', 'server', 'vary'].map(h => [h, res.headers?.get(h)]).filter((e): e is [string, string] => !!e[1]))
-    });
+    };
+    pages.push(page);
+    if (options.onPage) {
+      await options.onPage(page);
+      release(page);
+    }
   };
 
   const hostVariants = await checkHostVariants(start, fetchOpts);
@@ -388,8 +449,14 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
   });
 
   await renderer?.close();
-  for (const p of pages) p.inlinks = linkGraph.get(p.url)?.size ?? 0;
-  const resources = cancelled ? [] : await checkResources(pages, host, options, fetchOpts, () => cancelled || !!options.signal?.aborted);
+  for (const p of pages) {
+    const i = ids.get(p.url);
+    p.inlinks = i === undefined ? 0 : linkGraph.get(i)?.size ?? 0;
+  }
+  linkGraph.clear();
+  const crawledUrls = new Set(pages.map(p => p.url));
+  for (const u of crawledUrls) found.delete(u);
+  const resources = cancelled ? [] : await checkResources(found, options, fetchOpts, () => cancelled || !!options.signal?.aborted);
   return { pages, resources, robots: robotsInfo, hostVariants, discovered: visited.size, cancelled, limitReached };
 }
 
@@ -399,35 +466,12 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
  * Internal URLs share the site throttle; external hosts get their own polite rate.
  */
 async function checkResources(
-  pages: CrawledPageData[],
-  host: string,
+  found: Map<string, { kind: CrawledResource['kind']; internal: boolean; isLink: boolean; pages: string[]; count: number }>,
   options: CrawlOptions,
   fetchOpts: Parameters<typeof fetchWithRedirects>[1],
   stop: () => boolean
 ): Promise<CrawledResource[]> {
-  const wantRes = options.checkResources !== false;
-  const wantExt = options.checkExternalLinks !== false;
-  if (!wantRes && !wantExt) return [];
-  const crawled = new Set(pages.map(p => p.url));
-  const found = new Map<string, { kind: CrawledResource['kind']; internal: boolean; isLink: boolean; pages: Set<string> }>();
-  const add = (url: string, kind: CrawledResource['kind'], isLink: boolean, page: string) => {
-    if (crawled.has(url)) return;
-    let internal: boolean;
-    try {
-      internal = new URL(url).hostname === host;
-    } catch {
-      return;
-    }
-    const e = found.get(url) ?? { kind, internal, isLink, pages: new Set<string>() };
-    e.isLink = e.isLink && isLink;
-    e.pages.add(page);
-    found.set(url, e);
-  };
-  for (const p of pages) {
-    if (!p.extracted) continue;
-    if (wantRes) for (const r of p.extracted.resources) add(r.url, r.kind, false, p.url);
-    if (wantExt) for (const l of p.extracted.links) if (!l.internal) add(l.url, resourceKindFromUrl(l.url) ?? 'html', true, p.url);
-  }
+  if (!found.size) return [];
   const max = Math.min(options.maxResources ?? 2000, 10_000);
   const todo = [...found].slice(0, max);
   const extThrottles = new Map<string, Throttle>();
@@ -456,13 +500,31 @@ async function checkResources(
         sizeBytes: len ? Number(len) : null,
         responseTimeMs: r.ms,
         error: r.error,
-        foundOn: [...e.pages].slice(0, 20),
-        foundOnCount: e.pages.size
+        foundOn: e.pages,
+        foundOnCount: e.count
       });
     }
   };
   await Promise.all(Array.from({ length: Math.min(6, todo.length) }, worker));
   return out;
+}
+
+/** Drops what large crawls cannot keep in memory once the page has been stored (see CrawlOptions.onPage). */
+function release(p: CrawledPageData) {
+  p.html = null;
+  const e = p.extracted;
+  if (!e) return;
+  e.links = [];
+  e.resources = [];
+  e.imageList = [];
+  e.h2 = [];
+  e.schemaErrors = e.schemaErrors.slice(0, 3);
+  // Strings parsed out of the HTML (title, H1, canonical…) can be V8 "sliced strings" that keep the whole
+  // page source alive. A JSON round-trip copies them into fresh strings so the source can be collected.
+  const links = e.internalLinks;
+  e.internalLinks = [];
+  p.extracted = { ...(JSON.parse(JSON.stringify(e)) as ExtractedPage), internalLinks: links };
+  if (p.js) p.js = JSON.parse(JSON.stringify(p.js)) as JsInfo;
 }
 
 /** Internal links pointing to URLs that returned 4xx/5xx in this crawl (source -> target). */

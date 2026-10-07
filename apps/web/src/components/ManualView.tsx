@@ -93,7 +93,7 @@ const SECTIONS: Section[] = [
     what: 'Rastrea el sitio como lo haría un buscador, guarda los datos SEO de cada página, revisa sus archivos (CSS, JS, imágenes, PDF) y enlaces externos, y compara cada crawl con el anterior. Opcionalmente ejecuta JavaScript.',
     why: 'Detecta problemas técnicos antes de que afecten la indexación, y después de cada deploy te dice exactamente qué cambió.',
     steps: [
-      'Ajusta los límites: máximo de URLs, profundidad, concurrencia y solicitudes por segundo. Para sitios en producción, empieza con 1 o 2 solicitudes por segundo.',
+      'Ajusta los límites: máximo de URLs (hasta 100,000), profundidad, concurrencia y solicitudes por segundo. Para sitios en producción, empieza con 1 o 2 solicitudes por segundo. A 20 solicitudes por segundo, 100,000 páginas tardan cerca de hora y media.',
       'Deja marcado "Respetar robots.txt" y "Usar URLs del sitemap como semillas".',
       'Si el sitio está hecho con React, Vue, Angular u otro framework que arma la página en el navegador, marca "Ejecutar JavaScript". Cada página se abre en Chrome o Edge sin ventana; es varias veces más lento.',
       'Si quieres excluir secciones, escribe una expresión regular por línea (por ejemplo ^/tag/).',

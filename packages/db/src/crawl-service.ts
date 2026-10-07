@@ -1,6 +1,6 @@
 import zlib from 'zlib';
 import { Prisma, Severity } from '@prisma/client';
-import { crawlSite, auditCrawl, indexabilityOf, CrawlOptions, DetectedIssue } from '@glitch/crawler';
+import { crawlSite, auditCrawl, indexabilityOf, CrawlOptions, CrawledPageData, DetectedIssue } from '@glitch/crawler';
 import { calculatePriorityScore } from '@glitch/core';
 import { prisma } from './client';
 import { recordAuditEvent } from './audit';
@@ -50,16 +50,6 @@ export async function runCrawl(opts: RunCrawlOptions) {
   await recordAuditEvent({ workspaceId: site.workspaceId, userId: opts.actorUserId ?? null, action: 'crawl.started', entity: 'CrawlRun', entityId: run.id, details: json(config) });
 
   try {
-    const result = await crawlSite({
-      ...config,
-      startUrl: site.canonicalUrl,
-      seeds: config.seedFromSitemap ? [...sitemapUrls] : [],
-      allowHosts: opts.allowHosts,
-      timeoutMs: opts.timeoutMs,
-      signal: opts.signal,
-      onProgress: opts.onProgress
-    });
-
     // Paths Googlebot requested in the latest log import, to flag crawl/log overlap.
     const latestImport = await prisma.logImport.findFirst({ where: { siteId: site.id, status: 'completed' }, orderBy: { createdAt: 'desc' } });
     const loggedPaths = new Set(
@@ -68,7 +58,7 @@ export async function runCrawl(opts: RunCrawlOptions) {
         : []
     );
 
-    const rows = result.pages.map(p => {
+    const toRow = (p: CrawledPageData) => {
       const ix = indexabilityOf(p);
       const u = new URL(p.url);
       const e = p.extracted;
@@ -93,7 +83,7 @@ export async function runCrawl(opts: RunCrawlOptions) {
         schemaErrors: e?.schemaErrors.length ?? 0,
         redirectChain: p.redirectChain.length ? json(p.redirectChain) : undefined,
         contentHash: e?.contentHash ?? null,
-        inlinks: p.inlinks,
+        inlinks: 0, // set once the whole link graph is known
         outlinks: e?.internalLinks.length ?? 0,
         externalLinks: e?.externalLinks ?? 0,
         imagesMissingAlt: e?.imagesMissingAlt ?? 0,
@@ -119,10 +109,48 @@ export async function runCrawl(opts: RunCrawlOptions) {
         htmlGz: p.html && p.html.length <= 2 * 1024 * 1024 ? zlib.gzipSync(p.html) : null,
         js: p.js ? json(p.js) : undefined
       };
+    };
+
+    // Pages are written as they are crawled, so memory does not grow with the site.
+    let pageRows: ReturnType<typeof toRow>[] = [];
+    let linkRows: Prisma.CrawledLinkCreateManyInput[] = [];
+    let writing: Promise<void> = Promise.resolve();
+    const flush = () => {
+      const pr = pageRows;
+      const lr = linkRows;
+      pageRows = [];
+      linkRows = [];
+      writing = writing.then(async () => {
+        if (pr.length) await prisma.crawledPage.createMany({ data: pr });
+        for (let i = 0; i < lr.length; i += BATCH) await prisma.crawledLink.createMany({ data: lr.slice(i, i + BATCH) });
+      });
+      return writing;
+    };
+    const onPage = async (p: CrawledPageData) => {
+      pageRows.push(toRow(p));
+      for (const l of p.extracted?.links ?? []) linkRows.push({ crawlRunId: run.id, sourceUrl: p.finalUrl, targetUrl: l.url, anchor: l.anchor, internal: l.internal, nofollow: l.nofollow });
+      if (pageRows.length >= 200 || linkRows.length >= 5000) await flush();
+    };
+
+    const result = await crawlSite({
+      onPage,
+      ...config,
+      startUrl: site.canonicalUrl,
+      seeds: config.seedFromSitemap ? [...sitemapUrls] : [],
+      allowHosts: opts.allowHosts,
+      timeoutMs: opts.timeoutMs,
+      signal: opts.signal,
+      onProgress: opts.onProgress
     });
-    for (let i = 0; i < rows.length; i += BATCH) await prisma.crawledPage.createMany({ data: rows.slice(i, i + BATCH) });
-    const links = result.pages.flatMap(p => (p.extracted?.links ?? []).map(l => ({ crawlRunId: run.id, sourceUrl: p.finalUrl, targetUrl: l.url, anchor: l.anchor, internal: l.internal, nofollow: l.nofollow })));
-    for (let i = 0; i < links.length; i += BATCH) await prisma.crawledLink.createMany({ data: links.slice(i, i + BATCH) });
+
+    await flush();
+    // Inlinks are only known at the end: one UPDATE … CASE per batch.
+    const withInlinks = result.pages.filter(p => p.inlinks > 0);
+    for (let i = 0; i < withInlinks.length; i += 400) {
+      const chunk = withInlinks.slice(i, i + 400);
+      const cases = Prisma.join(chunk.map(p => Prisma.sql`WHEN ${p.url} THEN ${p.inlinks}`), ' ');
+      await prisma.$executeRaw`UPDATE "CrawledPage" SET "inlinks" = CASE "url" ${cases} ELSE "inlinks" END WHERE "crawlRunId" = ${run.id} AND "url" IN (${Prisma.join(chunk.map(p => p.url))})`;
+    }
     const resources = result.resources.map(r => ({ crawlRunId: run.id, url: r.url, kind: r.kind, internal: r.internal, isLink: r.isLink, statusCode: r.statusCode, finalUrl: r.finalUrl, redirected: r.redirected, contentType: r.contentType, sizeBytes: r.sizeBytes, responseTimeMs: r.responseTimeMs, error: r.error, foundOn: r.foundOn, foundOnCount: r.foundOnCount }));
     for (let i = 0; i < resources.length; i += BATCH) await prisma.crawledResource.createMany({ data: resources.slice(i, i + BATCH) });
 

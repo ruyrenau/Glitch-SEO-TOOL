@@ -82,7 +82,7 @@ export function CrawlView({ siteId, onFinished }: { siteId: string; onFinished: 
       <Card title="Nuevo crawl">
         <form onSubmit={start} className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {num('maxUrls', 'Máx. URLs (≤ 5000)', 1, 5000)}
+            {num('maxUrls', 'Máx. URLs (≤ 100,000)', 1, 100000)}
             {num('maxDepth', 'Profundidad máx.', 0, 20)}
             {num('concurrency', 'Concurrencia', 1, 8)}
             {num('rps', 'Solicitudes / segundo', 0.1, 20, 0.1)}

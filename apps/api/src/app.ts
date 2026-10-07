@@ -67,7 +67,7 @@ import {
   MAX_BATCH,
   DuplicateImportError
 } from '@glitch/db';
-import { fetchSitemap, findBrowser, parseSitemapXml } from '@glitch/crawler';
+import { HARD_MAX_URLS, MAX_RPS, fetchSitemap, findBrowser, parseSitemapXml } from '@glitch/crawler';
 import { validateJsonLd } from '@glitch/schema-engine';
 import { renderTemplate, computeJaccardSimilarity, evaluateQualityGate } from '@glitch/content-engine';
 import { GoogleSearchConsoleClient } from '@glitch/connectors';
@@ -314,10 +314,10 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   // ------------------------------------------------------------------ crawls (run by the worker)
   const crawlBody = z
     .object({
-      maxUrls: z.number().int().min(1).max(5000).default(500),
+      maxUrls: z.number().int().min(1).max(HARD_MAX_URLS).default(500),
       maxDepth: z.number().int().min(0).max(20).default(5),
       concurrency: z.number().int().min(1).max(8).default(2),
-      rps: z.number().min(0.1).max(20).optional(),
+      rps: z.number().min(0.1).max(MAX_RPS).optional(),
       respectRobots: z.boolean().default(true),
       include: z.array(z.string().max(200)).max(20).default([]),
       exclude: z.array(z.string().max(200)).max(50).default([]),
