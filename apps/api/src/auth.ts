@@ -43,6 +43,7 @@ const RULES: Array<[RegExp, RegExp, Permission]> = [
   [/^POST$/, /^\/api\/v1\/crawls\/:id\/cancel$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/jobs\/:id\/(cancel|retry)$/, 'seo:operate'],
   [/^PUT$/, /^\/api\/v1\/sites\/:id\/schedule$/, 'seo:operate'],
+  [/^POST$/, /^\/api\/v1\/sites\/:id\/performance$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/(issues\/:id\/status|alerts\/:id\/acknowledge)$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/wordpress\/test$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/(generated-pages|datasets)$/, 'content:edit'],

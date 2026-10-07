@@ -16,7 +16,8 @@ export default defineConfig({
       '@glitch/content-engine': pkg('content-engine'),
       '@glitch/connectors': pkg('connectors'),
       '@glitch/testing': path.resolve(__dirname, 'packages/testing/src/index.ts'),
-      '@glitch/jobs': pkg('jobs')
+      '@glitch/jobs': pkg('jobs'),
+      '@glitch/performance': pkg('performance')
     }
   },
   test: {

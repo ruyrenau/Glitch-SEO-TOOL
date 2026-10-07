@@ -2,7 +2,7 @@
 
 Internal SEO operations tool in TypeScript. It streams Nginx/Apache access logs, identifies search-engine and AI crawlers, cross-references bot activity with the XML sitemap, crawls sites to detect and prioritize technical SEO issues, alerts when a deploy breaks something between two crawls, and sends human-approved programmatic pages to WordPress as drafts. A dashboard, a REST API and a CLI sit on top of the same services.
 
-> **Status (v0.8).** Log + sitemap analysis, the technical crawler/auditor, crawl diffs and alerts, and the programmatic content workflow (CSV dataset → template → batch generation with quality gates → human approval → WordPress drafts) are real and tested end to end (WordPress tests also run against a real WordPress). Search Console and GEO monitoring are **not built yet**; the dashboard marks those modules as `PRONTO` and shows no numbers for them. See [Roadmap](#roadmap).
+> **Status (v0.9).** Log + sitemap analysis, the technical crawler/auditor, crawl diffs and alerts, and the programmatic content workflow (CSV dataset → template → batch generation with quality gates → human approval → WordPress drafts) are real and tested end to end (WordPress tests also run against a real WordPress). Search Console and GEO monitoring are **not built yet**; the dashboard marks those modules as `PRONTO` and shows no numbers for them. See [Roadmap](#roadmap).
 
 ## What works today
 
@@ -10,7 +10,7 @@ Internal SEO operations tool in TypeScript. It streams Nginx/Apache access logs,
 |---|---|
 | Log ingestion | `.log`, `.txt`, `.gz` (gzip detected by magic bytes). Nginx/Apache *combined*, with or without `$request_time`. Streaming with real backpressure, cancellation via `AbortSignal`, zip-bomb guard, SHA-256 de-duplication, redacted samples of unparsed lines. |
 | Privacy | IPs are HMAC-hashed with `SALT_SECRET` and never stored. Sensitive query params (`token`, `email`, `password`, `session`, `user`…) are redacted before anything is persisted. Only aggregates are stored, never raw lines. |
-| Bot identification | Googlebot (smartphone, desktop, image, video, news), Bingbot, Applebot, DuckDuckBot, Yandex, Baidu, GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User, Bytespider, Amazonbot, CCBot, Google-Extended, SEO tools, unknown bots. *User-agent based; DNS verification is on the roadmap.* |
+| Bot identification | Googlebot (smartphone, desktop, image, video, news), Bingbot, Applebot, DuckDuckBot, Yandex, Baidu, GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User, Bytespider, Amazonbot, CCBot, Google-Extended, SEO tools, unknown bots. Search-engine crawlers (Googlebot variants, Bingbot, Applebot, YandexBot, Baiduspider) are **verified by reverse + forward DNS**; spoofed hits are reported separately. Raw IPs exist only in memory during the import; the verification cache is keyed by an HMAC. AI crawlers do not publish a DNS method and are reported as declared. |
 | Log report | Bot hits by day, hour, bot, directory; HTTP status distribution; most/least crawled URLs; 4xx, 5xx and redirects served to bots; crawled parameters; response-time p50/p90/p99; AI-bot activity; **human visits referred by ChatGPT, Perplexity, Claude, Gemini, Copilot**; potential crawl waste (explicitly an estimate). CSV export with formula-injection protection. |
 | Sitemap | Upload `sitemap.xml` or fetch by URL (follows sitemap indexes). SSRF guard blocks private, loopback, link-local and metadata IPs. No DTD/entity expansion. |
 | Cross-reference | Sitemap URLs never visited by Googlebot in the log period; URLs crawled with 200 that are missing from the sitemap. Crawled pages are flagged when Googlebot requested them in the latest log. |
@@ -25,6 +25,7 @@ Internal SEO operations tool in TypeScript. It streams Nginx/Apache access logs,
 | Human approval | Sending is impossible until a named reviewer approves the page; blocked pages cannot be approved. Every review is stored. Bulk approve/reject/send report a result per page (blocked or unapproved pages are refused, conflicts are never overwritten in bulk). |
 | WordPress | REST API + Application Passwords. Credentials encrypted at rest (AES-256-GCM, `CREDENTIALS_KEY`) and never returned. HTTPS required (local hosts only via `CRAWL_ALLOW_PRIVATE_HOSTS`). Connection test checks the user can edit posts; lists categories. **Drafts only**: never publishes, never deletes, refuses to touch a post that is no longer a draft. Dry run with title and line diff. Detects edits made in wp-admin since the last send (`modified_gmt`) and asks before overwriting. Keeps a copy of the remote post before each update and can restore it. `Idempotency-Key` on send. Retries 429/503 honoring `Retry-After`. Every attempt (including conflicts and refusals) is logged. |
 | Tools | JSON-LD validator. |
+| Core Web Vitals | Lab data from Lighthouse run locally in headless Chrome/Edge (no account needed), or PageSpeed Insights with `PSI_API_KEY`, which adds real-user CrUX field data (p75 LCP, INP, CLS, FCP, TTFB, URL or origin level, collection period). Field and lab are stored and shown separately; "insufficient data" is explicit. Diagnostics: render-blocking resources, unsized images, offscreen images, unused JS/CSS, cache policy, font-display, byte weight, request count and more. Mobile/desktop, history per URL, runs as a queued job (one browser at a time), URLs restricted to the site's host. |
 | Job queue | BullMQ on Redis with a separate worker process (`apps/worker`). Log imports and crawls are queued by the API and survive API restarts. Every job has a database record (status, progress, last log lines, attempts, result, error, who/what triggered it). Exponential-backoff retries; final failures stay in the BullMQ failed set (dead letter) and can be retried by hand; non-recoverable errors are not retried. Queued jobs can be cancelled immediately, running ones cooperatively. Per-site scheduled crawls (cron, site timezone, at most hourly) and a daily retention job (old log imports, expired sessions, temp files, old job history; audited). Worker heartbeat shown in `/health/ready` and the dashboard. |
 | Authentication | Username + password (bcrypt, cost 12; constant-time answer for unknown users). Server-side sessions: random 256-bit token in an `httpOnly`, `SameSite=Lax` cookie (`Secure` in production), only its SHA-256 stored, 12 h sliding expiry. Login throttling (5 failures per user+IP, 30 per IP, 15 min) with `Retry-After`. CSRF: state-changing requests from a foreign `Origin` are rejected. Temporary passwords must be changed before anything else. Changing a password ends the user's other sessions; disabling a user ends all of them. |
 | Authorization | Roles per workspace: Owner, Admin, SEO Manager, Editor, Viewer. Every route maps to a permission; unlisted write routes need `site:manage` (deny by default). Every `:id` (site, crawl, issue, alert, import, dataset, template, page, publication, user) is checked against the caller's workspace and answers 404 if it belongs to another one. Only Owners manage Owners; the last Owner cannot be removed; nobody changes their own role. Audit events and content approvals record the signed-in user. |
@@ -98,7 +99,7 @@ pnpm cli schema:validate ./schema.json         # exit 1 when invalid
 ## Tests
 
 ```bash
-pnpm test        # Vitest (132 tests, needs Redis: started automatically if missing): parser, bots, robots.txt, extraction, crawler vs a local fixture site, SSRF, API integration on a throwaway SQLite DB
+pnpm test        # Vitest (151 tests; needs Redis, started automatically; runs real Lighthouse when Chrome/Edge is installed): parser, bots, robots.txt, extraction, crawler vs a local fixture site, SSRF, API integration on a throwaway SQLite DB
 pnpm test:e2e    # Playwright (7 flows): login/logout; logs; crawl and issue triage; bad deploy raises alerts; single page to WordPress with a conflict; CSV → batch → bulk approve → bulk send
 pnpm typecheck
 pnpm bench:logs [lines]
@@ -140,8 +141,7 @@ packages/schema-engine, content-engine, connectors, config
 
 1. **WordPress extras**: media and featured images, pages as well as posts, Yoast/Rank Math fields, JSON-LD per page.
 2. **Search Console**: OAuth, Search Analytics, cross-reference with logs.
-3. **Bot verification**: reverse/forward DNS with caching.
-4. GEO monitoring, log-based alerts (5xx spikes, Googlebot drops).
+3. GEO monitoring, log-based alerts (5xx spikes, Googlebot drops).
 
 ## Ideas worth building (beyond the original spec)
 

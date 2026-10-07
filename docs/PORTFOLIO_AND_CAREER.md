@@ -2,13 +2,13 @@
 
 Only claim what the code does today. Update this file as roadmap items ship.
 
-## Portfolio summary (accurate for v0.8)
+## Portfolio summary (accurate for v0.9)
 
-> Built a TypeScript SEO operations tool that streams Nginx/Apache server logs (including gzip) with bounded memory, identifies search-engine and AI crawlers, stores privacy-safe aggregates, cross-references bot activity with XML sitemaps, and crawls sites (robots.txt-compliant, rate-limited, SSRF-guarded) to detect and prioritize 39 types of technical SEO issues, raises alerts when a deploy introduces regressions between crawls, and turns CSV datasets into quality-gated programmatic pages that are published to WordPress as drafts, through its REST API, only after human approval. Heavy work (log imports, crawls, scheduled crawls, retention) runs as asynchronous BullMQ jobs on Redis in a separate worker. Access is protected by session-based authentication and workspace-scoped role-based permissions. Includes a Fastify REST API with OpenAPI, a Next.js dashboard, a CLI, SSRF-guarded sitemap fetching, an audit trail, and Vitest/Playwright test suites.
+> Built a TypeScript SEO operations tool that streams Nginx/Apache server logs (including gzip) with bounded memory, identifies search-engine and AI crawlers (verifying search-engine bots by reverse and forward DNS), stores privacy-safe aggregates, cross-references bot activity with XML sitemaps, and crawls sites (robots.txt-compliant, rate-limited, SSRF-guarded) to detect and prioritize 39 types of technical SEO issues, raises alerts when a deploy introduces regressions between crawls, and turns CSV datasets into quality-gated programmatic pages that are published to WordPress as drafts, through its REST API, only after human approval. It measures Core Web Vitals with Lighthouse and PageSpeed Insights, keeping lab and real-user data separate. Heavy work (log imports, crawls, performance runs, scheduled crawls, retention) runs as asynchronous BullMQ jobs on Redis in a separate worker. Access is protected by session-based authentication and workspace-scoped role-based permissions. Includes a Fastify REST API with OpenAPI, a Next.js dashboard, a CLI, SSRF-guarded sitemap fetching, an audit trail, and Vitest/Playwright test suites.
 
 Do **not** claim Search Console integration until it exists. WordPress integration creates and updates drafts only.
 
-## Resume bullets (accurate for v0.8)
+## Resume bullets (accurate for v0.9)
 
 - Built a streaming log-analysis pipeline in TypeScript that processes 2M Nginx lines (432 MB) in ~31 s under a 128 MB heap cap; found and fixed a V8 sliced-string leak that previously retained ~240 bytes per line.
 - Implemented privacy-by-design ingestion: HMAC-hashed IPs never persisted, sensitive query parameters redacted, SHA-256 de-duplication, zip-bomb and file-type validation.
@@ -19,7 +19,9 @@ Do **not** claim Search Console integration until it exists. WordPress integrati
 - Designed programmatic-content quality gates that measure what each data row adds beyond the template (shingle sets minus boilerplate), so template pages are not false duplicates while copied rows are blocked; added CSV profiling, HTML escaping of data, risky-claim detection and per-page bulk review.
 - Implemented authentication and RBAC: bcrypt, hashed server-side session tokens in httpOnly cookies, login throttling, origin-based CSRF protection, five roles with deny-by-default route permissions and workspace isolation on every resource; audited actions and approvals carry the real user.
 - Moved log imports and crawls to BullMQ/Redis workers with durable job records, live progress, cooperative cancellation, exponential-backoff retries, a dead-letter set, cron-scheduled crawls per site and an audited daily retention job.
-- Delivered a Fastify API (Zod validation, correlation IDs, OpenAPI), Next.js dashboard and CLI on a shared Prisma data layer, covered by 132 Vitest unit/integration tests (including a local fixture site with planted problems) and Playwright end-to-end tests.
+- Added crawler verification by reverse + forward DNS without persisting IPs (in-memory only, HMAC-keyed cache), exposing spoofed Googlebot traffic in log reports.
+- Integrated Core Web Vitals: local headless Lighthouse (lab) and PageSpeed Insights/CrUX (field) as queued jobs, with explicit field-vs-lab separation, insufficient-data handling and actionable diagnostics.
+- Delivered a Fastify API (Zod validation, correlation IDs, OpenAPI), Next.js dashboard and CLI on a shared Prisma data layer, covered by 151 Vitest unit/integration tests (including a local fixture site with planted problems) and Playwright end-to-end tests.
 
 ## Interview demo (3–5 minutes)
 

@@ -128,6 +128,7 @@ model Site {
   generatedPages     GeneratedPage[]
   datasets           Dataset[]
   jobs               Job[]
+  performanceRuns    PerformanceRun[]
   crawlSchedule      String?   // cron expression in the site's timezone, null = off
   crawlScheduleOptions Json?
   crawls             CrawlRun[]
@@ -505,4 +506,35 @@ model BotIpVerification {
   family    String
   result    String   // verified | spoofed
   checkedAt DateTime @default(now())
+}
+
+/// One measurement of one URL. Lab (Lighthouse) and field (CrUX) data are kept apart on purpose.
+model PerformanceRun {
+  id               String   @id @default(uuid())
+  siteId           String
+  site             Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  jobId            String?
+  url              String
+  finalUrl         String?
+  strategy         String   // mobile | desktop
+  source           String   // lighthouse-local | psi
+  status           String   // ok | failed
+  error            String?
+  performanceScore Int?
+  labLcp           Float?
+  labCls           Float?
+  labTbt           Float?
+  lab              Json?
+  fieldStatus      String   @default("not-requested") // available | insufficient-data | not-requested
+  fieldScope       String?  // url | origin
+  fieldLcp         Float?
+  fieldInp         Float?
+  fieldCls         Float?
+  field            Json?
+  diagnostics      Json?
+  resources        Json?
+  lighthouseVersion String?
+  createdAt        DateTime @default(now())
+
+  @@index([siteId, url, createdAt])
 }

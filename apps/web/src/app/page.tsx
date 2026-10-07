@@ -10,6 +10,7 @@ import type { User, Permission } from '@/lib/types';
 import { LoginView, ForcedPasswordView } from '@/components/AuthViews';
 import { UsersView, AccountView } from '@/components/UsersView';
 import { JobsView } from '@/components/JobsView';
+import { PerformanceView } from '@/components/PerformanceView';
 import type { Site } from '@/lib/types';
 import { ErrorBox, Roadmap, Skeleton } from '@/components/ui';
 import { OverviewView } from '@/components/OverviewView';
@@ -32,7 +33,7 @@ const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ classNa
   { id: 'crawler', label: 'Crawl y auditoría', icon: ShieldAlert, ready: true },
   { id: 'issues', label: 'Issues técnicos', icon: AlertTriangle, ready: true },
   { id: 'alerts', label: 'Alertas', icon: Bell, ready: true },
-  { id: 'vitals', label: 'Core Web Vitals', icon: Gauge, ready: false },
+  { id: 'vitals', label: 'Core Web Vitals', icon: Gauge, ready: true },
   { id: 'schema', label: 'Datos estructurados', icon: Code2, ready: true },
   { id: 'programmatic', label: 'Contenido programático', icon: Layers, ready: true },
   { id: 'wordpress', label: 'WordPress', icon: Send, ready: true },
@@ -44,7 +45,6 @@ const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ classNa
 ];
 
 const ROADMAP: Partial<Record<NavId, { status: string; items: string[] }>> = {
-  vitals: { status: 'Sin integración con PageSpeed Insights ni CrUX.', items: ['PSI API con clave opcional', 'Separar datos de campo (CrUX) y laboratorio (Lighthouse)'] },
   gsc: { status: 'Sin OAuth. No se muestran datos de ejemplo para no confundirlos con datos reales.', items: ['OAuth 2.0', 'Search Analytics por query, página, país y dispositivo', 'Cruce con logs: URLs con impresiones que Googlebot casi no rastrea'] },
   geo: { status: 'Sin proveedores configurados.', items: ['Prompts objetivo y repeticiones', 'Menciones, citas y competidores por respuesta', 'Mostrar volatilidad, no rankings'] },
 };
@@ -110,7 +110,7 @@ function Dashboard() {
 
   const current = nav === 'manual' ? { label: 'Manual de uso' } : nav === 'account' ? { label: 'Mi cuenta' } : NAV.find(n => n.id === nav)!;
   const visibleNav = NAV.filter(n => !n.perm || can(n.perm));
-  const needsSite = ['overview', 'logs', 'crawler', 'issues', 'alerts', 'programmatic', 'wordpress'].includes(nav);
+  const needsSite = ['overview', 'logs', 'crawler', 'issues', 'alerts', 'programmatic', 'wordpress', 'vitals'].includes(nav);
 
   return (
     <div className={dark ? 'dark' : ''}>
@@ -124,7 +124,7 @@ function Dashboard() {
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center font-black text-sm" aria-hidden>G</div>
             <div>
               <div className="font-bold text-sm">Glitch SEO Ops</div>
-              <div className="text-[10px] text-slate-500 font-mono">v0.8 · local</div>
+              <div className="text-[10px] text-slate-500 font-mono">v0.9 · local</div>
             </div>
           </div>
 
@@ -226,6 +226,7 @@ function Dashboard() {
                 {nav === 'schema' && <SchemaView />}
                 {nav === 'programmatic' && <ContentView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'wordpress' && <WordPressView key={siteId} siteId={siteId} go={go} />}
+                {nav === 'vitals' && <PerformanceView key={siteId} siteId={siteId} />}
                 {nav === 'automations' && <JobsView sites={sites} />}
                 {nav === 'audit' && <AuditView />}
                 {nav === 'users' && can('users:manage') && <UsersView />}

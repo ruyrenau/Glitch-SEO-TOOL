@@ -1,9 +1,11 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { prisma, importLogFile, runCrawl, deleteLogImport, purgeExpiredSessions } from '@glitch/db';
+import { Prisma, prisma, importLogFile, runCrawl, deleteLogImport, purgeExpiredSessions } from '@glitch/db';
+import { measure, PerformanceError } from '@glitch/performance';
 
 export interface JobContext {
+  jobId: string;
   signal: AbortSignal;
   /** pct 0-100 when known; detail is shown in the dashboard. Throttled by the runner. */
   progress: (pct: number | null, detail?: Record<string, unknown>) => void;
@@ -90,8 +92,61 @@ export async function retentionHandler(_p: Record<string, unknown>, ctx: JobCont
   return summary;
 }
 
+/** Measures each URL × strategy. One URL failing is recorded, not fatal; quota errors stop the run. */
+export async function performanceHandler(p: { siteId: string; urls: string[]; strategies: Array<'mobile' | 'desktop'> }, ctx: JobContext) {
+  const allowHosts = (process.env.CRAWL_ALLOW_PRIVATE_HOSTS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+  const work = p.urls.flatMap(url => p.strategies.map(strategy => ({ url, strategy })));
+  let ok = 0;
+  let failed = 0;
+  for (const [i, w] of work.entries()) {
+    if (ctx.signal.aborted) break;
+    ctx.progress(Math.round((i / work.length) * 100), { current: `${w.strategy} ${w.url}`, done: i, total: work.length });
+    try {
+      const r = await measure(w.url, { strategy: w.strategy, allowHosts, signal: ctx.signal });
+      await prisma.performanceRun.create({
+        data: {
+          siteId: p.siteId,
+          jobId: ctx.jobId,
+          url: w.url,
+          finalUrl: r.finalUrl,
+          strategy: w.strategy,
+          source: r.source,
+          status: 'ok',
+          performanceScore: r.lab.performanceScore,
+          labLcp: r.lab.LCP,
+          labCls: r.lab.CLS,
+          labTbt: r.lab.TBT,
+          lab: r.lab as unknown as Prisma.InputJsonValue,
+          fieldStatus: r.fieldStatus,
+          fieldScope: r.field?.scope ?? null,
+          fieldLcp: r.field?.metrics.LCP?.p75 ?? null,
+          fieldInp: r.field?.metrics.INP?.p75 ?? null,
+          fieldCls: r.field?.metrics.CLS?.p75 ?? null,
+          field: r.field ? (r.field as unknown as Prisma.InputJsonValue) : undefined,
+          diagnostics: r.diagnostics as unknown as Prisma.InputJsonValue,
+          resources: r.resources as unknown as Prisma.InputJsonValue,
+          lighthouseVersion: r.lighthouseVersion
+        }
+      });
+      ok++;
+      ctx.log(`${w.strategy} ${w.url}: score ${r.lab.performanceScore ?? '—'} (${r.source})`);
+    } catch (e) {
+      if (ctx.signal.aborted) break;
+      failed++;
+      const msg = (e as Error).message.slice(0, 500);
+      await prisma.performanceRun.create({ data: { siteId: p.siteId, url: w.url, strategy: w.strategy, source: process.env.PSI_API_KEY ? 'psi' : 'lighthouse-local', status: 'failed', error: msg } });
+      ctx.log(`${w.strategy} ${w.url}: ${msg}`, 'warn');
+      if (e instanceof PerformanceError && (e.code === 'QUOTA' || e.code === 'BROWSER_NOT_FOUND')) {
+        throw Object.assign(new Error(msg), { unrecoverable: true });
+      }
+    }
+  }
+  return { measured: ok, failed, total: work.length };
+}
+
 export const HANDLERS = {
   'log-import': logImportHandler,
   crawl: crawlHandler,
-  retention: retentionHandler
+  retention: retentionHandler,
+  performance: performanceHandler
 } as const;

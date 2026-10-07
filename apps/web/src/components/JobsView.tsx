@@ -8,7 +8,7 @@ import type { JobRow, JobStatus, Site } from '@/lib/types';
 import { ACTIVE_JOB } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorBox, Kpi, Skeleton, inputCls } from './ui';
 
-const TYPE_LABEL: Record<string, string> = { 'log-import': 'Importación de log', crawl: 'Crawl', retention: 'Limpieza por retención' };
+const TYPE_LABEL: Record<string, string> = { 'log-import': 'Importación de log', crawl: 'Crawl', retention: 'Limpieza por retención', performance: 'Core Web Vitals' };
 const STATUS: Record<JobStatus, { label: string; tone: 'good' | 'warn' | 'bad' | 'default' }> = {
   QUEUED: { label: 'En cola', tone: 'default' },
   RUNNING: { label: 'Corriendo', tone: 'warn' },
@@ -40,6 +40,7 @@ function summary(j: JobRow): string {
   if (!r) return j.error ?? '';
   if (j.type === 'crawl') return `${fmt(Number(r.pages))} páginas, ${fmt(Number(r.issues))} tipos de issue`;
   if (j.type === 'log-import') return `${fmt(Number(r.validLines))} líneas válidas`;
+  if (j.type === 'performance') return `${fmt(Number(r.measured))} mediciones${Number(r.failed) ? `, ${fmt(Number(r.failed))} fallidas` : ''}`;
   if (j.type === 'retention') return `${fmt(Number(r.logImportsDeleted))} logs, ${fmt(Number(r.sessionsPurged))} sesiones y ${fmt(Number(r.tempFilesDeleted))} archivos eliminados`;
   return '';
 }

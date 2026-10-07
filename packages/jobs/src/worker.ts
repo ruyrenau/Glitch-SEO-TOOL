@@ -58,6 +58,7 @@ async function processJob(job: BullJob) {
   }, 1000);
 
   const ctx: JobContext = {
+    jobId: row.id,
     signal: ac.signal,
     progress: (pct, detail) => {
       pending = { pct, detail };

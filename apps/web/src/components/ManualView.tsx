@@ -74,6 +74,7 @@ const SECTIONS: Section[] = [
     read: [
       ['Desperdicio potencial', 'Porcentaje de hits de bots a redirecciones, errores o URLs con parámetros. Es una estimación para priorizar, no una medida del "crawl budget".'],
       ['Cobertura sitemap ↔ logs', 'Izquierda: URLs del sitemap que Googlebot no visitó en el periodo del log. Derecha: URLs rastreadas con 200 que no están en el sitemap.'],
+      ['Verificación de crawlers por DNS', 'Para cada buscador: visitas verificadas (la IP pertenece de verdad a Google, Bing…) y falsas (alguien usa su user agent). Las falsas no son rastreo real.'],
       ['Visitas referidas por asistentes de IA', 'Personas que llegaron desde ChatGPT, Perplexity, Claude, Gemini o Copilot (por el referer).'],
       ['Tiempo de respuesta p50/p90/p99', 'Solo si el log incluye $request_time. Son límites superiores por rango, no valores exactos.']
     ],
@@ -81,7 +82,7 @@ const SECTIONS: Section[] = [
       'Las IP nunca se guardan (se hashean) y los parámetros sensibles como token, email o password se borran antes de guardar.',
       'Si subes el mismo archivo dos veces, la herramienta lo detecta y te pregunta si quieres reemplazarlo.'
     ],
-    limits: ['Un bot se identifica por su user agent. Un Googlebot falso cuenta como real hasta que exista la verificación por DNS.']
+    limits: ['Googlebot, Bingbot, Applebot, YandexBot y Baiduspider se verifican por DNS; los bots de IA no publican ese método y se muestran solo como declarados.']
   },
   {
     id: 'crawler',
@@ -143,6 +144,28 @@ const SECTIONS: Section[] = [
       'Pulsa "Marcar como revisada" cuando la hayas atendido.'
     ],
     tips: ['Si configuras ALERT_WEBHOOK_URL en el servidor, las alertas también llegan a ese webhook o a un canal de Slack.']
+  },
+  {
+    id: 'vitals',
+    nav: 'vitals',
+    icon: Gauge,
+    title: 'Core Web Vitals',
+    status: 'ready',
+    what: 'Mide la velocidad y estabilidad de las páginas en móvil y escritorio. Muestra por separado los datos de usuarios reales (CrUX, cuando hay) y una prueba de laboratorio (Lighthouse), con lo que conviene corregir.',
+    why: 'Las Core Web Vitals forman parte de la experiencia de página que evalúa Google, y los diagnósticos dicen qué cambio técnico tiene más efecto.',
+    steps: [
+      'Elige las URLs: la portada y las páginas más enlazadas del último crawl ya vienen sugeridas; puedes añadir otras del mismo sitio.',
+      'Elige Móvil, Escritorio o ambos y pulsa "Medir". El worker mide una URL a la vez (unos 20 segundos cada una).',
+      'Revisa cada URL: primero los datos de usuarios reales, luego el laboratorio y la lista "Qué mejorar".'
+    ],
+    read: [
+      ['Usuarios reales (CrUX)', 'Percentil 75 de visitas reales de Chrome en los últimos 28 días. Es lo que cuenta para Google. Solo con PSI_API_KEY y si la página tiene tráfico suficiente; si no, se usan los datos de todo el sitio y se indica.'],
+      ['Laboratorio (simulado)', 'Una carga con red y CPU limitadas en un navegador. Sirve para diagnosticar y comparar cambios; no representa a tus usuarios.'],
+      ['Umbrales', 'LCP ≤ 2.5 s, INP ≤ 200 ms y CLS ≤ 0.1 son "Bueno". INP solo existe con usuarios reales; en laboratorio se usa TBT como aproximación.'],
+      ['Datos insuficientes', 'Chrome no tiene visitas suficientes para publicar métricas de esa URL ni del sitio. No es un error.']
+    ],
+    tips: ['Mide antes y después de un cambio para comparar en el historial.', 'Sin PSI_API_KEY funciona igual, pero solo con datos de laboratorio.'],
+    limits: ['Una medición a la vez por sitio, hasta 10 URLs.', 'Lighthouse local necesita Chrome, Chromium o Edge instalado en la máquina del worker.']
   },
   {
     id: 'schema',
@@ -273,7 +296,7 @@ const SECTIONS: Section[] = [
     icon: Gauge,
     title: 'Secciones marcadas "PRONTO"',
     status: 'pending',
-    what: 'Core Web Vitals, Search Console y GEO / motores de IA todavía no están construidas. Al abrirlas verás qué falta; no muestran números inventados.',
+    what: 'Search Console y GEO / motores de IA todavía no están construidas. Al abrirlas verás qué falta; no muestran números inventados.',
     why: 'Están en el roadmap del proyecto.'
   }
 ];
@@ -284,7 +307,7 @@ const STATUS_BADGE = {
   pending: <Badge tone="warn">Pendiente</Badge>
 };
 
-const PENDING_ICONS = [Gauge, Search, Sparkles];
+const PENDING_ICONS = [Search, Sparkles];
 
 export function ManualView({ go }: { go: (nav: string) => void }) {
   const jump = (id: string) => document.getElementById(`manual-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });

@@ -1,6 +1,6 @@
 {
-  "name": "@glitch/jobs",
-  "version": "0.8.0",
+  "name": "@glitch/performance",
+  "version": "0.9.0",
   "private": true,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,11 +9,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@glitch/db": "workspace:*",
-    "bullmq": "^5.58.0",
-    "cron-parser": "^4.9.0",
-    "ioredis": "^5.4.0",
-    "@glitch/performance": "workspace:*"
+    "@glitch/crawler": "workspace:*",
+    "chrome-launcher": "^1.2.0",
+    "lighthouse": "^12.8.0"
   },
   "devDependencies": {
     "typescript": "^5.8.2",

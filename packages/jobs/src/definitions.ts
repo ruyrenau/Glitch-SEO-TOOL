@@ -4,15 +4,17 @@ import type { ConnectionOptions } from 'bullmq';
 export const JOB_TYPES = {
   'log-import': { queue: 'imports', attempts: 2, label: 'Importación de log' },
   crawl: { queue: 'crawls', attempts: 2, label: 'Crawl' },
-  retention: { queue: 'maintenance', attempts: 3, label: 'Limpieza por retención' }
+  retention: { queue: 'maintenance', attempts: 3, label: 'Limpieza por retención' },
+  performance: { queue: 'performance', attempts: 1, label: 'Core Web Vitals' }
 } as const;
 
 export type JobType = keyof typeof JOB_TYPES;
-export const QUEUES = ['imports', 'crawls', 'maintenance'] as const;
+export const QUEUES = ['imports', 'crawls', 'maintenance', 'performance'] as const;
 export type QueueName = (typeof QUEUES)[number];
 
 /** Parallel jobs per queue in one worker process. */
-export const CONCURRENCY: Record<QueueName, number> = { imports: 1, crawls: 2, maintenance: 1 };
+// Lighthouse launches a browser: one measurement at a time.
+export const CONCURRENCY: Record<QueueName, number> = { imports: 1, crawls: 2, maintenance: 1, performance: 1 };
 
 /** Exponential backoff between attempts (10 s, 20 s, …). JOB_BACKOFF_MS overrides the base delay. */
 export const backoff = () => ({ type: 'exponential' as const, delay: Number(process.env.JOB_BACKOFF_MS ?? 10_000) });

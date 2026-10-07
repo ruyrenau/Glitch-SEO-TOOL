@@ -369,6 +369,57 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     return setSiteSchedule(id, b.cron?.trim() || null, b.options ?? crawlBody.parse({}));
   });
 
+  // ------------------------------------------------------------------ performance (Core Web Vitals)
+  /** Homepage + most-linked indexable pages of the latest completed crawl. */
+  const performanceCandidates = async (siteId: string, canonicalUrl: string, take = 4) => {
+    const home = new URL('/', canonicalUrl).toString();
+    const run = await prisma.crawlRun.findFirst({ where: { siteId, status: 'completed' }, orderBy: { startedAt: 'desc' } });
+    const pages = run
+      ? await prisma.crawledPage.findMany({ where: { crawlRunId: run.id, isIndexable: true, NOT: { url: home } }, orderBy: { inlinks: 'desc' }, take, select: { url: true, inlinks: true, title: true } })
+      : [];
+    return [{ url: home, inlinks: null as number | null, title: 'Portada' }, ...pages];
+  };
+
+  app.get('/api/v1/sites/:id/performance/candidates', async req => {
+    const { id } = idParam.parse(req.params);
+    const site = await requireSite(id);
+    return performanceCandidates(id, site.canonicalUrl);
+  });
+
+  app.post('/api/v1/sites/:id/performance', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const site = await requireSite(id);
+    const b = z
+      .object({ urls: z.array(z.string().url()).min(1).max(10).optional(), strategies: z.array(z.enum(['mobile', 'desktop'])).min(1).max(2).default(['mobile']) })
+      .strict()
+      .parse(req.body ?? {});
+    const host = new URL(site.canonicalUrl).hostname;
+    const urls = b.urls ?? (await performanceCandidates(id, site.canonicalUrl)).map(c => c.url);
+    const foreign = urls.filter(u => new URL(u).hostname !== host);
+    if (foreign.length) throw new ApiError(400, 'FOREIGN_URL', `Only URLs of ${host} can be measured`, { foreign });
+    const active = await prisma.job.findFirst({ where: { siteId: id, type: 'performance', status: { in: ['QUEUED', 'RUNNING', 'RETRYING'] } } });
+    if (active) throw new ApiError(409, 'PERFORMANCE_RUNNING', 'A measurement is already queued or running for this site', { jobId: active.id });
+    const job = await enqueue('performance', { siteId: id, urls: [...new Set(urls)], strategies: b.strategies }, { siteId: id, workspaceId: site.workspaceId });
+    return reply.status(202).send({ jobId: job.id, status: job.status });
+  });
+
+  /** Latest run per URL+strategy, with the last 10 runs of each for trends. */
+  app.get('/api/v1/sites/:id/performance', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    const runs = await prisma.performanceRun.findMany({ where: { siteId: id }, orderBy: { createdAt: 'desc' }, take: 500 });
+    const groups = new Map<string, typeof runs>();
+    for (const r of runs) {
+      const k = `${r.url}|${r.strategy}`;
+      if (!groups.has(k)) groups.set(k, []);
+      if (groups.get(k)!.length < 10) groups.get(k)!.push(r);
+    }
+    return {
+      config: { psiConfigured: !!process.env.PSI_API_KEY, source: process.env.PSI_API_KEY ? 'psi' : 'lighthouse-local' },
+      items: [...groups.values()].map(list => ({ latest: list[0], history: list.map(r => ({ id: r.id, createdAt: r.createdAt, status: r.status, performanceScore: r.performanceScore, labLcp: r.labLcp, labCls: r.labCls, labTbt: r.labTbt, fieldLcp: r.fieldLcp, fieldInp: r.fieldInp, fieldCls: r.fieldCls })) }))
+    };
+  });
+
   // ------------------------------------------------------------------ jobs
   app.get('/api/v1/jobs', async req => {
     const q = z

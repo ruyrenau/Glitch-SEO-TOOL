@@ -54,8 +54,11 @@ test('a bad deploy between two crawls raises alerts and shows up in the diff', a
   site.setVersion(2);
   await page.getByRole('button', { name: 'Iniciar crawl' }).click();
   await expect(page.getByRole('cell', { name: 'completed' })).toHaveCount(2, { timeout: 30_000 });
+  // The worker has finished when the "in progress" card is gone and a new crawl can start.
+  await expect(page.getByRole('button', { name: 'Iniciar crawl' })).toBeEnabled({ timeout: 30_000 });
 
   await page.getByRole('button', { name: 'Ver detalle' }).first().click();
+  await expect(page.getByText('Cambios respecto al crawl anterior')).toBeVisible();
   await page.getByRole('button', { name: /noindex añadido · 1/ }).click();
   await expect(page.getByRole('cell', { name: '/about' })).toBeVisible();
 
