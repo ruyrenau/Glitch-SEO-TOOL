@@ -262,6 +262,34 @@ export async function bulkReview(pageIds: string[], decision: 'approved' | 'reje
   return results;
 }
 
+/**
+ * Deletes pages whose latest review is a rejection. Pages that reached WordPress (sent as draft or with
+ * any publication attempt) are never deleted here. Each deletion is audited with the page's title and slug.
+ */
+export async function deleteRejectedPages(siteId: string, ids?: string[], actorUserId?: string | null) {
+  const pages = await prisma.generatedPage.findMany({
+    where: { siteId, ...(ids?.length ? { id: { in: ids } } : {}) },
+    include: { site: true, approvals: { orderBy: { createdAt: 'desc' }, take: 1 }, _count: { select: { publications: true } } }
+  });
+  const deleted: string[] = [];
+  const skipped: Array<{ id: string; reason: string }> = [];
+  for (const p of pages) {
+    if (p.approvals[0]?.action !== 'rejected') {
+      if (ids?.length) skipped.push({ id: p.id, reason: 'NOT_REJECTED' });
+      continue;
+    }
+    if (p.status === 'SENT_AS_DRAFT' || p._count.publications > 0) {
+      skipped.push({ id: p.id, reason: 'IN_WORDPRESS' });
+      continue;
+    }
+    await prisma.generatedPage.delete({ where: { id: p.id } });
+    await recordAuditEvent({ workspaceId: p.site?.workspaceId ?? null, userId: actorUserId ?? null, action: 'page.deleted', entity: 'GeneratedPage', entityId: p.id, details: { title: p.title, slug: p.slug, reason: 'rejected' } });
+    deleted.push(p.id);
+  }
+  if (ids?.length) for (const id of ids) if (!pages.some(p => p.id === id)) skipped.push({ id, reason: 'NOT_FOUND' });
+  return { deleted: deleted.length, deletedIds: deleted, skipped };
+}
+
 export async function archivePage(pageId: string, actorUserId?: string | null) {
   const page = await prisma.generatedPage.update({ where: { id: pageId }, data: { status: 'ARCHIVED' }, include: { site: true } });
   await recordAuditEvent({ workspaceId: page.site?.workspaceId ?? null, userId: actorUserId ?? null, action: 'page.archived', entity: 'GeneratedPage', entityId: pageId });

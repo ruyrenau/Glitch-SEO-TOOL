@@ -71,6 +71,7 @@ import {
   bulkReview,
   bulkPush,
   archivePage,
+  deleteRejectedPages,
   MAX_BATCH,
   DuplicateImportError
 } from '@glitch/db';
@@ -783,6 +784,14 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   app.post('/api/v1/generated-pages/bulk-push', async req => {
     const b = z.object({ ids: idList.max(100), categories: z.array(z.number().int().positive()).max(20).optional() }).strict().parse(req.body);
     return { results: await bulkPush(b.ids, { categories: b.categories }) };
+  });
+
+  /** Deletes rejected pages of a site (all of them, or the given ids). Pages already in WordPress are kept. */
+  app.post('/api/v1/sites/:id/generated-pages/delete-rejected', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    const b = z.object({ ids: z.array(z.string().uuid()).max(1000).optional(), confirm: z.literal(true, { message: 'Send {"confirm": true} to delete' }) }).strict().parse(req.body);
+    return deleteRejectedPages(id, b.ids, req.auth!.user.id);
   });
 
   app.post('/api/v1/generated-pages/:id/archive', async req => {

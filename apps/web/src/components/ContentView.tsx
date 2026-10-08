@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Check, Eye, RotateCcw, Send, X } from 'lucide-react';
+import { Check, Eye, RotateCcw, Send, Trash2, X } from 'lucide-react';
 import { ApiRequestError, apiGet, apiSend, fmtDate } from '@/lib/api';
 import type { DryRun, DiffLine, GeneratedPage, GoFn } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorBox, Skeleton, inputCls } from './ui';
@@ -72,7 +72,7 @@ export function ContentView({ siteId, go }: { siteId: string; go: GoFn }) {
   const [conflict, setConflict] = useState<Record<string, { lastWrite: string; remoteModified: string; diff: DryRun['diff'] }>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'' | GeneratedPage['status']>('');
+  const [statusFilter, setStatusFilter] = useState<'' | 'REJECTED' | GeneratedPage['status']>('');
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [bulkMsg, setBulkMsg] = useState<string | null>(null);
   const set = (k: keyof typeof DEFAULT) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm({ ...form, [k]: e.target.value });
@@ -153,7 +153,21 @@ export function ContentView({ siteId, go }: { siteId: string; go: GoFn }) {
       await load();
     });
 
-  const visible = (pages ?? []).filter(p => !statusFilter || p.status === statusFilter);
+  // Rejected = latest review is a rejection and the page never reached WordPress (those can be deleted).
+  const isRejected = (p: GeneratedPage) => p.approvals?.[0]?.action === 'rejected' && p.status !== 'SENT_AS_DRAFT' && !p.publications?.length;
+  const rejected = (pages ?? []).filter(isRejected);
+  const visible = (pages ?? []).filter(p => !statusFilter || (statusFilter === 'REJECTED' ? isRejected(p) : p.status === statusFilter));
+  const removeRejected = (ids?: string[]) =>
+    run(ids?.length === 1 ? ids[0] : 'bulk', async () => {
+      const n = ids?.length ?? rejected.length;
+      if (!n) return;
+      if (!window.confirm(n === 1 ? '¿Borrar esta página rechazada? No se puede deshacer.' : `¿Borrar las ${n} páginas rechazadas? No se puede deshacer.`)) return;
+      setBulkMsg(null);
+      const r = await apiSend<{ deleted: number; skipped: Array<{ reason: string }> }>('POST', `/api/v1/sites/${siteId}/generated-pages/delete-rejected`, { ...(ids ? { ids } : {}), confirm: true });
+      setBulkMsg(`Borradas: ${r.deleted}.${r.skipped.length ? ` Se conservaron ${r.skipped.length} (ya están en WordPress o no estaban rechazadas).` : ''}`);
+      setChecked(new Set());
+      await load();
+    });
   const toggle = (id: string) => setChecked(c => {
     const n = new Set(c);
     if (n.has(id)) n.delete(id);
@@ -218,6 +232,7 @@ export function ContentView({ siteId, go }: { siteId: string; go: GoFn }) {
             <select aria-label="Filtrar por estado" className={inputCls} value={statusFilter} onChange={e => { setStatusFilter(e.target.value as typeof statusFilter); setChecked(new Set()); }}>
               <option value="">Todos los estados</option>
               {Object.entries(STATUS).filter(([k]) => k !== 'PUBLISHED' && k !== 'FAILED').map(([k, v]) => <option key={k} value={k}>{v.label} ({(pages ?? []).filter(p => p.status === k).length})</option>)}
+              <option value="REJECTED">Rechazadas ({rejected.length})</option>
             </select>
             <span className="text-xs text-slate-500">Revisas como <strong>{reviewer}</strong>{!can('content:edit') && ' (solo lectura)'}</span>
           </>
@@ -234,6 +249,9 @@ export function ContentView({ siteId, go }: { siteId: string; go: GoFn }) {
             <Button variant="secondary" disabled={!checked.size || busy === 'bulk'} onClick={() => bulk('approved')}>Aprobar seleccionadas</Button>
             <Button variant="secondary" disabled={!checked.size || busy === 'bulk'} onClick={() => bulk('rejected')}>Rechazar seleccionadas</Button>
             {connected && <Button disabled={!checked.size || busy === 'bulk'} onClick={() => bulk('push')}>Enviar seleccionadas como borrador</Button>}
+            {rejected.length > 0 && can('content:edit') && (
+              <Button variant="danger" disabled={busy === 'bulk'} onClick={() => removeRejected()}><Trash2 className="w-3.5 h-3.5" aria-hidden /> Borrar rechazadas ({rejected.length})</Button>
+            )}
           </div>
         )}
         {connected === false && (
@@ -260,7 +278,7 @@ export function ContentView({ siteId, go }: { siteId: string; go: GoFn }) {
                     <input type="checkbox" className="shrink-0 self-start mt-1" aria-label={`Seleccionar ${p.title}`} checked={checked.has(p.id)} onChange={() => toggle(p.id)} />
                     <button className="text-left space-y-1" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : p.id)}>
                       <span className="flex flex-wrap items-center gap-2">
-                        <Badge tone={st.tone}>{st.label}</Badge>
+                        {isRejected(p) ? <Badge tone="bad">Rechazada</Badge> : <Badge tone={st.tone}>{st.label}</Badge>}
                         <span className="font-semibold text-sm">{p.title}</span>
                       </span>
                       <span className="block text-[11px] text-slate-500 font-mono">/{p.slug} · similitud máx. {Math.round(p.similarityScore * 100)}%{p.qualityChecks?.mostSimilar ? ` con /${p.qualityChecks.mostSimilar}` : ''} · {fmtDate(p.createdAt)}</span>
@@ -271,6 +289,9 @@ export function ContentView({ siteId, go }: { siteId: string; go: GoFn }) {
                       )}
                       {p.status !== 'BLOCKED' && p.status !== 'NEEDS_REVIEW' && p.status !== 'SENT_AS_DRAFT' && (
                         <Button variant="secondary" disabled={busy === p.id} onClick={() => review(p, 'rejected')}><X className="w-3.5 h-3.5" aria-hidden /> Rechazar</Button>
+                      )}
+                      {isRejected(p) && can('content:edit') && (
+                        <Button variant="danger" disabled={busy === p.id} onClick={() => removeRejected([p.id])}><Trash2 className="w-3.5 h-3.5" aria-hidden /> Borrar</Button>
                       )}
                       {connected && <Button variant="secondary" disabled={busy === p.id} onClick={() => { setOpen(p.id); dryRun(p); }}><Eye className="w-3.5 h-3.5" aria-hidden /> Dry run</Button>}
                       {connected && canSend && <Button disabled={busy === p.id} onClick={() => push(p)}><Send className="w-3.5 h-3.5" aria-hidden /> {p.publishedWpPostId ? 'Actualizar borrador' : 'Enviar como borrador'}</Button>}

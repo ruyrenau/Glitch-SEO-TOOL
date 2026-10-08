@@ -173,4 +173,24 @@ describe(`WordPress drafts (${REAL ? 'real WordPress' : 'mock WordPress'})`, () 
     const actions = (await app.inject('/api/v1/audit-events?limit=500')).json().map((e: { action: string }) => e.action);
     expect(actions).toEqual(expect.arrayContaining(['wordpress.connection_created', 'page.generated', 'page.approved', 'wordpress.draft_created', 'wordpress.draft_updated', 'wordpress.draft_restored']));
   });
+
+  it('deletes rejected pages (one or all) and never pages that reached WordPress', async () => {
+    const gen = async (city: string) => (await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/generated-pages`, payload: tpl(city) })).json().id as string;
+    const a = await gen('Oaxaca de Juárez');
+    const b = await gen('Mérida Yucatán');
+    const keep = await gen('Querétaro');
+    for (const id of [a, b]) await app.inject({ method: 'POST', url: `/api/v1/generated-pages/${id}/review`, payload: { decision: 'rejected', reviewer: 'Ana' } });
+
+    const del = (payload: object) => app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/generated-pages/delete-rejected`, payload });
+    expect((await del({})).statusCode).toBe(400); // confirmation required
+    const one = (await del({ ids: [a, pageId], confirm: true })).json();
+    expect(one.deleted).toBe(1);
+    expect(one.skipped).toEqual([{ id: pageId, reason: 'NOT_REJECTED' }]); // sent as draft, last review approved
+    const all = (await del({ confirm: true })).json();
+    expect(all.deletedIds).toEqual([b]);
+    expect(await prisma.generatedPage.count({ where: { id: { in: [a, b] } } })).toBe(0);
+    expect(await prisma.generatedPage.count({ where: { id: { in: [keep, pageId] } } })).toBe(2);
+    const actions = (await app.inject('/api/v1/audit-events?limit=500')).json().map((e: { action: string }) => e.action);
+    expect(actions).toContain('page.deleted');
+  });
 });
