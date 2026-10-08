@@ -642,6 +642,8 @@ model PerformanceRun {
   field            Json?
   diagnostics      Json?
   resources        Json?
+  /// GTmetrix-style detail (screenshot, filmstrip, grade, issues, weight by type, waterfall). Kept for the last 5 runs per URL and strategy.
+  report           Json?
   lighthouseVersion String?
   createdAt        DateTime @default(now())
 

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '@glitch/db';
@@ -48,6 +49,25 @@ describe('Core Web Vitals (PageSpeed Insights mock)', () => {
     expect(home).toMatchObject({ source: 'psi', performanceScore: 62, labLcp: 3900, fieldStatus: 'available', fieldScope: 'url', fieldLcp: 2900, fieldInp: 180, fieldCls: 0.12 });
     const nofield = data.items.find((i: { latest: { url: string } }) => i.latest.url.endsWith('/nofield')).latest;
     expect(nofield).toMatchObject({ fieldStatus: 'insufficient-data', fieldLcp: null, labLcp: 3900 });
+
+    // The list stays light; the full report is fetched per measurement.
+    expect(home.report).toBeUndefined();
+    const full = (await app.inject(`/api/v1/performance-runs/${home.id}`)).json();
+    expect(full.report.grade).toMatchObject({ performance: 62, letter: expect.stringMatching(/^[A-F]$/) });
+    expect(full.report.totals.requests).toBe(57);
+    expect(Array.isArray(full.report.issues)).toBe(true);
+    expect((await app.inject(`/api/v1/performance-runs/${crypto.randomUUID()}`)).statusCode).toBe(404);
+  });
+
+  it('keeps the heavy report only for the latest 5 runs of a URL and strategy', async () => {
+    for (let i = 0; i < 6; i++) {
+      const r = await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/performance`, payload: { urls: ['https://perf.example.com/nofield'], strategies: ['desktop'] } });
+      await waitForJob(app, r.json().jobId);
+    }
+    const runs = await prisma.performanceRun.findMany({ where: { siteId, url: 'https://perf.example.com/nofield', strategy: 'desktop', status: 'ok' }, orderBy: { createdAt: 'desc' } });
+    expect(runs.length).toBe(7);
+    expect(runs.slice(0, 5).every(r => r.report !== null)).toBe(true);
+    expect(runs.slice(5).every(r => r.report === null)).toBe(true);
   });
 
   it('stops on quota errors instead of hammering the API', async () => {

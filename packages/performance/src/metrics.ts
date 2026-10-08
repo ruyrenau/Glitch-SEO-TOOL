@@ -1,3 +1,4 @@
+import type { PerformanceReport } from './parse';
 /** Thresholds published for Core Web Vitals and Lighthouse lab metrics (good / needs improvement). */
 export const THRESHOLDS = {
   LCP: { good: 2500, poor: 4000, unit: 'ms' },
@@ -64,4 +65,6 @@ export interface PerformanceResult {
   resources: { totalBytes: number | null; requests: number | null };
   lighthouseVersion: string;
   fetchedAt: string;
+  /** GTmetrix-style detail: screenshot, filmstrip, grade, issues, weight by type, waterfall. */
+  report: PerformanceReport;
 }

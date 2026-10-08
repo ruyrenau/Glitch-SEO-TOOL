@@ -1,6 +1,6 @@
 import { assertSafeUrl, findBrowser } from '@glitch/crawler';
 import { PerformanceResult } from './metrics';
-import { Lhr, parseLab, parseDiagnostics, parseResources, parseField, CruxExperience } from './parse';
+import { Lhr, parseLab, parseDiagnostics, parseResources, parseField, parseReport, CruxExperience } from './parse';
 
 export class PerformanceError extends Error {
   constructor(public code: 'QUOTA' | 'BROWSER_NOT_FOUND' | 'PSI_ERROR' | 'LIGHTHOUSE_ERROR' | 'BLOCKED_URL', message: string) {
@@ -40,7 +40,7 @@ export async function runLighthouseLocal(url: string, opts: RunOptions): Promise
     const desktop = opts.strategy === 'desktop';
     const run = lighthouse(
       url,
-      { port: chrome.port, output: 'json', logLevel: 'error', onlyCategories: ['performance'] },
+      { port: chrome.port, output: 'json', logLevel: 'error', onlyCategories: ['performance'], locale: (process.env.LIGHTHOUSE_LOCALE ?? 'es') as 'es' },
       desktop
         ? {
             extends: 'lighthouse:default',
@@ -69,6 +69,7 @@ export async function runLighthouseLocal(url: string, opts: RunOptions): Promise
       fieldStatus: 'not-requested',
       diagnostics: parseDiagnostics(lhr),
       resources: parseResources(lhr),
+      report: parseReport(lhr),
       lighthouseVersion: lhr.lighthouseVersion,
       fetchedAt: new Date().toISOString()
     };
@@ -81,7 +82,7 @@ export async function runLighthouseLocal(url: string, opts: RunOptions): Promise
 /** PageSpeed Insights: Google's lab run plus CrUX field data. Requires PSI_API_KEY in practice. */
 export async function runPsi(url: string, opts: RunOptions & { apiKey: string; endpoint?: string }): Promise<PerformanceResult> {
   const endpoint = opts.endpoint ?? process.env.PSI_API_URL ?? 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed';
-  const qs = new URLSearchParams({ url, strategy: opts.strategy, category: 'performance', key: opts.apiKey });
+  const qs = new URLSearchParams({ url, strategy: opts.strategy, category: 'performance', locale: process.env.LIGHTHOUSE_LOCALE ?? 'es', key: opts.apiKey });
   const res = await fetch(`${endpoint}?${qs}`, { signal: AbortSignal.any([AbortSignal.timeout(opts.timeoutMs ?? 120_000), ...(opts.signal ? [opts.signal] : [])]) });
   const body = (await res.json().catch(() => null)) as { error?: { message?: string }; lighthouseResult?: Lhr; loadingExperience?: CruxExperience; originLoadingExperience?: CruxExperience; analysisUTCTimestamp?: string } | null;
   if (res.status === 429) throw new PerformanceError('QUOTA', 'PageSpeed Insights quota exceeded for this API key; try later.');
@@ -97,6 +98,7 @@ export async function runPsi(url: string, opts: RunOptions & { apiKey: string; e
     fieldStatus: field ? 'available' : 'insufficient-data',
     diagnostics: parseDiagnostics(lhr),
     resources: parseResources(lhr),
+    report: parseReport(lhr),
     lighthouseVersion: lhr.lighthouseVersion,
     fetchedAt: body.analysisUTCTimestamp ?? new Date().toISOString()
   };

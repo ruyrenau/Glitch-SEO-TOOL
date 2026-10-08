@@ -262,7 +262,9 @@ const SECTIONS: Section[] = [
     steps: [
       'Elige las URLs: la portada y las páginas más enlazadas del último crawl ya vienen sugeridas; puedes añadir otras del mismo sitio.',
       'Elige Móvil, Escritorio o ambos y pulsa "Medir". El worker mide una URL a la vez (unos 20 segundos cada una).',
-      'Revisa cada URL: primero los datos de usuarios reales, luego el laboratorio y la lista "Qué mejorar".'
+      'Cada URL muestra un reporte tipo GTmetrix: captura, nota de la A a la F (70 % rendimiento + 30 % estructura), LCP, TBT y CLS, principales problemas filtrables por métrica, peso y peticiones por tipo de archivo, cascada de peticiones y la secuencia visual de carga.',
+      'Abre un problema para ver qué archivos lo causan y cuánto se ahorraría. En el historial, haz clic en una medición anterior para ver su reporte.',
+      'Abajo, en "Usuarios reales (CrUX)", están los datos de campo cuando hay clave de PageSpeed.'
     ],
     read: [
       ['Usuarios reales (CrUX)', 'Percentil 75 de visitas reales de Chrome en los últimos 28 días. Es lo que cuenta para Google. Solo con PSI_API_KEY y si la página tiene tráfico suficiente; si no, se usan los datos de todo el sitio y se indica.'],

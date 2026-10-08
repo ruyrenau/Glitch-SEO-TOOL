@@ -6,6 +6,7 @@ import { apiGet, apiSend, fmt, fmtDate, waitForJob } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { JobRow } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorBox, Skeleton, inputCls } from './ui';
+import { PerformanceReportView } from './PerformanceReport';
 
 type Rating = 'good' | 'needs-improvement' | 'poor';
 interface FieldMetric { p75: number; rating: Rating | null; distribution: [number, number, number] }
@@ -118,6 +119,7 @@ export function PerformanceView({ siteId }: { siteId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [view, setView] = useState<Record<string, 'mobile' | 'desktop'>>({});
+  const [picked2, setPicked2] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     try {
@@ -235,20 +237,35 @@ export function PerformanceView({ siteId }: { siteId: string }) {
                 </div>
               }
             >
-              <p className="text-[11px] text-slate-500 mb-3">Medido {fmtDate(it.latest.createdAt)}</p>
-              <RunDetail run={it.latest} />
-              {it.history.length > 1 && (
-                <div className="mt-4 text-xs">
-                  <h4 className="font-semibold mb-1">Historial ({it.history.length} mediciones)</h4>
-                  <ul className="flex flex-wrap gap-2">
-                    {it.history.map(h => (
-                      <li key={h.id} className="px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 tabular-nums" title={fmtDate(h.createdAt)}>
-                        {new Date(h.createdAt).toLocaleDateString('es-MX')}: {h.status === 'ok' ? `score ${h.performanceScore ?? '—'} · LCP ${show('LCP', h.fieldLcp ?? h.labLcp)}` : 'falló'}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              {(() => {
+                const chosen = picked2[`${url}|${strat}`] ?? it.latest.id;
+                const chosenOk = it.history.find(h => h.id === chosen)?.status === 'ok';
+                return (
+                  <>
+                    {it.history.length > 1 && (
+                      <div className="mb-4 text-xs">
+                        <h4 className="font-semibold mb-1">Historial ({it.history.length} mediciones) · elige una para ver su reporte</h4>
+                        <ul className="flex flex-wrap gap-2">
+                          {it.history.map(h => (
+                            <li key={h.id}>
+                              <button onClick={() => setPicked2(v => ({ ...v, [`${url}|${strat}`]: h.id }))} aria-pressed={chosen === h.id} className={`px-2 py-1 rounded tabular-nums ${chosen === h.id ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-800'}`} title={fmtDate(h.createdAt)}>
+                                {new Date(h.createdAt).toLocaleDateString('es-MX')}: {h.status === 'ok' ? `score ${h.performanceScore ?? '—'} · LCP ${show('LCP', h.fieldLcp ?? h.labLcp)}` : 'falló'}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {chosenOk ? <PerformanceReportView runId={chosen} /> : <RunDetail run={it.latest} />}
+                    {chosenOk && chosen === it.latest.id && (
+                      <details className="mt-5 text-xs">
+                        <summary className="cursor-pointer font-semibold">Usuarios reales (CrUX) y diagnósticos de Core Web Vitals</summary>
+                        <div className="mt-3"><RunDetail run={it.latest} /></div>
+                      </details>
+                    )}
+                  </>
+                );
+              })()}
             </Card>
           );
         })

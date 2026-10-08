@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { parseLab, parseDiagnostics, parseResources, parseField, rate, runLighthouseLocal, findBrowser, Lhr } from '@glitch/performance';
+import path from 'path';
+import fs from 'fs';
+import { parseLab, parseDiagnostics, parseResources, parseField, parseReport, letterFor, rate, runLighthouseLocal, findBrowser, Lhr } from '@glitch/performance';
 import { sampleLhr, sampleCrux, startFixtureSite } from '@glitch/testing';
 
 describe('ratings', () => {
@@ -26,6 +28,59 @@ describe('Lighthouse result parsing', () => {
   });
   it('counts weight and requests', () => {
     expect(parseResources(lhr)).toEqual({ totalBytes: 2_400_000, requests: 57 });
+  });
+});
+
+describe('GTmetrix-style report (real Lighthouse 12 result)', () => {
+  // Trimmed result of a real local run: a page with a render-blocking CSS and script, two unsized images (one 400 KB), no cache headers, no viewport.
+  const real = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../fixtures/lhr-sample.json'), 'utf8')) as Lhr;
+  const r = parseReport(real);
+
+  it('grades like GTmetrix: 70 % performance + 30 % structure', () => {
+    expect(r.grade.performance).toBe(94);
+    expect(r.grade.structure).toBeGreaterThan(50);
+    expect(r.grade.structure).toBeLessThan(100);
+    expect(r.grade.value).toBe(Math.round(94 * 0.7 + r.grade.structure! * 0.3));
+    expect(r.grade.letter).toBe(letterFor(r.grade.value));
+    expect([letterFor(95), letterFor(85), letterFor(75), letterFor(65), letterFor(55), letterFor(10), letterFor(null)]).toEqual(['A', 'B', 'C', 'D', 'E', 'F', null]);
+  });
+
+  it('lists failing audits as issues with impact, affected metrics and offending items', () => {
+    const ids = r.issues.map(i => i.id);
+    expect(ids).toEqual(expect.arrayContaining(['render-blocking-resources', 'unsized-images', 'uses-long-cache-ttl']));
+    expect(ids).not.toContain('largest-contentful-paint-element'); // descriptive, shown apart
+    const blocking = r.issues.find(i => i.id === 'render-blocking-resources')!;
+    expect(blocking.metrics).toEqual(expect.arrayContaining(['FCP', 'LCP']));
+    expect(blocking.items.map(i => i.url)).toEqual(expect.arrayContaining(['https://perf.example.com/s.css', 'https://perf.example.com/a.js']));
+    expect(r.issues.find(i => i.id === 'unsized-images')!.metrics).toEqual(['CLS']);
+    expect(blocking.description).not.toMatch(/\]\(/); // markdown links flattened
+    const rank = { Alto: 0, Medio: 1, 'Medio-bajo': 2, Bajo: 3 } as const;
+    expect(r.issues.map(i => rank[i.impact])).toEqual([...r.issues.map(i => rank[i.impact])].sort((a, b) => a - b));
+  });
+
+  it('breaks page weight and requests down by type, with a waterfall and timing markers', () => {
+    expect(r.breakdown[0]).toMatchObject({ group: 'IMG', requests: 2 });
+    expect(r.breakdown.map(b => b.group)).toEqual(expect.arrayContaining(['HTML', 'CSS', 'JS', 'IMG']));
+    expect(r.totals.requests).toBe(r.waterfall.length);
+    expect(r.totals.bytes).toBe(r.breakdown.reduce((s, b) => s + b.bytes, 0));
+    expect(r.waterfall[0]).toMatchObject({ url: 'https://perf.example.com/', group: 'HTML', status: 200, domain: 'perf.example.com' });
+    expect(r.waterfall.every((w, i) => i === 0 || w.start >= r.waterfall[i - 1].start)).toBe(true);
+    expect(r.markers.fcp).toBeGreaterThan(0);
+    expect(r.totals.fullyLoadedMs).toBeGreaterThan(0);
+    expect(r.lcpElement).toContain('<p>');
+  });
+
+  it('keeps the screenshot and filmstrip as image data URLs', () => {
+    expect(r.screenshot).toMatch(/^data:image\/jpeg;base64,/);
+    expect(r.filmstrip.length).toBeGreaterThan(0);
+    expect(r.filmstrip[0].data).toMatch(/^data:image\//);
+  });
+
+  it('degrades gracefully on a minimal result', () => {
+    const m = parseReport(sampleLhr('https://example.com/') as unknown as Lhr);
+    expect(m.grade.performance).toBe(62);
+    expect(m.screenshot).toBeNull();
+    expect(m.totals.requests).toBe(57); // the minimal sample still lists its requests
   });
 });
 
@@ -59,6 +114,9 @@ describe.skipIf(!findBrowser())('local Lighthouse (real browser)', () => {
       expect(r.lab.performanceScore).toBeGreaterThan(0);
       expect(r.lab.LCP).toBeGreaterThan(0);
       expect(r.resources.requests).toBeGreaterThanOrEqual(1);
+      expect(r.report.screenshot).toMatch(/^data:image\//);
+      expect(r.report.waterfall.length).toBeGreaterThanOrEqual(1);
+      expect(r.report.grade.letter).toMatch(/^[A-F]$/);
     } finally {
       await site.close();
     }

@@ -539,7 +539,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   app.get('/api/v1/sites/:id/performance', async req => {
     const { id } = idParam.parse(req.params);
     await requireSite(id);
-    const runs = await prisma.performanceRun.findMany({ where: { siteId: id }, orderBy: { createdAt: 'desc' }, take: 500 });
+    const runs = await prisma.performanceRun.findMany({ where: { siteId: id }, orderBy: { createdAt: 'desc' }, take: 500, omit: { report: true } });
     const groups = new Map<string, typeof runs>();
     for (const r of runs) {
       const k = `${r.url}|${r.strategy}`;
@@ -550,6 +550,15 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
       config: { psiConfigured: !!process.env.PSI_API_KEY, source: process.env.PSI_API_KEY ? 'psi' : 'lighthouse-local' },
       items: [...groups.values()].map(list => ({ latest: list[0], history: list.map(r => ({ id: r.id, createdAt: r.createdAt, status: r.status, performanceScore: r.performanceScore, labLcp: r.labLcp, labCls: r.labCls, labTbt: r.labTbt, fieldLcp: r.fieldLcp, fieldInp: r.fieldInp, fieldCls: r.fieldCls })) }))
     };
+  });
+
+  /** Full GTmetrix-style report of one measurement (screenshot, filmstrip, issues, waterfall). */
+  app.get('/api/v1/performance-runs/:id', async req => {
+    const { id } = idParam.parse(req.params);
+    const run = await prisma.performanceRun.findUnique({ where: { id } });
+    if (!run) throw new ApiError(404, 'NOT_FOUND', 'Measurement not found');
+    await requireSite(run.siteId);
+    return run;
   });
 
   // ------------------------------------------------------------------ jobs

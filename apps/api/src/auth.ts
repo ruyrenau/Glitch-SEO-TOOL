@@ -86,6 +86,7 @@ async function workspaceOfResource(route: string, id: string): Promise<string | 
     const p = await prisma.wordPressPublication.findUnique({ where: { id }, select: { generatedPage: { select: { site: { select: { workspaceId: true } } } } } });
     return p ? p.generatedPage.site?.workspaceId ?? null : undefined;
   }
+  if (/^\/api\/v1\/performance-runs\/:id/.test(route)) return viaSite(await prisma.performanceRun.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
   if (/^\/api\/v1\/seo-edits\/:id/.test(route)) return viaSite(await prisma.seoChangeProposal.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
   if (/^\/api\/v1\/jobs\/:id/.test(route)) return (await prisma.job.findUnique({ where: { id }, select: { workspaceId: true } }))?.workspaceId;
   if (/^\/api\/v1\/users\/:id/.test(route)) {

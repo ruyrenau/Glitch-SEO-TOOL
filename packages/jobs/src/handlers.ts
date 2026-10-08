@@ -133,9 +133,13 @@ export async function performanceHandler(p: { siteId: string; urls: string[]; st
           field: r.field ? (r.field as unknown as Prisma.InputJsonValue) : undefined,
           diagnostics: r.diagnostics as unknown as Prisma.InputJsonValue,
           resources: r.resources as unknown as Prisma.InputJsonValue,
+          report: r.report as unknown as Prisma.InputJsonValue,
           lighthouseVersion: r.lighthouseVersion
         }
       });
+      // Screenshots and waterfalls are heavy (~100–600 KB): keep them for the latest runs only.
+      const older = await prisma.performanceRun.findMany({ where: { siteId: p.siteId, url: w.url, strategy: w.strategy, report: { not: Prisma.DbNull } }, orderBy: { createdAt: 'desc' }, skip: 5, select: { id: true } });
+      if (older.length) await prisma.performanceRun.updateMany({ where: { id: { in: older.map(o => o.id) } }, data: { report: Prisma.DbNull } });
       ok++;
       ctx.log(`${w.strategy} ${w.url}: score ${r.lab.performanceScore ?? '—'} (${r.source})`);
     } catch (e) {
