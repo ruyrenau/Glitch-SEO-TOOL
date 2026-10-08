@@ -160,11 +160,15 @@ function Dashboard() {
           aria-label="Navegación principal"
         >
           <div className={`${collapsed && !menuOpen ? 'p-3 justify-center' : 'p-5'} border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5`}>
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center font-black text-sm" aria-hidden>G</div>
-            <div className="nav-text">
-              <div className="font-bold text-sm">Glitch SEO Ops</div>
-              <div className="text-[10px] text-slate-500 font-mono">v0.9 · local</div>
-            </div>
+            {collapsed && !menuOpen ? (
+              <img src="/brand/icon.png" alt="g.SEO" className="w-9 h-9 rounded-lg" />
+            ) : (
+              <div className="nav-text">
+                <img src="/brand/logo-dark.png" alt="g.SEO" className="h-8 w-auto dark:hidden" />
+                <img src="/brand/logo-white.png" alt="g.SEO" className="h-8 w-auto hidden dark:block" />
+                <div className="text-[10px] text-slate-500 font-mono mt-1">v0.9 · local</div>
+              </div>
+            )}
           </div>
 
           <div className="nav-text p-3 border-b border-slate-200 dark:border-slate-800">
