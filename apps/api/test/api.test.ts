@@ -110,7 +110,9 @@ describe('API v1 (integration, real SQLite)', () => {
     expect(actions).toEqual(expect.arrayContaining(['site.created', 'log_import.created', 'sitemap.imported', 'log_import.deleted']));
   });
 
-  it('does not serve Search Console demo data outside demo mode', async () => {
-    expect((await app.inject('/api/v1/search-console/metrics')).statusCode).toBe(501);
+  it('never serves invented Search Console data', async () => {
+    expect((await app.inject('/api/v1/search-console/metrics')).statusCode).toBe(404); // the old demo endpoint is gone
+    const site = (await app.inject('/api/v1/sites')).json()[0];
+    expect((await app.inject(`/api/v1/sites/${site.id}/gsc/report`)).json()).toMatchObject({ import: null });
   });
 });

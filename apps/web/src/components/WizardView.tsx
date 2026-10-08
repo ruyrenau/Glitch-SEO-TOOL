@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  AlertTriangle, ArrowRight, Bell, BookOpen, CheckCircle2, Circle, FileText, Gauge, Globe, Layers, Loader2, PencilLine, Play, ScanSearch, Send, ShieldAlert, Sparkles
+  AlertTriangle, ArrowRight, Bell, BookOpen, CheckCircle2, Circle, FileText, Gauge, Globe, Layers, Loader2, PencilLine, Play, ScanSearch, Search, Send, ShieldAlert, Sparkles
 } from 'lucide-react';
 import { apiGet, apiSend, fmt, waitForJob } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -33,6 +33,7 @@ const SECTIONS: Array<{ nav: string; icon: React.ComponentType<{ className?: str
   { nav: 'explorer', icon: ScanSearch, title: 'Explorador SEO', what: 'Todas las URLs del crawl en pestañas, como Screaming Frog: títulos, metas, H1, imágenes, canonicals, recursos, enlaces externos, estructura y búsqueda personalizada.', when: 'Para revisar página por página y exportar listas a CSV.' },
   { nav: 'issues', icon: AlertTriangle, title: 'Issues técnicos', what: 'Los problemas del crawl ordenados por gravedad, con las URLs afectadas y qué hacer para arreglarlos.', when: 'Para tener una lista de trabajo priorizada.' },
   { nav: 'seochanges', icon: PencilLine, title: 'Cambios SEO', what: 'Corrige títulos, meta descriptions, slugs y alt de imágenes directo en WordPress, con aprobación y opción de revertir.', when: 'Cuando el explorador encontró algo que quieres arreglar.', needs: 'Conectar WordPress' },
+  { nav: 'gsc', icon: Search, title: 'Search Console', what: 'Clics, impresiones y posición de cada página y consulta en Google, cruzados con el crawl: oportunidades, CTR bajo, canibalización y páginas que Google muestra pero no deberían indexarse.', when: 'Para decidir qué arreglar primero según el tráfico real.', needs: 'Conectar tu cuenta de Google' },
   { nav: 'alerts', icon: Bell, title: 'Alertas', what: 'Compara cada crawl con el anterior y avisa si algo se rompió: noindex nuevo, páginas caídas, canonical cambiado.', when: 'Después de cada deploy o con un crawl programado.' },
   { nav: 'vitals', icon: Gauge, title: 'Core Web Vitals', what: 'Mide la velocidad de una página con Lighthouse (LCP, CLS, INP) y explica qué la hace lenta.', when: 'Para páginas importantes que tardan en cargar.' },
   { nav: 'logs', icon: FileText, title: 'Logs y sitemap', what: 'Sube los logs del servidor para ver qué páginas visita Googlebot y los bots de IA, y cuáles del sitemap nunca visita.', when: 'Para entender cómo te rastrea Google de verdad.', needs: 'Archivo de logs de Nginx o Apache' },

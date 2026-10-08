@@ -11,3 +11,4 @@ export * from './auth-service';
 export * from './errors';
 export * from './explorer-service';
 export * from './seo-edit-service';
+export * from './gsc-service';

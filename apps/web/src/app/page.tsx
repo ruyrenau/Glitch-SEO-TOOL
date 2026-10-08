@@ -18,6 +18,7 @@ import { PerformanceView } from '@/components/PerformanceView';
 import { ExplorerView } from '@/components/ExplorerView';
 import { SeoEditPanel } from '@/components/SeoEditPanel';
 import { WizardView } from '@/components/WizardView';
+import { GscView } from '@/components/GscView';
 import { SeoChangesView } from '@/components/SeoChangesView';
 import type { Site } from '@/lib/types';
 import { ErrorBox, Roadmap, Skeleton } from '@/components/ui';
@@ -48,7 +49,7 @@ const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ classNa
   { id: 'schema', label: 'Datos estructurados', icon: Code2, ready: true },
   { id: 'programmatic', label: 'Contenido programático', icon: Layers, ready: true },
   { id: 'wordpress', label: 'WordPress', icon: Send, ready: true },
-  { id: 'gsc', label: 'Search Console', icon: Search, ready: false },
+  { id: 'gsc', label: 'Search Console', icon: Search, ready: true },
   { id: 'geo', label: 'GEO / motores de IA', icon: Sparkles, ready: false },
   { id: 'automations', label: 'Jobs y automatizaciones', icon: Cpu, ready: true },
   { id: 'audit', label: 'Audit log', icon: History, ready: true },
@@ -56,7 +57,6 @@ const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ classNa
 ];
 
 const ROADMAP: Partial<Record<NavId, { status: string; items: string[] }>> = {
-  gsc: { status: 'Sin OAuth. No se muestran datos de ejemplo para no confundirlos con datos reales.', items: ['OAuth 2.0', 'Search Analytics por query, página, país y dispositivo', 'Cruce con logs: URLs con impresiones que Googlebot casi no rastrea'] },
   geo: { status: 'Sin proveedores configurados.', items: ['Prompts objetivo y repeticiones', 'Menciones, citas y competidores por respuesta', 'Mostrar volatilidad, no rankings'] },
 };
 
@@ -66,6 +66,17 @@ function Dashboard() {
   const [dark, setDark] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [gscNotice, setGscNotice] = useState<{ kind: 'connected' | 'error'; message?: string } | null>(null);
+  // Back from Google's consent screen: /?nav=gsc&gsc=connected|error&message=…
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('nav') === 'gsc') {
+      setNav('gsc');
+      const kind = q.get('gsc');
+      if (kind === 'connected' || kind === 'error') setGscNotice({ kind, message: q.get('message') ?? undefined });
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, []);
   useEffect(() => {
     try {
       setCollapsed(localStorage.getItem('glitch.sidebar') === 'collapsed');
@@ -136,7 +147,7 @@ function Dashboard() {
 
   const current = nav === 'manual' ? { label: 'Manual de uso' } : nav === 'account' ? { label: 'Mi cuenta' } : NAV.find(n => n.id === nav)!;
   const visibleNav = NAV.filter(n => !n.perm || can(n.perm));
-  const needsSite = ['overview', 'logs', 'crawler', 'explorer', 'seochanges', 'issues', 'alerts', 'programmatic', 'wordpress', 'vitals'].includes(nav);
+  const needsSite = ['overview', 'logs', 'crawler', 'explorer', 'seochanges', 'gsc', 'issues', 'alerts', 'programmatic', 'wordpress', 'vitals'].includes(nav);
 
   return (
     <div className={dark ? 'dark' : ''}>
@@ -265,6 +276,7 @@ function Dashboard() {
                 {nav === 'wordpress' && <WordPressView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'explorer' && <ExplorerView key={siteId} siteId={siteId} detailExtra={d => <SeoEditPanel siteId={siteId} detail={d} goChanges={() => go('seochanges')} />} />}
                 {nav === 'seochanges' && <SeoChangesView key={siteId} siteId={siteId} />}
+                {nav === 'gsc' && <GscView key={siteId} siteId={siteId} go={go} notice={gscNotice} />}
                 {nav === 'vitals' && <PerformanceView key={siteId} siteId={siteId} />}
                 {nav === 'automations' && <JobsView sites={sites} />}
                 {nav === 'audit' && <AuditView />}

@@ -1,7 +1,8 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { Prisma, prisma, importLogFile, runCrawl, deleteLogImport, purgeExpiredSessions } from '@glitch/db';
+import { Prisma, prisma, importLogFile, runCrawl, deleteLogImport, purgeExpiredSessions, runGscImport, sitesForDailyGsc } from '@glitch/db';
+import { enqueue } from './producer';
 import { measure, PerformanceError } from '@glitch/performance';
 
 export interface JobContext {
@@ -144,9 +145,25 @@ export async function performanceHandler(p: { siteId: string; urls: string[]; st
   return { measured: ok, failed, total: work.length };
 }
 
+/** Imports Search Analytics for one site. */
+export async function gscImportHandler(p: { siteId: string; days?: number }, ctx: JobContext) {
+  const imp = await runGscImport(p.siteId, { days: p.days, log: m => ctx.log(m), signal: ctx.signal });
+  return { gscImportId: imp.id, pages: imp.pageRows, queries: imp.queryRows, startDate: imp.startDate, endDate: imp.endDate };
+}
+
+/** Daily refresh: queues an import for every site with a Search Console property. */
+export async function gscDailyHandler(_p: Record<string, unknown>, ctx: JobContext) {
+  const sites = await sitesForDailyGsc();
+  for (const s of sites) await enqueue('gsc-import', { siteId: s.id, days: 90 }, { siteId: s.id, workspaceId: s.workspaceId, trigger: 'schedule' });
+  ctx.log(`${sites.length} sitios en cola`);
+  return { queued: sites.length };
+}
+
 export const HANDLERS = {
   'log-import': logImportHandler,
   crawl: crawlHandler,
   retention: retentionHandler,
-  performance: performanceHandler
+  performance: performanceHandler,
+  'gsc-import': gscImportHandler,
+  'gsc-daily': gscDailyHandler
 } as const;

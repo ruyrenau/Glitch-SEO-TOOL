@@ -43,6 +43,9 @@ test('register a site, import a log and a sitemap, read the report and the audit
 test('modules without a backend say so instead of showing numbers', async ({ page }) => {
   await login(page);
   await page.goto('/');
-  await page.getByRole('button', { name: /Search Console/ }).click();
+  await page.getByRole('button', { name: /GEO/ }).click();
   await expect(page.getByText('PENDIENTE')).toBeVisible();
+  // Search Console without Google keys explains what is missing; it never shows numbers.
+  await page.getByRole('button', { name: 'Search Console', exact: true }).click();
+  await expect(page.getByText(/Falta configurar el servidor|Conectar con Google|Conectada/).first()).toBeVisible();
 });

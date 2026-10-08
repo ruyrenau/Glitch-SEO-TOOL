@@ -47,6 +47,13 @@ import {
   explorerPageDetail,
   explorerCsv,
   explorerCustom,
+  gscStatus,
+  gscAuthUrl,
+  gscFinishOAuth,
+  gscDisconnect,
+  gscProperties,
+  setSiteGscProperty,
+  gscReport,
   explorerStructure,
   lookupEditable,
   proposeChange,
@@ -70,7 +77,6 @@ import {
 import { HARD_MAX_URLS, MAX_RPS, fetchSitemap, findBrowser, parseSitemapXml } from '@glitch/crawler';
 import { validateJsonLd } from '@glitch/schema-engine';
 import { renderTemplate, computeJaccardSimilarity, evaluateQualityGate } from '@glitch/content-engine';
-import { GoogleSearchConsoleClient } from '@glitch/connectors';
 import { registerAuth } from './auth';
 import { enqueue, cancelJob, retryJob, listJobs, queueHealth, setSiteSchedule, getSiteSchedule, closeProducer, uploadDir } from '@glitch/jobs';
 
@@ -828,10 +834,43 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     return rollbackPublication(id);
   });
 
-  app.get('/api/v1/search-console/metrics', async () => {
-    if (!config.DEMO_MODE) throw new ApiError(501, 'NOT_CONFIGURED', 'Search Console OAuth is not implemented yet');
-    const rows = await new GoogleSearchConsoleClient('sc-domain:demo.example.com', true).getSearchAnalytics();
-    return { demo: true, rows };
+  // ------------------------------------------------------------------ Google Search Console
+  const webOrigin = () => (process.env.WEB_ORIGIN ?? 'http://localhost:3000').split(',')[0].trim();
+  app.get('/api/v1/gsc/status', async req => gscStatus(req.auth!.workspaceId));
+  app.get('/api/v1/gsc/oauth/start', async (req, reply) => reply.redirect(gscAuthUrl(req.auth!.workspaceId, req.auth!.user.id)));
+  app.get('/api/v1/gsc/oauth/callback', async (req, reply) => {
+    const q = z.object({ code: z.string().optional(), state: z.string().optional(), error: z.string().optional() }).parse(req.query);
+    const back = (params: Record<string, string>) => reply.redirect(`${webOrigin()}/?${new URLSearchParams({ nav: 'gsc', ...params })}`);
+    if (q.error || !q.code || !q.state) return back({ gsc: 'error', message: q.error === 'access_denied' ? 'Cancelaste el permiso en Google.' : `Google respondió: ${q.error ?? 'sin código'}` });
+    try {
+      await gscFinishOAuth({ code: q.code, state: q.state, workspaceId: req.auth!.workspaceId, userId: req.auth!.user.id });
+      return back({ gsc: 'connected' });
+    } catch (e) {
+      return back({ gsc: 'error', message: (e as Error).message });
+    }
+  });
+  app.delete('/api/v1/gsc/connection', async req => gscDisconnect(req.auth!.workspaceId, req.auth!.user.id));
+  app.get('/api/v1/gsc/properties', async req => gscProperties(req.auth!.workspaceId));
+  app.put('/api/v1/sites/:id/gsc', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    const b = z.object({ property: z.string().min(1).max(500).nullable() }).strict().parse(req.body);
+    return setSiteGscProperty(id, b.property);
+  });
+  app.post('/api/v1/sites/:id/gsc/import', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const site = await requireSite(id);
+    const b = z.object({ days: z.number().int().min(7).max(480).default(90) }).strict().parse(req.body ?? {});
+    if (!site.gscProperty) throw new ApiError(400, 'GSC_NO_PROPERTY', 'Elige la propiedad de Search Console de este sitio.');
+    const active = await prisma.job.findFirst({ where: { siteId: id, type: 'gsc-import', status: { in: ['QUEUED', 'RUNNING', 'RETRYING'] } } });
+    if (active) throw new ApiError(409, 'GSC_IMPORT_RUNNING', 'Ya hay una importación en curso para este sitio.', { jobId: active.id });
+    const job = await enqueue('gsc-import', { siteId: id, days: b.days }, { siteId: id, workspaceId: site.workspaceId });
+    return reply.status(202).send({ jobId: job.id, status: job.status });
+  });
+  app.get('/api/v1/sites/:id/gsc/report', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return gscReport(id);
   });
 
   return app;

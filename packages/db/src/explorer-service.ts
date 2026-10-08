@@ -1,6 +1,7 @@
 import zlib from 'zlib';
 import { prisma } from './client';
 import { WorkflowError } from './errors';
+import { gscKey, gscPageMap } from './gsc-service';
 
 /**
  * Screaming Frog-style explorer over one crawl: tabs, filters with counts,
@@ -51,6 +52,8 @@ export interface ExplorerPage {
   inLogs: boolean;
   redirectChain: Array<{ url: string; status: number }> | null;
   js: JsInfo | null;
+  /** Search Console metrics from the site's latest import (null = no impressions or no import). */
+  gsc: { clicks: number; impressions: number; ctr: number; position: number } | null;
 }
 
 type JsInfo = {
@@ -399,6 +402,41 @@ export const TABS: Tab[] = [
     row: p => ({ relPrev: p.relPrev, relNext: p.relNext })
   },
   {
+    id: 'gsc',
+    label: 'Search Console',
+    columns: [
+      { key: 'url', label: 'Dirección', type: 'url' },
+      { key: 'title', label: 'Título' },
+      { key: 'clicks', label: 'Clics', type: 'number' },
+      { key: 'impressions', label: 'Impresiones', type: 'number' },
+      { key: 'ctr', label: 'CTR (%)', type: 'number' },
+      { key: 'position', label: 'Posición media', type: 'number' },
+      { key: 'indexability', label: 'Indexabilidad' },
+      { key: 'inlinks', label: 'Enlaces entrantes', type: 'number' },
+      { key: 'googlebot', label: 'Visitada por Googlebot' }
+    ],
+    filters: [
+      { id: 'all', label: 'Todas', test: () => true },
+      { id: 'with-impressions', label: 'Con impresiones', test: p => (p.gsc?.impressions ?? 0) > 0 },
+      { id: 'with-clicks', label: 'Con clics', test: p => (p.gsc?.clicks ?? 0) > 0 },
+      { id: 'no-impressions', label: 'Indexables sin impresiones', test: p => p.isIndexable && !p.gsc },
+      { id: 'non-indexable-with-impressions', label: 'No indexables con impresiones', test: p => !p.isIndexable && (p.gsc?.impressions ?? 0) > 0 },
+      { id: 'low-ctr', label: 'CTR bajo para su posición', test: p => !!p.gsc && p.gsc.impressions >= 100 && p.gsc.position <= 10 && p.gsc.ctr < (p.gsc.position <= 1.5 ? 0.15 : p.gsc.position <= 3 ? 0.07 : p.gsc.position <= 5 ? 0.03 : 0.01) },
+      { id: 'striking-distance', label: 'Posición 4 a 15 (cerca de la primera página)', test: p => !!p.gsc && p.gsc.position >= 4 && p.gsc.position <= 15 && p.gsc.impressions >= 50 },
+      { id: 'not-in-logs', label: 'Con impresiones pero sin visitas de Googlebot en el log', test: p => !p.inLogs && (p.gsc?.impressions ?? 0) > 0 }
+    ],
+    row: p => ({
+      title: p.title,
+      clicks: p.gsc?.clicks ?? 0,
+      impressions: p.gsc?.impressions ?? 0,
+      ctr: p.gsc ? Math.round(p.gsc.ctr * 1000) / 10 : 0,
+      position: p.gsc ? Math.round(p.gsc.position * 10) / 10 : null,
+      indexability: indexability(p),
+      inlinks: p.inlinks,
+      googlebot: p.inLogs ? 'Sí' : 'No'
+    })
+  },
+  {
     id: 'javascript',
     label: 'JavaScript',
     base: p => isHtml200(p) && !!p.js,
@@ -498,8 +536,12 @@ async function loadPages(crawlRunId: string): Promise<ExplorerPage[]> {
     inSitemap: r.inSitemap,
     inLogs: r.inLogs,
     redirectChain: Array.isArray(r.redirectChain) && r.redirectChain.length ? (r.redirectChain as ExplorerPage['redirectChain']) : null,
-    js: (r.js as JsInfo | null) ?? null
+    js: (r.js as JsInfo | null) ?? null,
+    gsc: null as ExplorerPage['gsc']
   }));
+  const run = await prisma.crawlRun.findUnique({ where: { id: crawlRunId }, select: { siteId: true } });
+  const gsc = run ? await gscPageMap(run.siteId) : null;
+  if (gsc) for (const p of pages) p.gsc = gsc.byUrl.get(gscKey(p.url)) ?? null;
   cache.set(crawlRunId, { at: Date.now(), pages });
   if (cache.size > 3) cache.delete(cache.keys().next().value!); // a 100k-URL crawl takes hundreds of MB
   return pages;

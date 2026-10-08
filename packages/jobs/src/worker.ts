@@ -128,6 +128,7 @@ export async function startWorkers(opts: { concurrency?: Partial<Record<QueueNam
 
   if (opts.scheduleRetention !== false) {
     const maintenance = new Queue('maintenance', { connection: connection(), prefix: prefix() });
+    if (process.env.GSC_CLIENT_ID) await maintenance.upsertJobScheduler('gsc-daily', { pattern: process.env.GSC_DAILY_CRON ?? '15 6 * * *' }, { name: 'gsc-daily', data: { trigger: 'schedule' }, opts: { attempts: JOB_TYPES['gsc-daily'].attempts, backoff: backoff(), removeOnFail: false } });
     await maintenance.upsertJobScheduler('retention-daily', { pattern: process.env.RETENTION_CRON ?? '30 3 * * *' }, { name: 'retention', data: { trigger: 'schedule' }, opts: { attempts: JOB_TYPES.retention.attempts, backoff: backoff(), removeOnFail: false } });
     await maintenance.close();
   }

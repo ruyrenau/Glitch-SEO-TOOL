@@ -186,6 +186,35 @@ const SECTIONS: Section[] = [
     ]
   },
   {
+    id: 'gsc',
+    nav: 'gsc',
+    icon: Search,
+    title: 'Search Console',
+    status: 'ready',
+    what: 'Conecta tu cuenta de Google (solo lectura) e importa clics, impresiones, CTR y posición por página y por consulta. Los cruza con el crawl, los logs y el sitemap.',
+    why: 'Saber qué páginas traen tráfico real y dónde está la mejora más barata, en lugar de arreglar problemas al azar.',
+    steps: [
+      'Una sola vez, en Google Cloud: crea un proyecto, habilita "Google Search Console API", configura la pantalla de consentimiento (External, tu correo como usuario de prueba, alcance webmasters.readonly) y crea un cliente OAuth de tipo "Web application" con la URI de redirección http://localhost:4000/api/v1/gsc/oauth/callback.',
+      'Pon GSC_CLIENT_ID y GSC_CLIENT_SECRET en el archivo .env y reinicia la app.',
+      'En Search Console pulsa "Conectar con Google", elige tu cuenta y acepta.',
+      'Elige la propiedad que corresponde al sitio activo y pulsa "Importar ahora".',
+      'Revisa Oportunidades, CTR bajo, Canibalización y el Cruce con el crawl. En el Explorador hay una pestaña "Search Console" con las métricas por URL.'
+    ],
+    read: [
+      ['Impresiones', 'Veces que una página apareció en los resultados de Google, aunque nadie hiciera clic.'],
+      ['Posición media', 'Promedio de la posición en la que apareció, ponderado por impresiones. 1 es el primer resultado.'],
+      ['Oportunidades', 'Consultas en posición 4 a 15 con al menos 50 impresiones: subirlas a la primera página o al top 3 multiplica los clics.'],
+      ['CTR bajo', 'Páginas en buena posición que casi nadie elige: mejora el título y la meta description.'],
+      ['Canibalización', 'Varias páginas tuyas compiten por la misma consulta.']
+    ],
+    tips: ['Los datos se actualizan solos cada mañana.', 'El token de Google se guarda cifrado. Desconectar revoca el permiso en Google.'],
+    limits: [
+      'Google publica los datos con unos 2 días de retraso y guarda 16 meses.',
+      'Se importan hasta 100,000 filas por tipo; en sitios muy grandes las consultas con menos impresiones quedan fuera.',
+      'Mientras la app de Google esté en modo de prueba, el permiso caduca a los 7 días y hay que reconectar.'
+    ]
+  },
+  {
     id: 'issues',
     nav: 'issues',
     icon: AlertTriangle,
@@ -369,9 +398,9 @@ const SECTIONS: Section[] = [
   {
     id: 'pending',
     icon: Gauge,
-    title: 'Secciones marcadas "PRONTO"',
+    title: 'Sección marcada "PRONTO"',
     status: 'pending',
-    what: 'Search Console y GEO / motores de IA todavía no están construidas. Al abrirlas verás qué falta; no muestran números inventados.',
+    what: 'GEO / motores de IA todavía no está construida. Al abrirla verás qué falta; no muestra números inventados.',
     why: 'Están en el roadmap del proyecto.'
   }
 ];
@@ -382,7 +411,7 @@ const STATUS_BADGE = {
   pending: <Badge tone="warn">Pendiente</Badge>
 };
 
-const PENDING_ICONS = [Search, Sparkles];
+const PENDING_ICONS = [Sparkles];
 
 export function ManualView({ go }: { go: (nav: string) => void }) {
   const jump = (id: string) => document.getElementById(`manual-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });

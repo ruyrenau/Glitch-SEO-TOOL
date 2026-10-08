@@ -85,6 +85,7 @@ model Workspace {
   members     WorkspaceMember[]
   sites       Site[]
   auditEvents AuditEvent[]
+  googleAccount GoogleAccount?
 }
 
 model WorkspaceMember {
@@ -135,7 +136,8 @@ model Site {
   crawls             CrawlRun[]
   issues             Issue[]
   wpConnection       WordPressConnection?
-  gscConnections     SearchConsoleConnection[]
+  gscProperty        String?
+  gscImports         GscImport[]
   geoPrompts         GeoPrompt[]
 }
 
@@ -440,28 +442,79 @@ model WordPressPublication {
   createdAt       DateTime            @default(now())
 }
 
-model SearchConsoleConnection {
-  id             String    @id @default(uuid())
-  siteId         String
-  site           Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  propertyUrl    String
-  refreshTokenEnc String?
-  status         String    @default("connected")
-  createdAt      DateTime  @default(now())
-  metrics        SearchMetric[]
+/// One Google account per workspace, connected with OAuth (read-only Search Console).
+model GoogleAccount {
+  id              String    @id @default(uuid())
+  workspaceId     String    @unique
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  email           String?
+  refreshTokenEnc String // AES-256-GCM (CREDENTIALS_KEY)
+  scope           String
+  connectedById   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
 
-model SearchMetric {
-  id           String                  @id @default(uuid())
-  connectionId String
-  connection   SearchConsoleConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  date         DateTime
-  query        String?
-  page         String
-  clicks       Int                     @default(0)
-  impressions  Int                     @default(0)
-  ctr          Float                   @default(0)
-  position     Float                   @default(0)
+/// One import of Search Analytics for a site (a date window); the newest completed one is reported.
+model GscImport {
+  id          String         @id @default(uuid())
+  siteId      String
+  site        Site           @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  property    String
+  startDate   String
+  endDate     String
+  status      String         @default("running") // running, completed, failed
+  error       String?
+  pageRows    Int            @default(0)
+  queryRows   Int            @default(0)
+  truncated   Boolean        @default(false)
+  createdAt   DateTime       @default(now())
+  completedAt DateTime?
+  pages       GscPageStat[]
+  queries     GscQueryStat[]
+  days        GscDailyStat[]
+
+  @@index([siteId, createdAt])
+}
+
+model GscPageStat {
+  id          String    @id @default(uuid())
+  importId    String
+  import      GscImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  page        String
+  clicks      Int
+  impressions Int
+  ctr         Float
+  position    Float
+
+  @@index([importId, page])
+}
+
+model GscQueryStat {
+  id          String    @id @default(uuid())
+  importId    String
+  import      GscImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  query       String
+  page        String
+  clicks      Int
+  impressions Int
+  ctr         Float
+  position    Float
+
+  @@index([importId])
+}
+
+model GscDailyStat {
+  id          String    @id @default(uuid())
+  importId    String
+  import      GscImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  date        String
+  clicks      Int
+  impressions Int
+  ctr         Float
+  position    Float
+
+  @@index([importId, date])
 }
 
 model GeoPrompt {
