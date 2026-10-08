@@ -38,6 +38,13 @@ test('guided setup: add a URL, crawl it, see findings and jump to a section', as
   await expect(page.getByText('páginas con error del servidor (5xx)')).toBeVisible();
   await expect(page.getByText('títulos duplicados')).toBeVisible();
 
+  // A finding opens the explorer on its exact tab and filter.
+  await page.getByRole('listitem').filter({ hasText: 'títulos duplicados' }).getByRole('button', { name: 'Ver estas URLs' }).click();
+  await expect(page.getByRole('tab', { name: 'Títulos', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByLabel('Filtro')).toHaveValue('duplicate');
+  await expect(page.getByRole('button', { name: '/dup-a' })).toBeVisible();
+  await page.getByRole('button', { name: 'Inicio guiado' }).click();
+
   // Section cards take you there.
   await page.getByRole('button', { name: 'Ir a Issues técnicos' }).click();
   await expect(page.getByRole('heading', { name: 'Issues técnicos', level: 1 })).toBeVisible();

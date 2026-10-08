@@ -210,6 +210,8 @@ model CrawlRun {
   error          String?
   startedAt      DateTime      @default(now())
   completedAt    DateTime?
+  /// Set when the heavy detail (HTML, link list, resources) was removed to save disk; page summaries stay.
+  detailPurgedAt DateTime?
   pages          CrawledPage[]
   links          CrawledLink[]
   resources      CrawledResource[]

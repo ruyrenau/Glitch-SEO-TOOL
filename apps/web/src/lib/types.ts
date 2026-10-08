@@ -1,3 +1,6 @@
+/** Opens a section; for the explorer, optionally on a given tab and filter. */
+export type GoFn = (nav: string, explorer?: { tab: string; filter?: string }) => void;
+
 export interface Site {
   id: string;
   name: string;
@@ -111,6 +114,7 @@ export interface CrawlRun {
   error: string | null;
   startedAt: string;
   completedAt: string | null;
+  detailPurgedAt?: string | null;
   config: { robots?: { found: boolean; status: number | null; sitemaps: string[]; crawlDelay: number | null }; limitReached?: boolean; maxUrls?: number } | null;
   progress: { crawled: number; queued: number; current: string } | null;
 }

@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { API_URL, ApiRequestError, UNAUTHORIZED_EVENT, apiGet, apiSend } from '@/lib/api';
 import { AuthProvider, useAuth } from '@/lib/auth';
-import type { User, Permission } from '@/lib/types';
+import type { User, Permission, GoFn } from '@/lib/types';
 import { LoginView, ForcedPasswordView } from '@/components/AuthViews';
 import { UsersView, AccountView } from '@/components/UsersView';
 import { JobsView } from '@/components/JobsView';
@@ -140,7 +140,9 @@ function Dashboard() {
       return !d;
     });
   };
-  const go = (id: string) => {
+  const [explorerPreset, setExplorerPreset] = useState<{ tab: string; filter?: string; n: number } | null>(null);
+  const go: GoFn = (id, explorer) => {
+    if (id === 'explorer') setExplorerPreset(explorer ? { ...explorer, n: Date.now() } : null);
     setNav(id as NavId);
     setMenuOpen(false);
   };
@@ -274,7 +276,7 @@ function Dashboard() {
                 {nav === 'schema' && <SchemaView />}
                 {nav === 'programmatic' && <ContentView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'wordpress' && <WordPressView key={siteId} siteId={siteId} go={go} />}
-                {nav === 'explorer' && <ExplorerView key={siteId} siteId={siteId} detailExtra={d => <SeoEditPanel siteId={siteId} detail={d} goChanges={() => go('seochanges')} />} />}
+                {nav === 'explorer' && <ExplorerView key={`${siteId}-${explorerPreset?.n ?? 0}`} siteId={siteId} initial={explorerPreset ?? undefined} detailExtra={d => <SeoEditPanel siteId={siteId} detail={d} goChanges={() => go('seochanges')} />} />}
                 {nav === 'seochanges' && <SeoChangesView key={siteId} siteId={siteId} />}
                 {nav === 'gsc' && <GscView key={siteId} siteId={siteId} go={go} notice={gscNotice} />}
                 {nav === 'vitals' && <PerformanceView key={siteId} siteId={siteId} />}

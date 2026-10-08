@@ -196,11 +196,11 @@ function ColumnPicker({ columns, hidden, onToggle, onReset }: { columns: Column[
   );
 }
 
-export function ExplorerView({ siteId, detailExtra }: { siteId: string; detailExtra?: (d: Detail, crawlId: string) => React.ReactNode }) {
+export function ExplorerView({ siteId, detailExtra, initial }: { siteId: string; detailExtra?: (d: Detail, crawlId: string) => React.ReactNode; initial?: { tab: string; filter?: string } }) {
   const [runs, setRuns] = useState<CrawlRun[] | null>(null);
   const [crawlId, setCrawlId] = useState('');
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [state, setState] = useState({ tab: 'internal', filter: 'all', q: '', sort: 'url', dir: 'asc' as 'asc' | 'desc', page: 1 });
+  const [state, setState] = useState({ tab: initial?.tab ?? 'internal', filter: initial?.filter ?? 'all', q: '', sort: initial?.tab === 'images' ? 'src' : initial?.tab === 'gsc' ? 'impressions' : 'url', dir: (initial?.tab === 'gsc' ? 'desc' : 'asc') as 'asc' | 'desc', page: 1 });
   const [rows, setRows] = useState<Rows | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -297,6 +297,12 @@ export function ExplorerView({ siteId, detailExtra }: { siteId: string; detailEx
         </label>
         {summary && <span className="text-slate-500">{fmt(summary.totals.urls)} URLs · {fmt(summary.totals.html)} HTML 200 · {fmt(summary.totals.images)} imágenes · {fmt(summary.totals.resources ?? 0)} archivos · {fmt(summary.totals.external ?? 0)} externos</span>}
       </div>
+
+      {runs.find(r => r.id === crawlId)?.detailPurgedAt && (
+        <div role="status" className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs">
+          Este crawl es antiguo: para ahorrar disco se borró su detalle (código fuente, lista de enlaces y revisión de archivos). Títulos, metas, estados, indexabilidad e issues siguen disponibles. Cada sitio conserva el detalle completo de sus crawls más recientes.
+        </div>
+      )}
 
       <div role="radiogroup" aria-label="Vista del explorador" className="inline-flex rounded-xl border border-slate-200 dark:border-slate-700 p-0.5 bg-white dark:bg-[#151824] text-xs">
         {([['table', 'Tabla'], ['structure', 'Estructura'], ['custom', 'Búsqueda personalizada']] as const).map(([id, label]) => (

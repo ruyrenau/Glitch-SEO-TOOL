@@ -1,16 +1,43 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, ArrowRight } from 'lucide-react';
 import { apiGet, apiSend, fmt, fmtDate } from '@/lib/api';
-import type { Issue } from '@/lib/types';
+import type { Issue, GoFn } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorBox, Kpi, Skeleton, inputCls } from './ui';
 
 const SEV_TONE = { CRITICAL: 'bad', HIGH: 'bad', MEDIUM: 'warn', LOW: 'default', INFO: 'default' } as const;
 const SEV_LABEL = { CRITICAL: 'Crítico', HIGH: 'Alto', MEDIUM: 'Medio', LOW: 'Bajo', INFO: 'Info' } as const;
 const STATUS_LABEL = { open: 'Abierto', in_progress: 'En progreso', resolved: 'Resuelto', ignored: 'Ignorado' } as const;
 
-export function IssuesView({ siteId, go }: { siteId: string; go: (nav: string) => void }) {
+/** Issue code → explorer tab and filter that list the same URLs. */
+const ISSUE_TO_EXPLORER: Record<string, { tab: string; filter: string }> = {
+  HTTP_4XX: { tab: 'response', filter: '4xx' },
+  HTTP_5XX: { tab: 'response', filter: '5xx' },
+  FETCH_FAILED: { tab: 'response', filter: 'no-response' },
+  ROBOTS_BLOCKED: { tab: 'response', filter: 'blocked' },
+  REDIRECT_CHAIN: { tab: 'response', filter: '3xx' },
+  REDIRECT_LOOP: { tab: 'response', filter: '3xx' },
+  TITLE_MISSING: { tab: 'titles', filter: 'missing' },
+  TITLE_DUPLICATE: { tab: 'titles', filter: 'duplicate' },
+  TITLE_TOO_LONG: { tab: 'titles', filter: 'over-60' },
+  TITLE_TOO_SHORT: { tab: 'titles', filter: 'below-30' },
+  META_DESCRIPTION_MISSING: { tab: 'meta', filter: 'missing' },
+  META_DESCRIPTION_DUPLICATE: { tab: 'meta', filter: 'duplicate' },
+  H1_MISSING: { tab: 'h1', filter: 'missing' },
+  H1_MULTIPLE: { tab: 'h1', filter: 'multiple' },
+  IMAGES_MISSING_ALT: { tab: 'images', filter: 'missing-alt' },
+  CANONICAL_MISSING: { tab: 'canonicals', filter: 'missing' },
+  CANONICAL_TO_NON_INDEXABLE: { tab: 'canonicals', filter: 'non-200' },
+  NOINDEX: { tab: 'directives', filter: 'noindex' },
+  SCHEMA_MISSING: { tab: 'structured', filter: 'missing' },
+  SCHEMA_INVALID_JSON: { tab: 'structured', filter: 'errors' },
+  HREFLANG_INVALID: { tab: 'hreflang', filter: 'invalid' },
+  LANG_MISSING: { tab: 'hreflang', filter: 'missing-lang' },
+  PARAMETER_URLS_INDEXABLE: { tab: 'uri', filter: 'parameters' }
+};
+
+export function IssuesView({ siteId, go }: { siteId: string; go: GoFn }) {
   const [issues, setIssues] = useState<Issue[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [statusFilter, setStatusFilter] = useState<'active' | Issue['status'] | 'all'>('active');
@@ -128,6 +155,9 @@ export function IssuesView({ siteId, go }: { siteId: string; go: (nav: string) =
                     <div className="mt-3 ml-6 space-y-3 text-xs">
                       <p>{i.description}</p>
                       <p><strong>Recomendación:</strong> {i.recommendation}</p>
+                      {ISSUE_TO_EXPLORER[i.code] && (
+                        <Button variant="secondary" onClick={() => go('explorer', ISSUE_TO_EXPLORER[i.code])}>Ver estas URLs en el Explorador <ArrowRight className="w-3.5 h-3.5" aria-hidden /></Button>
+                      )}
                       <p className="text-slate-500">
                         Impacto {i.impact}/10 · esfuerzo {i.effort}/10 · riesgo {i.risk}/10 · confianza {Math.round(i.confidence * 100)}% · detectado {fmtDate(i.createdAt)} · visto por última vez {fmtDate(i.lastSeenAt)}
                       </p>

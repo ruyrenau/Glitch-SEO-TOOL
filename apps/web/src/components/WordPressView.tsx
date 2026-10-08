@@ -3,10 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import { PlugZap, Trash2 } from 'lucide-react';
 import { apiGet, apiSend, fmtDate } from '@/lib/api';
-import type { WpConnection } from '@/lib/types';
+import type { WpConnection, GoFn } from '@/lib/types';
 import { Badge, Button, Card, ErrorBox, Skeleton, inputCls } from './ui';
 
-export function WordPressView({ siteId, go }: { siteId: string; go: (nav: string) => void }) {
+export function WordPressView({ siteId, go }: { siteId: string; go: GoFn }) {
   const [conn, setConn] = useState<WpConnection | null | undefined>(undefined);
   const [form, setForm] = useState({ endpointUrl: '', username: '', appPassword: '' });
   const [error, setError] = useState<unknown>(null);

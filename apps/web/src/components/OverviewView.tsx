@@ -2,11 +2,11 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiGet, fmt, fmtDate } from '@/lib/api';
-import type { SiteOverview } from '@/lib/types';
+import type { SiteOverview, GoFn } from '@/lib/types';
 import { Badge, Card, Empty, ErrorBox, Kpi, Skeleton, Button } from './ui';
 import { ALERT_LABEL } from './AlertsView';
 
-export function OverviewView({ siteId, go }: { siteId: string; go: (nav: string) => void }) {
+export function OverviewView({ siteId, go }: { siteId: string; go: GoFn }) {
   const [data, setData] = useState<SiteOverview | null>(null);
   const [error, setError] = useState<unknown>(null);
 

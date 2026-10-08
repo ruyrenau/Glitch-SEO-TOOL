@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowRight, CheckCircle2, Download, Link2, Loader2, LogOut, RefreshCw } from 'lucide-react';
 import { API_URL, apiGet, apiSend, fmt, fmtDate, waitForJob } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import type { JobRow } from '@/lib/types';
+import type { JobRow, GoFn } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorBox, Kpi, Skeleton, inputCls } from './ui';
 
 interface Status { configured: boolean; connected: boolean; email: string | null; connectedAt: string | null }
@@ -115,6 +115,15 @@ function QueryTable({ rows, showPages }: { rows: QueryRow[]; showPages?: boolean
   );
 }
 
+/** Opens the explorer on the Search Console tab with one filter. */
+function ExplorerLink({ go, filter, label = 'Ver en el Explorador con este filtro' }: { go: GoFn; filter: string; label?: string }) {
+  return (
+    <button className="float-right text-xs text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1" onClick={() => go('explorer', { tab: 'gsc', filter })}>
+      {label} <ArrowRight className="w-3 h-3" aria-hidden />
+    </button>
+  );
+}
+
 const TABS = [
   ['pages', 'Páginas'],
   ['queries', 'Consultas'],
@@ -124,7 +133,7 @@ const TABS = [
   ['cross', 'Cruce con crawl, logs y sitemap']
 ] as const;
 
-export function GscView({ siteId, go, notice }: { siteId: string; go: (nav: string) => void; notice?: { kind: 'connected' | 'error'; message?: string } | null }) {
+export function GscView({ siteId, go, notice }: { siteId: string; go: GoFn; notice?: { kind: 'connected' | 'error'; message?: string } | null }) {
   const { can } = useAuth();
   const [status, setStatus] = useState<Status | null>(null);
   const [props, setProps] = useState<Property[] | null>(null);
@@ -279,7 +288,7 @@ export function GscView({ siteId, go, notice }: { siteId: string; go: (nav: stri
 
           <Card
             title="Análisis"
-            actions={<Button variant="secondary" onClick={() => go('explorer')}>Ver por URL en el Explorador <ArrowRight className="w-3.5 h-3.5" aria-hidden /></Button>}
+            actions={<Button variant="secondary" onClick={() => go('explorer', { tab: 'gsc', filter: 'with-impressions' })}>Ver por URL en el Explorador <ArrowRight className="w-3.5 h-3.5" aria-hidden /></Button>}
           >
             <div role="tablist" aria-label="Análisis de Search Console" className="flex flex-wrap gap-1 mb-3">
               {TABS.map(([id, label]) => (
@@ -289,13 +298,14 @@ export function GscView({ siteId, go, notice }: { siteId: string; go: (nav: stri
             <div className="text-xs space-y-3">
               {tab === 'pages' && (<><p className="text-slate-500">Las páginas que más clics reciben.</p><PageTable rows={r.topPages ?? []} /></>)}
               {tab === 'queries' && (<><p className="text-slate-500">Lo que la gente busca en Google cuando aparece tu sitio.</p><QueryTable rows={r.topQueries ?? []} /></>)}
-              {tab === 'opportunities' && (<><p className="text-slate-500"><strong>Las mejoras más baratas:</strong> consultas en posición 4 a 15 con demanda real. Subir unas posiciones, a la primera página o al top 3, suele multiplicar los clics. Mejora el contenido de la página principal de cada consulta y enlázala desde otras páginas.</p><QueryTable rows={r.opportunities ?? []} /></>)}
-              {tab === 'lowctr' && (<><p className="text-slate-500"><strong>Buena posición, pocos clics:</strong> la gente ve la página pero no la elige. Casi siempre se arregla con un título y una meta description más atractivos; puedes cambiarlos desde el Explorador → Editar en WordPress.</p><PageTable rows={r.lowCtr ?? []} /></>)}
+              {tab === 'opportunities' && (<><ExplorerLink go={go} filter="striking-distance" label="Ver páginas en posición 4–15 en el Explorador" /><p className="text-slate-500"><strong>Las mejoras más baratas:</strong> consultas en posición 4 a 15 con demanda real. Subir unas posiciones, a la primera página o al top 3, suele multiplicar los clics. Mejora el contenido de la página principal de cada consulta y enlázala desde otras páginas.</p><QueryTable rows={r.opportunities ?? []} /></>)}
+              {tab === 'lowctr' && (<><ExplorerLink go={go} filter="low-ctr" /><p className="text-slate-500"><strong>Buena posición, pocos clics:</strong> la gente ve la página pero no la elige. Casi siempre se arregla con un título y una meta description más atractivos; puedes cambiarlos desde el Explorador → Editar en WordPress.</p><PageTable rows={r.lowCtr ?? []} /></>)}
               {tab === 'cannibal' && (<><p className="text-slate-500"><strong>Varias páginas compiten por la misma búsqueda.</strong> Google alterna entre ellas y ninguna sube. Decide cuál debe posicionar y enlaza o redirige las otras hacia ella.</p><QueryTable rows={r.cannibalization ?? []} showPages /></>)}
               {tab === 'cross' && (
                 !r.crawl ? <Empty>Haz un crawl del sitio para cruzarlo con Search Console.</Empty> : (
                   <div className="space-y-5">
                     <section>
+                      <ExplorerLink go={go} filter="non-indexable-with-impressions" />
                       <h4 className="font-semibold text-sm">No indexables con impresiones <Badge tone={r.crawl.nonIndexableWithImpressionsCount ? 'bad' : 'good'}>{fmt(r.crawl.nonIndexableWithImpressionsCount)}</Badge></h4>
                       <p className="text-slate-500 mb-2">Google las muestra, pero el crawl dice que no deberían indexarse (noindex, canonical a otra, error o bloqueo). Si fue a propósito, saldrán solas; si no, estás a punto de perder ese tráfico.</p>
                       <PageTable rows={r.crawl.nonIndexableWithImpressions} extra={x => <span className="text-rose-600">{x.statusCode} · {x.reason}</span>} />
@@ -307,12 +317,14 @@ export function GscView({ siteId, go, notice }: { siteId: string; go: (nav: stri
                     </section>
                     {r.crawl.shownButNotInLogsCount !== null && (
                       <section>
+                        <ExplorerLink go={go} filter="not-in-logs" />
                         <h4 className="font-semibold text-sm">Con impresiones pero Googlebot no las visitó en el último log <Badge tone="warn">{fmt(r.crawl.shownButNotInLogsCount)}</Badge></h4>
                         <p className="text-slate-500 mb-2">Google tiene una versión guardada que no ha vuelto a revisar en ese periodo. Si cambiaste algo en ellas, Google aún no lo sabe.</p>
                         <PageTable rows={r.crawl.shownButNotInLogs} />
                       </section>
                     )}
                     <section>
+                      <ExplorerLink go={go} filter="no-impressions" />
                       <h4 className="font-semibold text-sm">Indexables sin ninguna impresión <Badge tone={r.crawl.indexableWithoutImpressionsCount ? 'warn' : 'good'}>{fmt(r.crawl.indexableWithoutImpressionsCount)}</Badge></h4>
                       <p className="text-slate-500 mb-2">Páginas que podrían aparecer en Google y en el periodo no aparecieron ni una vez: contenido débil, duplicado o sin enlaces. Mejóralas, júntalas o quítalas.</p>
                       <ul className="max-h-60 overflow-auto font-mono text-[11px] space-y-0.5">{r.crawl.indexableWithoutImpressions.map(u => <li key={u}>{path(u)}</li>)}</ul>

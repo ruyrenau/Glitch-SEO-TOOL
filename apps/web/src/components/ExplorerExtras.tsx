@@ -213,6 +213,7 @@ export function CustomSearchPanel({ crawlId, onOpen }: { crawlId: string; onOpen
           <Button disabled={busy || (!search.length && !extract.length)} onClick={run}><Play className="w-3.5 h-3.5" /> {busy ? 'Analizando…' : 'Ejecutar'}</Button>
           <label className="flex items-center gap-2"><input type="checkbox" checked={onlyMatches} onChange={e => setOnlyMatches(e.target.checked)} /> Solo páginas con resultado</label>
           {res && <span className="text-slate-500">{fmt(res.matched)} de {fmt(res.scanned)} páginas con resultado</span>}
+          {res && res.scanned === 0 && <span className="text-amber-600">Este crawl no tiene código fuente guardado (es antiguo o falló). Usa un crawl reciente.</span>}
           {res && <Button variant="secondary" onClick={csv}><Download className="w-3.5 h-3.5" /> CSV</Button>}
         </div>
         <div className="mt-3"><ErrorBox error={error} /></div>

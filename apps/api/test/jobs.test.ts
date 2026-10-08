@@ -83,8 +83,8 @@ describe('job queue', () => {
     const done = await waitForJob(inject, row.id);
     expect(done).toMatchObject({ status: 'FAILED', attempts: 2 });
     expect(done.error).toMatch(/not found/);
-    const failed = await getQueue('crawls').getFailed();
-    expect(failed.map(j => j.id)).toContain(row.id);
+    // The DB row is final a moment before BullMQ moves the job to its failed set.
+    await expect.poll(async () => (await getQueue('crawls').getFailed()).map(j => j.id), { timeout: 5000 }).toContain(row.id);
     const logs = (done as unknown as { logs: Array<{ msg: string }> }).logs.map(l => l.msg).join(' | ');
     expect(logs).toMatch(/Reintento 2 de 2/);
 

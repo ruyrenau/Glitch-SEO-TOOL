@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Check, Eye, RotateCcw, Send, X } from 'lucide-react';
 import { ApiRequestError, apiGet, apiSend, fmtDate } from '@/lib/api';
-import type { DryRun, DiffLine, GeneratedPage } from '@/lib/types';
+import type { DryRun, DiffLine, GeneratedPage, GoFn } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorBox, Skeleton, inputCls } from './ui';
 import { DatasetsPanel } from './DatasetsPanel';
 import { useAuth } from '@/lib/auth';
@@ -61,7 +61,7 @@ function Diff({ lines }: { lines: DiffLine[] }) {
   );
 }
 
-export function ContentView({ siteId, go }: { siteId: string; go: (nav: string) => void }) {
+export function ContentView({ siteId, go }: { siteId: string; go: GoFn }) {
   const [form, setForm] = useState(DEFAULT);
   const [pages, setPages] = useState<GeneratedPage[] | null>(null);
   const [error, setError] = useState<unknown>(null);

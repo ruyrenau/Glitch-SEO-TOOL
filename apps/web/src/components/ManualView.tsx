@@ -1,4 +1,5 @@
 'use client';
+import type { GoFn } from '@/lib/types';
 
 import React from 'react';
 import {
@@ -123,6 +124,7 @@ const SECTIONS: Section[] = [
     ],
     tips: [
       'Logout, carrito, checkout, wp-admin y búsquedas internas nunca se solicitan.',
+      'Cada sitio conserva el detalle completo (código fuente, enlaces y archivos) de sus 3 crawls más recientes. Los anteriores conservan títulos, estados, indexabilidad e issues, y siguen sirviendo para comparar.',
       'Solo se rastrea el mismo dominio. Las direcciones privadas están bloqueadas por seguridad.'
     ],
     limits: ['Sin "Ejecutar JavaScript" no ve el contenido que se genera en el navegador.', 'Ejecutar JavaScript necesita Chrome, Chromium o Edge instalado en el servidor.', 'Un solo crawl a la vez por sitio.']
@@ -413,7 +415,7 @@ const STATUS_BADGE = {
 
 const PENDING_ICONS = [Sparkles];
 
-export function ManualView({ go }: { go: (nav: string) => void }) {
+export function ManualView({ go }: { go: GoFn }) {
   const jump = (id: string) => document.getElementById(`manual-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   return (

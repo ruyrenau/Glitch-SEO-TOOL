@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Check } from 'lucide-react';
 import { apiGet, apiSend, fmtDate } from '@/lib/api';
-import type { Alert } from '@/lib/types';
+import type { Alert, GoFn } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorBox, Skeleton } from './ui';
 
 export const ALERT_LABEL: Record<string, string> = {
@@ -21,7 +21,7 @@ export const ALERT_LABEL: Record<string, string> = {
 const SEV_TONE = { CRITICAL: 'bad', HIGH: 'bad', MEDIUM: 'warn', LOW: 'default', INFO: 'default' } as const;
 const SEV_LABEL = { CRITICAL: 'Crítica', HIGH: 'Alta', MEDIUM: 'Media', LOW: 'Baja', INFO: 'Info' } as const;
 
-export function AlertsView({ siteId, go }: { siteId: string; go: (nav: string) => void }) {
+export function AlertsView({ siteId, go }: { siteId: string; go: GoFn }) {
   const [alerts, setAlerts] = useState<Alert[] | null>(null);
   const [status, setStatus] = useState<'open' | 'acknowledged' | ''>('open');
   const [error, setError] = useState<unknown>(null);

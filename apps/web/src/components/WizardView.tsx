@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { apiGet, apiSend, fmt, waitForJob } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import type { CrawlRun, JobRow, Site } from '@/lib/types';
+import type { CrawlRun, JobRow, Site, GoFn } from '@/lib/types';
 import { Badge, Button, Card, ErrorBox, inputCls } from './ui';
 
 interface Summary {
@@ -56,7 +56,7 @@ function Step({ n, title, state, children }: { n: number; title: string; state: 
   );
 }
 
-export function WizardView({ sites, siteId, select, reload, go }: { sites: Site[]; siteId: string; select: (id: string) => void; reload: () => Promise<void>; go: (nav: string) => void }) {
+export function WizardView({ sites, siteId, select, reload, go }: { sites: Site[]; siteId: string; select: (id: string) => void; reload: () => Promise<void>; go: GoFn }) {
   const { can } = useAuth();
   const current = sites.find(s => s.id === siteId) ?? null;
   const [mode, setMode] = useState<'new' | 'existing'>(sites.length ? 'existing' : 'new');
@@ -281,12 +281,11 @@ export function WizardView({ sites, siteId, select, reload, go }: { sites: Site[
                       <div className="font-semibold">{f.label}</div>
                       <div className="text-slate-500">{f.why}</div>
                     </div>
-                    <Button variant="secondary" onClick={() => go('explorer')}>Ver en el Explorador <ArrowRight className="w-3.5 h-3.5" aria-hidden /></Button>
+                    <Button variant="secondary" onClick={() => go('explorer', { tab: f.tab, filter: f.filter })}>Ver estas URLs <ArrowRight className="w-3.5 h-3.5" aria-hidden /></Button>
                   </li>
                 ))}
               </ul>
             )}
-            <p className="text-slate-500">En el Explorador, elige la pestaña y el filtro del mismo nombre (por ejemplo Títulos → Duplicado) para ver las URLs.</p>
           </>
         )}
       </Step>

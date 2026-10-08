@@ -170,6 +170,8 @@ export async function runCrawl(opts: RunCrawlOptions) {
       }
     });
     await prisma.site.update({ where: { id: site.id }, data: { lastAuditAt: new Date() } });
+    // Keep disk bounded: older crawls of this site lose their heavy detail right away.
+    await purgeOldCrawlDetail({ siteId: site.id }).catch(e => recordAuditEvent({ workspaceId: site.workspaceId, userId: null, action: 'crawl.detail_purge_failed', entity: 'Site', entityId: site.id, details: { error: (e as Error).message } }));
     if (status === 'completed') {
       try {
         await createAlertsForRun(run.id);
@@ -265,4 +267,37 @@ export async function setIssueStatus(issueId: string, status: 'open' | 'in_progr
   });
   await recordAuditEvent({ workspaceId: issue.site.workspaceId, userId: actorUserId ?? null, action: 'issue.status_changed', entity: 'Issue', entityId: issueId, details: { code: issue.code, status } });
   return issue;
+}
+
+/** How many recent crawls per site keep their full detail (CRAWL_DETAIL_KEEP, default 3). */
+export const crawlDetailKeep = () => Math.max(1, Number(process.env.CRAWL_DETAIL_KEEP) || 3);
+
+/**
+ * Frees disk: for every crawl older than the newest `keep` of its site, deletes the stored HTML,
+ * the link list and the resource checks. Page summaries, issues, diffs and alerts are kept.
+ */
+export async function purgeOldCrawlDetail(opts: { siteId?: string; keep?: number } = {}) {
+  const keep = opts.keep ?? crawlDetailKeep();
+  const runs = await prisma.crawlRun.findMany({
+    where: { ...(opts.siteId ? { siteId: opts.siteId } : {}), status: { not: 'running' } },
+    orderBy: { startedAt: 'desc' },
+    select: { id: true, siteId: true, detailPurgedAt: true, site: { select: { workspaceId: true } } }
+  });
+  const seen = new Map<string, number>();
+  const purged: string[] = [];
+  let links = 0;
+  let resources = 0;
+  let html = 0;
+  for (const r of runs) {
+    const n = (seen.get(r.siteId) ?? 0) + 1;
+    seen.set(r.siteId, n);
+    if (n <= keep || r.detailPurgedAt) continue;
+    html += (await prisma.crawledPage.updateMany({ where: { crawlRunId: r.id, htmlGz: { not: null } }, data: { htmlGz: null } })).count;
+    links += (await prisma.crawledLink.deleteMany({ where: { crawlRunId: r.id } })).count;
+    resources += (await prisma.crawledResource.deleteMany({ where: { crawlRunId: r.id } })).count;
+    await prisma.crawlRun.update({ where: { id: r.id }, data: { detailPurgedAt: new Date() } });
+    await recordAuditEvent({ workspaceId: r.site.workspaceId, userId: null, action: 'crawl.detail_purged', entity: 'CrawlRun', entityId: r.id, details: { keep } });
+    purged.push(r.id);
+  }
+  return { runsPurged: purged.length, htmlRemoved: html, linksRemoved: links, resourcesRemoved: resources, keep };
 }

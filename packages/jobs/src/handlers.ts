@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { Prisma, prisma, importLogFile, runCrawl, deleteLogImport, purgeExpiredSessions, runGscImport, sitesForDailyGsc } from '@glitch/db';
+import { Prisma, prisma, importLogFile, runCrawl, deleteLogImport, purgeExpiredSessions, purgeOldCrawlDetail, runGscImport, sitesForDailyGsc } from '@glitch/db';
 import { enqueue } from './producer';
 import { measure, PerformanceError } from '@glitch/performance';
 
@@ -73,6 +73,13 @@ export async function retentionHandler(_p: Record<string, unknown>, ctx: JobCont
     await deleteLogImport(imp.id);
   }
   const sessions = await purgeExpiredSessions();
+  const crawlDetail = await purgeOldCrawlDetail();
+  // SQLite keeps freed pages until VACUUM; reclaim them after a large purge (the file can shrink a lot).
+  let vacuumed = false;
+  if (crawlDetail.linksRemoved + crawlDetail.htmlRemoved > 10_000 && (process.env.DATABASE_URL ?? 'file:').startsWith('file:')) {
+    await prisma.$executeRawUnsafe('VACUUM');
+    vacuumed = true;
+  }
   const jobs = (await prisma.job.deleteMany({ where: { createdAt: { lt: cutoff(jobDays) }, status: { in: ['COMPLETED', 'CANCELLED'] } } })).count;
 
   // Upload temp files older than a day belong to jobs that will never run again.
@@ -88,7 +95,7 @@ export async function retentionHandler(_p: Record<string, unknown>, ctx: JobCont
       }
     }
   }
-  const summary = { logImportsDeleted: oldImports.length, sessionsPurged: sessions, jobsDeleted: jobs, tempFilesDeleted: files, logRetentionDays: logDays };
+  const summary = { crawlDetail, vacuumed, logImportsDeleted: oldImports.length, sessionsPurged: sessions, jobsDeleted: jobs, tempFilesDeleted: files, logRetentionDays: logDays };
   ctx.log(JSON.stringify(summary));
   return summary;
 }
