@@ -2,7 +2,7 @@
 
 import React from 'react';
 import {
-  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine
+  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket
 } from 'lucide-react';
 import { Badge, Button, Card } from './ui';
 
@@ -21,6 +21,22 @@ interface Section {
 }
 
 const SECTIONS: Section[] = [
+  {
+    id: 'wizard',
+    nav: 'wizard',
+    icon: Rocket,
+    title: 'Inicio guiado',
+    status: 'ready',
+    what: 'Un asistente de tres pasos: escribes la URL del sitio, la herramienta lo recorre y te muestra en palabras simples qué encontró, con botones a cada sección.',
+    why: 'Es la forma más rápida de empezar sin conocer la herramienta.',
+    steps: [
+      'Escribe la URL de la página principal (o elige un sitio que ya agregaste) y pulsa "Guardar y continuar".',
+      'Elige cuántas páginas revisar (500 para empezar) y pulsa "Empezar el crawl". Va a unas 2 páginas por segundo.',
+      'Lee "Lo primero que revisaría": cada hallazgo explica por qué importa y te lleva al Explorador.',
+      'Abajo, cada tarjeta explica una sección y cuándo usarla.'
+    ],
+    tips: ['Si no tienes sitios, la app abre aquí automáticamente.']
+  },
   {
     id: 'overview',
     nav: 'overview',

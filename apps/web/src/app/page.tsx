@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   LayoutDashboard, Globe, FileText, ShieldAlert, Gauge, Code2, Layers, Send, Search, Sparkles, Cpu, History, Sun, Moon, AlertTriangle, Menu, Bell, BookOpen, Users, LogOut, UserCircle, ScanSearch,
   PanelLeftClose,
+  Rocket,
   PencilLine,
   PanelLeftOpen,
 } from 'lucide-react';
@@ -16,6 +17,7 @@ import { JobsView } from '@/components/JobsView';
 import { PerformanceView } from '@/components/PerformanceView';
 import { ExplorerView } from '@/components/ExplorerView';
 import { SeoEditPanel } from '@/components/SeoEditPanel';
+import { WizardView } from '@/components/WizardView';
 import { SeoChangesView } from '@/components/SeoChangesView';
 import type { Site } from '@/lib/types';
 import { ErrorBox, Roadmap, Skeleton } from '@/components/ui';
@@ -30,9 +32,10 @@ import { SchemaView, AuditView } from '@/components/ToolsViews';
 import { WordPressView } from '@/components/WordPressView';
 import { ContentView } from '@/components/ContentView';
 
-type NavId = 'overview' | 'sites' | 'logs' | 'crawler' | 'explorer' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'programmatic' | 'wordpress' | 'seochanges' | 'gsc' | 'geo' | 'automations' | 'audit' | 'manual' | 'users' | 'account';
+type NavId = 'wizard' | 'overview' | 'sites' | 'logs' | 'crawler' | 'explorer' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'programmatic' | 'wordpress' | 'seochanges' | 'gsc' | 'geo' | 'automations' | 'audit' | 'manual' | 'users' | 'account';
 
 const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ className?: string }>; ready: boolean; perm?: Permission }> = [
+  { id: 'wizard', label: 'Inicio guiado', icon: Rocket, ready: true },
   { id: 'overview', label: 'Overview', icon: LayoutDashboard, ready: true },
   { id: 'sites', label: 'Sitios', icon: Globe, ready: true },
   { id: 'logs', label: 'Logs y sitemap', icon: FileText, ready: true },
@@ -96,6 +99,8 @@ function Dashboard() {
       setSites(list);
       setError(null);
       setSiteId(cur => (list.some(s => s.id === cur) ? cur : list[0]?.id ?? ''));
+      // First visit with no sites: start in the guided setup.
+      if (!list.length) setNav(n => (n === 'overview' ? 'wizard' : n));
     } catch (err) {
       setError(err);
       setSites([]);
@@ -247,6 +252,7 @@ function Dashboard() {
               <SitesView sites={sites} reload={loadSites} select={selectSite} />
             ) : (
               <>
+                {nav === 'wizard' && <WizardView sites={sites} siteId={siteId} select={selectSite} reload={loadSites} go={go} />}
                 {nav === 'manual' && <ManualView go={go} />}
                 {nav === 'overview' && <OverviewView siteId={siteId} go={go} />}
                 {nav === 'sites' && <SitesView sites={sites} reload={loadSites} select={selectSite} />}
