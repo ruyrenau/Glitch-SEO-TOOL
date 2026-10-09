@@ -195,7 +195,7 @@ export async function gscReport(siteId: string) {
   const ctrFloor = (pos: number) => (pos <= 1.5 ? 0.15 : pos <= 3 ? 0.07 : pos <= 5 ? 0.03 : 0.01);
 
   // Cross with the latest completed crawl and the stored sitemap.
-  const run = await prisma.crawlRun.findFirst({ where: { siteId, status: 'completed' }, orderBy: { startedAt: 'desc' } });
+  const run = await prisma.crawlRun.findFirst({ where: { siteId, status: 'completed', mode: 'site' }, orderBy: { startedAt: 'desc' } });
   const crawled = run ? await prisma.crawledPage.findMany({ where: { crawlRunId: run.id }, select: { url: true, finalUrl: true, statusCode: true, isIndexable: true, indexabilityReason: true, inLogs: true, mimeType: true, redirectChain: true } }) : [];
   const gscByKey = new Map(pages.map(p => [gscKey(p.page), p]));
   const crawledByKey = new Map(crawled.map(c => [gscKey(c.url), c]));

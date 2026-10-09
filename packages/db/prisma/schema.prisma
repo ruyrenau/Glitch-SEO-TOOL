@@ -202,6 +202,8 @@ model CrawlRun {
   siteId         String
   site           Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
   status         String        @default("running") // running, completed, failed, cancelled
+  /// site = follows links from the start URL; list = only the given URLs (never a baseline for diffs, issues or alerts)
+  mode           String        @default("site")
   urlsCrawled    Int           @default(0)
   urlsDiscovered Int           @default(0)
   issuesFound    Int           @default(0)

@@ -5,7 +5,7 @@ import { recordAuditEvent } from './audit';
 
 const json = (v: unknown) => v as Prisma.InputJsonValue;
 
-type RunConfig = { robots?: { found: boolean; hash?: string | null }; limitReached?: boolean } | null;
+type RunConfig = { robots?: { found: boolean; hash?: string | null }; limitReached?: boolean; partial?: boolean } | null;
 
 async function snapshots(crawlRunId: string): Promise<PageSnapshot[]> {
   const rows = await prisma.crawledPage.findMany({
@@ -18,7 +18,7 @@ async function snapshots(crawlRunId: string): Promise<PageSnapshot[]> {
 /** The completed crawl of the same site that finished right before `run`. */
 async function previousCompletedRun(run: { id: string; siteId: string; startedAt: Date }) {
   return prisma.crawlRun.findFirst({
-    where: { siteId: run.siteId, status: 'completed', startedAt: { lt: run.startedAt }, NOT: { id: run.id } },
+    where: { siteId: run.siteId, status: 'completed', mode: 'site', startedAt: { lt: run.startedAt }, NOT: { id: run.id } },
     orderBy: { startedAt: 'desc' }
   });
 }
@@ -35,7 +35,7 @@ export async function getCrawlDiff(crawlRunId: string, baseRunId?: string): Prom
   const base = baseRunId ? await prisma.crawlRun.findFirst({ where: { id: baseRunId, siteId: target.siteId } }) : await previousCompletedRun(target);
   if (!base) return null;
   const cfg = target.config as RunConfig;
-  const diff = diffCrawls(await snapshots(base.id), await snapshots(target.id), { newerCrawlComplete: target.status === 'completed' && !cfg?.limitReached });
+  const diff = diffCrawls(await snapshots(base.id), await snapshots(target.id), { newerCrawlComplete: target.status === 'completed' && !(cfg?.partial ?? cfg?.limitReached) });
   return {
     ...diff,
     base: { id: base.id, startedAt: base.startedAt, urlsCrawled: base.urlsCrawled },
@@ -82,7 +82,7 @@ export async function createAlertsForRun(crawlRunId: string) {
   if (!prev) return [];
   const cfgNow = run.config as RunConfig;
   const cfgPrev = prev.config as RunConfig;
-  const diff = diffCrawls(await snapshots(prev.id), await snapshots(run.id), { newerCrawlComplete: !cfgNow?.limitReached });
+  const diff = diffCrawls(await snapshots(prev.id), await snapshots(run.id), { newerCrawlComplete: !(cfgNow?.partial ?? cfgNow?.limitReached) });
   const candidates = alertsFromDiff(diff, { pagesInNewerCrawl: run.urlsCrawled, robotsBefore: cfgPrev?.robots, robotsAfter: cfgNow?.robots });
   if (!candidates.length) return [];
 

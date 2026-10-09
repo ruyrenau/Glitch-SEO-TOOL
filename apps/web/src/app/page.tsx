@@ -161,11 +161,11 @@ function Dashboard() {
         >
           <div className={`${collapsed && !menuOpen ? 'p-3 justify-center' : 'p-5'} border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5`}>
             {collapsed && !menuOpen ? (
-              <img src="/brand/icon.png" alt="g.SEO" className="w-9 h-9 rounded-lg" />
+              <img src="/brand/icon.png" alt="G.SEO" className="w-9 h-9 rounded-lg" />
             ) : (
               <div className="nav-text">
-                <img src="/brand/logo-dark.png" alt="g.SEO" className="h-8 w-auto dark:hidden" />
-                <img src="/brand/logo-white.png" alt="g.SEO" className="h-8 w-auto hidden dark:block" />
+                <img src="/brand/logo-dark.png" alt="G.SEO" className="h-8 w-auto dark:hidden" />
+                <img src="/brand/logo-white.png" alt="G.SEO" className="h-8 w-auto hidden dark:block" />
                 <div className="text-[10px] text-slate-500 font-mono mt-1">v0.9 · local</div>
               </div>
             )}

@@ -73,7 +73,7 @@ export async function getSiteOverview(siteId: string) {
     prisma.issue.groupBy({ by: ['severity'], where: { siteId, status: 'open' }, _count: true }),
     prisma.auditEvent.findMany({ where: { workspaceId: site.workspaceId }, orderBy: { createdAt: 'desc' }, take: 8 }),
     prisma.alert.findMany({ where: { siteId, status: 'open' }, orderBy: { createdAt: 'desc' }, take: 200 }),
-    prisma.crawlRun.findFirst({ where: { siteId, status: 'completed' }, orderBy: { startedAt: 'desc' } })
+    prisma.crawlRun.findFirst({ where: { siteId, status: 'completed', mode: 'site' }, orderBy: { startedAt: 'desc' } })
   ]);
   return {
     site: { id: site.id, name: site.name, domain: site.domain, environment: site.environment, isDemo: site.name.startsWith('[DEMO]') },

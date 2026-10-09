@@ -38,7 +38,28 @@ export interface CrawlOptions {
    * from memory, so large crawls must persist them here.
    */
   onPage?: (page: CrawledPageData) => void | Promise<void>;
+
+  // ---- Screaming Frog-style limits ----
+  /** List mode: crawl exactly these URLs (same host) and do not follow links. */
+  listUrls?: string[];
+  /** Skip URLs longer than this many characters. */
+  maxUrlLength?: number;
+  /** Skip URLs with more path segments than this (/a/b/c = 3). */
+  maxFolderDepth?: number;
+  /** At most this many URLs per first-level folder (/blog/…, /productos/…). */
+  maxUrlsPerFolder?: number;
+  /** Skip URLs with more query parameters than this (0 = no URLs with query strings). */
+  maxQueryParams?: number;
+  /** Follow only the first N internal links of each page. */
+  maxLinksPerPage?: number;
+  /** Redirect hops to follow before giving up (default 10). */
+  maxRedirects?: number;
+  /** Only crawl URLs inside the start URL's folder (e.g. start at /blog/ → only /blog/…). */
+  stayInStartFolder?: boolean;
 }
+
+/** Why URLs were not crawled (counts), so the user knows which limit kicked in. */
+export type SkipReason = 'maxUrls' | 'maxDepth' | 'maxUrlLength' | 'maxFolderDepth' | 'maxUrlsPerFolder' | 'maxQueryParams' | 'maxLinksPerPage' | 'outsideStartFolder' | 'excluded' | 'notInInclude';
 
 /** What JavaScript changed on a rendered page, compared with the HTML the server sent. */
 export interface JsInfo {
@@ -112,6 +133,8 @@ export interface CrawlResult {
   discovered: number;
   cancelled: boolean;
   limitReached: boolean;
+  /** URLs discovered but not crawled, by reason. */
+  skipped: Partial<Record<SkipReason, number>>;
 }
 
 /** Upper bound for one crawl (CRAWL_HARD_MAX_URLS overrides). */
@@ -328,28 +351,62 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
   };
   let limitReached = false;
 
-  const allowedByFilters = (u: string) => {
-    const url = new URL(u);
-    if (url.hostname !== host) return false;
-    const pq = url.pathname + url.search;
-    if (exclude.some(re => re.test(pq))) return false;
-    if (include.length && !include.some(re => re.test(pq))) return false;
-    return true;
+  // First reason each URL was skipped (counted once, however many pages link to it).
+  const skippedBy = new Map<string, SkipReason>();
+  const skip = (u: string, reason: SkipReason) => {
+    if (!skippedBy.has(u) && skippedBy.size < 200_000) skippedBy.set(u, reason);
   };
-  const enqueue = (u: string, depth: number) => {
-    if (visited.has(u) || depth > maxDepth || !allowedByFilters(u)) return;
+  const startFolder = start.pathname.endsWith('/') ? start.pathname : start.pathname.replace(/[^/]*$/, '');
+  const perFolder = new Map<string, number>();
+  const firstFolder = (pathname: string) => {
+    const seg = pathname.split('/').filter(Boolean);
+    return seg.length > 1 ? `/${seg[0]}/` : '/';
+  };
+  const filterReason = (u: string): SkipReason | null | 'foreign' => {
+    const url = new URL(u);
+    if (url.hostname !== host) return 'foreign';
+    const pq = url.pathname + url.search;
+    if (exclude.some(re => re.test(pq))) return 'excluded';
+    if (include.length && !include.some(re => re.test(pq))) return 'notInInclude';
+    if (options.maxUrlLength && u.length > options.maxUrlLength) return 'maxUrlLength';
+    if (options.maxFolderDepth !== undefined && url.pathname.split('/').filter(Boolean).length > options.maxFolderDepth) return 'maxFolderDepth';
+    if (options.maxQueryParams !== undefined && [...url.searchParams.keys()].length > options.maxQueryParams) return 'maxQueryParams';
+    if (options.stayInStartFolder && !url.pathname.startsWith(startFolder)) return 'outsideStartFolder';
+    return null;
+  };
+  const enqueue = (u: string, depth: number, isStart = false) => {
+    if (visited.has(u)) return;
+    if (depth > maxDepth) return skip(u, 'maxDepth');
+    const reason = filterReason(u);
+    if (reason === 'foreign') return;
+    // The start URL and list-mode URLs were chosen explicitly: only robots.txt and the hard limits apply.
+    if (reason && !isStart) return skip(u, reason);
+    if (options.maxUrlsPerFolder && !isStart) {
+      const f = firstFolder(new URL(u).pathname);
+      const n = perFolder.get(f) ?? 0;
+      if (f !== '/' && n >= options.maxUrlsPerFolder) return skip(u, 'maxUrlsPerFolder');
+      perFolder.set(f, n + 1);
+    }
     if (visited.size >= maxUrls) {
       limitReached = true;
-      return;
+      return skip(u, 'maxUrls');
     }
     visited.add(u);
     queue.push({ url: u, depth });
   };
 
-  enqueue(start.toString(), 0);
-  for (const s of options.seeds ?? []) {
-    const n = normalizeUrl(s);
-    if (n) enqueue(n, 1);
+  const listMode = !!options.listUrls?.length;
+  if (listMode) {
+    for (const raw of options.listUrls!) {
+      const n = normalizeUrl(raw.trim());
+      if (n) enqueue(n, 0, true);
+    }
+  } else {
+    enqueue(start.toString(), 0, true);
+    for (const s of options.seeds ?? []) {
+      const n = normalizeUrl(s);
+      if (n) enqueue(n, 1);
+    }
   }
 
   const crawlOne = async ({ url, depth }: { url: string; depth: number }) => {
@@ -360,14 +417,14 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
       await options.onPage?.(blocked);
       return;
     }
-    const res = await fetchWithRedirects(url, fetchOpts);
+    const res = await fetchWithRedirects(url, { ...fetchOpts, maxHops: options.maxRedirects ?? 10 });
     const finalSameHost = new URL(res.finalUrl).hostname === host;
     let extracted: ExtractedPage | null = null;
     let html = res.body;
     let js: JsInfo | null = null;
     if (res.chain.length) {
       // The redirect target is crawled as its own page (same depth) so its status and content are recorded once.
-      if (finalSameHost) {
+      if (finalSameHost && !listMode) {
         addEdge(res.finalUrl, url);
         enqueue(res.finalUrl, depth);
       }
@@ -388,10 +445,19 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
         }
       }
       extracted.internalLinks = extracted.internalLinks.map(shared);
+      let followed = 0;
       for (const link of extracted.internalLinks) {
         addEdge(link, url);
+        // List mode records links but follows none.
+        if (listMode) continue;
         // Files (PDF, images, docs…) are checked as resources, not crawled as pages.
-        if (!resourceKindFromUrl(link)) enqueue(link, depth + 1);
+        if (resourceKindFromUrl(link)) continue;
+        if (options.maxLinksPerPage !== undefined && followed >= options.maxLinksPerPage) {
+          if (!visited.has(link)) skip(link, 'maxLinksPerPage');
+          continue;
+        }
+        followed++;
+        enqueue(link, depth + 1);
       }
     }
     if (extracted) {
@@ -457,7 +523,10 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
   const crawledUrls = new Set(pages.map(p => p.url));
   for (const u of crawledUrls) found.delete(u);
   const resources = cancelled ? [] : await checkResources(found, options, fetchOpts, () => cancelled || !!options.signal?.aborted);
-  return { pages, resources, robots: robotsInfo, hostVariants, discovered: visited.size, cancelled, limitReached };
+  // A URL skipped from one page and later crawled from another is not "skipped".
+  const skipped: Partial<Record<SkipReason, number>> = {};
+  for (const [u, reason] of skippedBy) if (!visited.has(u)) skipped[reason] = (skipped[reason] ?? 0) + 1;
+  return { pages, resources, robots: robotsInfo, hostVariants, discovered: visited.size, cancelled, limitReached, skipped };
 }
 
 /**

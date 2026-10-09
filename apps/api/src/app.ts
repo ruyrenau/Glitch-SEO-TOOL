@@ -329,10 +329,30 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
       include: z.array(z.string().max(200)).max(20).default([]),
       exclude: z.array(z.string().max(200)).max(50).default([]),
       seedFromSitemap: z.boolean().default(true),
-      renderJs: z.boolean().default(false)
+      renderJs: z.boolean().default(false),
+      // Screaming Frog-style limits
+      listUrls: z.array(z.string().url().max(2000)).max(10_000).optional(),
+      maxUrlLength: z.number().int().min(20).max(10_000).optional(),
+      maxFolderDepth: z.number().int().min(0).max(50).optional(),
+      maxUrlsPerFolder: z.number().int().min(1).max(100_000).optional(),
+      maxQueryParams: z.number().int().min(0).max(50).optional(),
+      maxLinksPerPage: z.number().int().min(1).max(10_000).optional(),
+      maxRedirects: z.number().int().min(0).max(20).optional(),
+      stayInStartFolder: z.boolean().optional(),
+      maxPageSizeKb: z.number().int().min(16).max(51_200).optional()
     })
     .strict();
   const ACTIVE = ['QUEUED', 'RUNNING', 'RETRYING'] as const;
+  /** API body → crawler options: page size in KB to bytes; list-mode URLs must belong to the site. */
+  const crawlOptions = (b: z.infer<typeof crawlBody>, canonicalUrl: string) => {
+    const { maxPageSizeKb, ...rest } = b;
+    if (rest.listUrls?.length) {
+      const host = new URL(canonicalUrl).hostname;
+      const foreign = rest.listUrls.filter(u => new URL(u).hostname !== host);
+      if (foreign.length) throw new ApiError(400, 'FOREIGN_URL', `La lista solo puede tener URLs de ${host}.`, { foreign: foreign.slice(0, 20) });
+    }
+    return { ...rest, ...(maxPageSizeKb ? { maxBodyBytes: maxPageSizeKb * 1024 } : {}) };
+  };
 
   const validatePatterns = (b: { include: string[]; exclude: string[]; renderJs?: boolean }) => {
     if (b.renderJs && !findBrowser()) throw new ApiError(400, 'BROWSER_NOT_FOUND', 'Para ejecutar JavaScript se necesita Chrome, Chromium o Edge instalado en el servidor (o la variable CHROME_PATH).');
@@ -352,7 +372,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     validatePatterns(body);
     const active = await prisma.job.findFirst({ where: { siteId: id, type: 'crawl', status: { in: [...ACTIVE] } } });
     if (active) throw new ApiError(409, 'CRAWL_RUNNING', 'A crawl is already queued or running for this site', { jobId: active.id });
-    const job = await enqueue('crawl', { siteId: id, options: body }, { siteId: id, workspaceId: site.workspaceId });
+    const job = await enqueue('crawl', { siteId: id, options: crawlOptions(body, site.canonicalUrl) }, { siteId: id, workspaceId: site.workspaceId });
     return reply.status(202).send({ jobId: job.id, status: job.status });
   });
 
@@ -388,7 +408,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     await requireSite(id);
     const b = z.object({ cron: z.string().max(100).nullable(), options: crawlBody.optional() }).strict().parse(req.body);
     if (b.options) validatePatterns(b.options);
-    return setSiteSchedule(id, b.cron?.trim() || null, b.options ?? crawlBody.parse({}));
+    return setSiteSchedule(id, b.cron?.trim() || null, crawlOptions(b.options ?? crawlBody.parse({}), (await requireSite(id)).canonicalUrl));
   });
 
   // ------------------------------------------------------------------ SEO explorer (Screaming Frog-style)

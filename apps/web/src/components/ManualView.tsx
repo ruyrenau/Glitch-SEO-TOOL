@@ -114,6 +114,8 @@ const SECTIONS: Section[] = [
       'Deja marcado "Respetar robots.txt" y "Usar URLs del sitemap como semillas".',
       'Si el sitio está hecho con React, Vue, Angular u otro framework que arma la página en el navegador, marca "Ejecutar JavaScript". Cada página se abre en Chrome o Edge sin ventana; es varias veces más lento.',
       'Si quieres excluir secciones, escribe una expresión regular por línea (por ejemplo ^/tag/).',
+      'En "Límites avanzados" puedes limitar URLs por carpeta, profundidad de carpetas, largo de URL, parámetros en la URL, enlaces a seguir por página, redirecciones y peso de página, o quedarte en la carpeta inicial. El historial muestra cuántas URLs omitió cada límite.',
+      'Con "Lista de URLs" pegas las direcciones exactas que quieres revisar: no se siguen enlaces y no cambian los issues ni las alertas del sitio.',
       'Pulsa "Iniciar crawl". Lo ejecuta el worker: puedes cerrar la página y volver. Puedes cancelarlo; lo rastreado se guarda.',
       'En el historial, pulsa "Ver detalle" para ver los cambios respecto al crawl anterior y la tabla de páginas.'
     ],
@@ -426,9 +428,9 @@ export function ManualView({ go }: { go: GoFn }) {
         <div className="flex items-start gap-3">
           <BookOpen className="w-6 h-6 text-indigo-600 dark:text-indigo-400 shrink-0" aria-hidden />
           <div className="space-y-2 text-sm">
-            <h2 className="font-bold text-base">Cómo usar Glitch SEO Ops</h2>
+            <h2 className="font-bold text-base">Cómo usar G.SEO</h2>
             <p className="text-slate-600 dark:text-slate-400">
-              Glitch SEO Ops reúne en un solo lugar lo que los buscadores y los bots de IA hacen en tu sitio (logs), lo que encuentra un rastreo técnico (crawl) y la creación de páginas
+              G.SEO reúne en un solo lugar lo que los buscadores y los bots de IA hacen en tu sitio (logs), lo que encuentra un rastreo técnico (crawl) y la creación de páginas
               programáticas con control de calidad. Todo se organiza por sitio: elige uno en "Sitio activo" y trabaja sección por sección.
             </p>
             <p className="text-slate-600 dark:text-slate-400">

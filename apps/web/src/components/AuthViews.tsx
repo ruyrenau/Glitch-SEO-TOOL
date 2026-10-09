@@ -27,8 +27,8 @@ function Shell({ children }: { children: React.ReactNode }) {
       <div className="w-full max-w-sm space-y-6">
         <div className="flex items-center gap-2.5 justify-center">
           <div className="flex flex-col items-center gap-1">
-            <img src="/brand/logo-dark.png" alt="g.SEO" className="h-12 w-auto dark:hidden" />
-            <img src="/brand/logo-white.png" alt="g.SEO" className="h-12 w-auto hidden dark:block" />
+            <img src="/brand/logo-dark.png" alt="G.SEO" className="h-12 w-auto dark:hidden" />
+            <img src="/brand/logo-white.png" alt="G.SEO" className="h-12 w-auto hidden dark:block" />
             <div className="text-[10px] text-slate-500 font-mono">Herramienta interna</div>
           </div>
         </div>

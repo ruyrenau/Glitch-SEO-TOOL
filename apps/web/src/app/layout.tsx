@@ -2,7 +2,7 @@ import './globals.css';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Glitch SEO Ops Engine',
+  title: 'G.SEO',
   description: 'Enterprise Technical SEO, Server Log Intelligence & Programmatic Automation',
 };
 

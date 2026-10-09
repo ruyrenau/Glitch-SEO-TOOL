@@ -115,7 +115,8 @@ export interface CrawlRun {
   startedAt: string;
   completedAt: string | null;
   detailPurgedAt?: string | null;
-  config: { robots?: { found: boolean; status: number | null; sitemaps: string[]; crawlDelay: number | null }; limitReached?: boolean; maxUrls?: number } | null;
+  mode?: 'site' | 'list';
+  config: { robots?: { found: boolean; status: number | null; sitemaps: string[]; crawlDelay: number | null }; limitReached?: boolean; partial?: boolean; skipped?: Record<string, number>; maxUrls?: number } | null;
   progress: { crawled: number; queued: number; current: string } | null;
 }
 

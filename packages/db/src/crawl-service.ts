@@ -43,9 +43,19 @@ export async function runCrawl(opts: RunCrawlOptions) {
     exclude: opts.exclude ?? [],
     userAgent: opts.userAgent ?? site.userAgent,
     seedFromSitemap: opts.seedFromSitemap ?? true,
-    renderJs: opts.renderJs ?? false
+    renderJs: opts.renderJs ?? false,
+    listUrls: opts.listUrls?.length ? opts.listUrls : undefined,
+    maxUrlLength: opts.maxUrlLength,
+    maxFolderDepth: opts.maxFolderDepth,
+    maxUrlsPerFolder: opts.maxUrlsPerFolder,
+    maxQueryParams: opts.maxQueryParams,
+    maxLinksPerPage: opts.maxLinksPerPage,
+    maxRedirects: opts.maxRedirects,
+    stayInStartFolder: opts.stayInStartFolder,
+    maxBodyBytes: opts.maxBodyBytes
   };
-  const run = await prisma.crawlRun.create({ data: { siteId: site.id, status: 'running', maxDepth: config.maxDepth, config: json(config) } });
+  const listMode = !!config.listUrls;
+  const run = await prisma.crawlRun.create({ data: { siteId: site.id, status: 'running', mode: listMode ? 'list' : 'site', maxDepth: config.maxDepth, config: json(config) } });
   opts.onStarted?.(run.id);
   await recordAuditEvent({ workspaceId: site.workspaceId, userId: opts.actorUserId ?? null, action: 'crawl.started', entity: 'CrawlRun', entityId: run.id, details: json(config) });
 
@@ -155,7 +165,11 @@ export async function runCrawl(opts: RunCrawlOptions) {
     for (let i = 0; i < resources.length; i += BATCH) await prisma.crawledResource.createMany({ data: resources.slice(i, i + BATCH) });
 
     const detected = auditCrawl(result, { environment: site.environment, sitemapUrls });
-    await syncIssues(site.id, run.id, detected);
+    // A list crawl covers a handful of URLs: it must not open or resolve the site's issues.
+    if (!listMode) await syncIssues(site.id, run.id, detected);
+    // Limits that leave parts of the site out make the crawl partial: diffs then do not report removed pages.
+    const LIMIT_SKIPS = ['maxUrlLength', 'maxFolderDepth', 'maxUrlsPerFolder', 'maxQueryParams', 'maxLinksPerPage', 'outsideStartFolder'];
+    const partial = listMode || result.limitReached || LIMIT_SKIPS.some(k => (result.skipped as Record<string, number>)[k]);
 
     const status = result.cancelled ? 'cancelled' : 'completed';
     const done = await prisma.crawlRun.update({
@@ -166,13 +180,13 @@ export async function runCrawl(opts: RunCrawlOptions) {
         urlsDiscovered: result.discovered,
         issuesFound: detected.length,
         completedAt: new Date(),
-        config: json({ ...config, robots: result.robots, hostVariants: result.hostVariants, limitReached: result.limitReached })
+        config: json({ ...config, robots: result.robots, hostVariants: result.hostVariants, limitReached: result.limitReached, partial, skipped: result.skipped })
       }
     });
     await prisma.site.update({ where: { id: site.id }, data: { lastAuditAt: new Date() } });
     // Keep disk bounded: older crawls of this site lose their heavy detail right away.
     await purgeOldCrawlDetail({ siteId: site.id }).catch(e => recordAuditEvent({ workspaceId: site.workspaceId, userId: null, action: 'crawl.detail_purge_failed', entity: 'Site', entityId: site.id, details: { error: (e as Error).message } }));
-    if (status === 'completed') {
+    if (status === 'completed' && !listMode) {
       try {
         await createAlertsForRun(run.id);
       } catch (e) {

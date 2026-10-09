@@ -12,9 +12,26 @@ import { DiffPanel } from './DiffPanel';
 const statusTone = (s: CrawlRun['status']) => (s === 'completed' ? 'good' : s === 'running' ? 'warn' : s === 'failed' ? 'bad' : 'default');
 const codeTone = (c: number) => (c === 0 ? 'bad' : c >= 500 ? 'bad' : c >= 400 ? 'warn' : c >= 300 ? 'default' : 'good');
 
+const NO_LIMITS = { maxUrlsPerFolder: '', maxFolderDepth: '', maxUrlLength: '', maxQueryParams: '', maxLinksPerPage: '', maxRedirects: '', maxPageSizeKb: '', stayInStartFolder: false };
+const SKIP_LABEL: Record<string, string> = {
+  maxUrls: 'límite de URLs',
+  maxDepth: 'profundidad',
+  maxUrlLength: 'URL muy larga',
+  maxFolderDepth: 'carpetas profundas',
+  maxUrlsPerFolder: 'por carpeta',
+  maxQueryParams: 'parámetros',
+  maxLinksPerPage: 'enlaces por página',
+  outsideStartFolder: 'fuera de la carpeta',
+  excluded: 'excluidas',
+  notInInclude: 'no incluidas'
+};
+
 export function CrawlView({ siteId, onFinished }: { siteId: string; onFinished: () => void }) {
   const [runs, setRuns] = useState<CrawlRun[] | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const [mode, setMode] = useState<'site' | 'list'>('site');
+  const [list, setList] = useState('');
+  const [limits, setLimits] = useState<typeof NO_LIMITS>(NO_LIMITS);
   const [form, setForm] = useState({ maxUrls: 500, maxDepth: 5, concurrency: 2, rps: 2, respectRobots: true, seedFromSitemap: true, renderJs: false, exclude: '' });
   const [selected, setSelected] = useState<string>('');
   const [job, setJob] = useState<JobRow | null>(null);
@@ -54,7 +71,10 @@ export function CrawlView({ siteId, onFinished }: { siteId: string; onFinished: 
     setError(null);
     try {
       const exclude = form.exclude.split('\n').map(s => s.trim()).filter(Boolean);
-      await apiSend('POST', `/api/v1/sites/${siteId}/crawls`, { ...form, exclude });
+      const listUrls = mode === 'list' ? [...new Set(list.split(/\s+/).map(s => s.trim()).filter(Boolean))] : undefined;
+      if (mode === 'list' && !listUrls?.length) throw new Error('Pega al menos una URL en la lista.');
+      const lim = Object.fromEntries(Object.entries(limits).filter(([, v]) => v !== '' && v !== false).map(([k, v]) => [k, typeof v === 'string' ? Number(v) : v]));
+      await apiSend('POST', `/api/v1/sites/${siteId}/crawls`, { ...form, exclude, ...(listUrls ? { listUrls, maxUrls: Math.max(listUrls.length, 1) } : {}), ...lim });
       setSelected('');
       await load();
     } catch (err) {
@@ -78,6 +98,14 @@ export function CrawlView({ siteId, onFinished }: { siteId: string; onFinished: 
   );
 
   const URL_LIMITS = [500, 1000, 2500, 5000, 10000, 50000, 100000];
+  const limitField = (k: keyof typeof limits, label: string, help: string, min: number, max: number) => (
+    <label className="text-xs space-y-1" title={help}>
+      <span className="font-semibold block">{label}</span>
+      <input type="number" min={min} max={max} placeholder="Sin límite" aria-label={label} className={`${inputCls} w-full`} value={limits[k] as string} onChange={e => setLimits({ ...limits, [k]: e.target.value })} />
+      <span className="block text-[10px] text-slate-500">{help}</span>
+    </label>
+  );
+  const activeLimits = Object.values(limits).filter(v => v !== '' && v !== false).length;
   const estMinutes = Math.ceil(form.maxUrls / Math.max(form.rps, 0.1) / 60);
   const estTime = estMinutes >= 90 ? `${(estMinutes / 60).toFixed(1)} horas` : `${estMinutes} min`;
   const estDisk = form.maxUrls * 26 * 1024 >= 1024 ** 3 ? `${((form.maxUrls * 26) / 1024 ** 2).toFixed(1)} GB` : `${Math.ceil((form.maxUrls * 26) / 1024)} MB`;
@@ -86,7 +114,19 @@ export function CrawlView({ siteId, onFinished }: { siteId: string; onFinished: 
     <div className="space-y-6">
       <Card title="Nuevo crawl">
         <form onSubmit={start} className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div role="radiogroup" aria-label="Modo de crawl" className="inline-flex rounded-xl border border-slate-200 dark:border-slate-700 p-0.5 text-xs">
+            {([['site', 'Rastrear el sitio'], ['list', 'Lista de URLs']] as const).map(([id, label]) => (
+              <button type="button" key={id} role="radio" aria-checked={mode === id} onClick={() => setMode(id)} className={`px-3 py-1.5 rounded-lg font-semibold ${mode === id ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300'}`}>{label}</button>
+            ))}
+          </div>
+          {mode === 'list' && (
+            <label className="block text-xs space-y-1">
+              <span className="font-semibold">URLs a revisar (una por línea, del mismo dominio)</span>
+              <textarea rows={5} aria-label="URLs a revisar" className={`${inputCls} w-full font-mono`} placeholder={'https://www.misitio.com/pagina-1\nhttps://www.misitio.com/pagina-2'} value={list} onChange={e => setList(e.target.value)} />
+              <span className="block text-slate-500">Se revisan solo estas URLs, sin seguir enlaces (como el modo "List" de Screaming Frog). No modifica los issues ni las alertas del sitio. {list.trim() ? `${new Set(list.split(/\s+/).filter(Boolean)).size} URLs.` : ''}</span>
+            </label>
+          )}
+          <div className={`grid grid-cols-2 md:grid-cols-4 gap-3 ${mode === 'list' ? 'hidden' : ''}`}>
             <label className="text-xs font-semibold space-y-1">
               <span>Máx. URLs</span>
               <select aria-label="Máx. URLs" className={inputCls} value={form.maxUrls} onChange={e => setForm({ ...form, maxUrls: Number(e.target.value) })}>
@@ -111,7 +151,28 @@ export function CrawlView({ siteId, onFinished }: { siteId: string; onFinished: 
             <label className="flex items-center gap-2"><input type="checkbox" checked={form.seedFromSitemap} onChange={e => setForm({ ...form, seedFromSitemap: e.target.checked })} /> Usar URLs del sitemap como semillas</label>
             <label className="flex items-center gap-2" title="Abre cada página en Chrome/Edge sin ventana y analiza el resultado después de ejecutar JavaScript. Mucho más lento: úsalo en sitios hechos con React, Vue, Angular o similares."><input type="checkbox" checked={form.renderJs} onChange={e => setForm({ ...form, renderJs: e.target.checked })} /> Ejecutar JavaScript (más lento)</label>
           </div>
-          <label className="block text-xs font-semibold space-y-1">
+          {mode === 'site' && (
+            <details className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 text-xs" open={activeLimits > 0}>
+              <summary className="cursor-pointer font-semibold">Límites avanzados (como Screaming Frog){activeLimits ? ` · ${activeLimits} activos` : ''}</summary>
+              <p className="text-slate-500 mt-2 mb-3">Déjalos vacíos para no limitar. Útiles en sitios grandes: revisar una muestra de cada sección, evitar URLs con filtros o parámetros infinitos, o auditar solo una carpeta. Al terminar, el historial muestra cuántas URLs omitió cada límite.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {limitField('maxUrlsPerFolder', 'URLs por carpeta', 'Máximo por carpeta de primer nivel (/blog/, /productos/…).', 1, 100000)}
+                {limitField('maxFolderDepth', 'Profundidad de carpetas', 'Segmentos de la ruta: /a/b/c = 3.', 0, 50)}
+                {limitField('maxUrlLength', 'Largo máx. de URL', 'Caracteres. Evita URLs generadas sin fin.', 20, 10000)}
+                {limitField('maxQueryParams', 'Parámetros máx. en la URL', '0 = no rastrear URLs con "?" (filtros, orden, sesiones).', 0, 50)}
+                {limitField('maxLinksPerPage', 'Enlaces a seguir por página', 'Solo los primeros N enlaces internos de cada página.', 1, 10000)}
+                {limitField('maxRedirects', 'Redirecciones a seguir', 'Saltos antes de marcar error (por defecto 10).', 0, 20)}
+                {limitField('maxPageSizeKb', 'Peso máx. de página (KB)', 'Las páginas más pesadas se cortan (por defecto 5,120 KB).', 16, 51200)}
+                <label className="flex items-start gap-2 self-center" title="Si empiezas en https://misitio.com/blog/, solo se rastrea lo que está dentro de /blog/.">
+                  <input type="checkbox" className="mt-0.5" checked={limits.stayInStartFolder} onChange={e => setLimits({ ...limits, stayInStartFolder: e.target.checked })} />
+                  <span><span className="font-semibold block">Quedarse en la carpeta inicial</span><span className="text-[10px] text-slate-500">Solo URLs dentro de la carpeta de la URL del sitio.</span></span>
+                </label>
+              </div>
+              {activeLimits > 0 && <p className="mt-3 text-amber-700 dark:text-amber-400">Con límites activos el crawl es parcial: no se reportarán como "eliminadas" las páginas que queden fuera.</p>}
+              {activeLimits > 0 && <button type="button" className="mt-2 text-indigo-600 dark:text-indigo-400 underline" onClick={() => setLimits(NO_LIMITS)}>Quitar todos los límites</button>}
+            </details>
+          )}
+          <label className={`block text-xs font-semibold space-y-1 ${mode === 'list' ? 'hidden' : ''}`}>
             <span>Excluir rutas (una expresión regular por línea). Logout, carrito, checkout, wp-admin y búsquedas internas ya se excluyen siempre.</span>
             <textarea rows={2} className={`${inputCls} font-mono`} placeholder="^/tag/" value={form.exclude} onChange={e => setForm({ ...form, exclude: e.target.value })} />
           </label>
@@ -170,7 +231,12 @@ export function CrawlView({ siteId, onFinished }: { siteId: string; onFinished: 
                   <tr key={r.id} className={selected === r.id ? 'bg-indigo-500/5' : ''}>
                     <td className="py-2 whitespace-nowrap">{fmtDate(r.startedAt)}</td>
                     <td>
-                      <Badge tone={statusTone(r.status)}>{r.status}</Badge> {r.config?.limitReached && <Badge tone="warn">límite de URLs</Badge>}
+                      <Badge tone={statusTone(r.status)}>{r.status}</Badge> {r.mode === 'list' && <Badge>lista</Badge>} {r.config?.limitReached && <Badge tone="warn">límite de URLs</Badge>}
+                      {r.config?.skipped && Object.keys(r.config.skipped).length > 0 && (
+                        <span className="block text-[10px] text-slate-500 mt-0.5" title="URLs encontradas que no se rastrearon, por límite">
+                          Omitidas: {Object.entries(r.config.skipped).map(([k, v]) => `${SKIP_LABEL[k] ?? k} ${v}`).join(' · ')}
+                        </span>
+                      )}
                       {r.error && <div className="text-[11px] text-rose-600">{r.error}</div>}
                     </td>
                     <td className="text-right tabular-nums">{fmt(r.urlsCrawled)}</td>
