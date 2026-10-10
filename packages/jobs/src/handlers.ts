@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { Prisma, prisma, importLogFile, runCrawl, deleteLogImport, purgeExpiredSessions, purgeOldCrawlDetail, runGscImport, sitesForDailyGsc } from '@glitch/db';
+import { Prisma, prisma, importLogFile, runCrawl, deleteLogImport, purgeExpiredSessions, purgeOldCrawlDetail, runGscImport, sitesForDailyGsc, getMonitorConfig, pickVitalsUrls } from '@glitch/db';
 import { enqueue } from './producer';
 import { measure, PerformanceError } from '@glitch/performance';
 
@@ -170,11 +170,21 @@ export async function gscDailyHandler(_p: Record<string, unknown>, ctx: JobConte
   return { queued: sites.length };
 }
 
+/** Scheduled Core Web Vitals ("Monitoreo"): measures the site's top pages. */
+export async function monitorVitalsHandler(p: { siteId: string }, ctx: JobContext) {
+  const cfg = await getMonitorConfig(p.siteId);
+  if (!cfg.vitalsEnabled) return { skipped: 'disabled' };
+  const urls = await pickVitalsUrls(p.siteId);
+  ctx.log(`${urls.length} URLs: ${urls.join(', ')}`);
+  return performanceHandler({ siteId: p.siteId, urls, strategies: cfg.vitalsStrategies }, ctx);
+}
+
 export const HANDLERS = {
   'log-import': logImportHandler,
   crawl: crawlHandler,
   retention: retentionHandler,
   performance: performanceHandler,
   'gsc-import': gscImportHandler,
-  'gsc-daily': gscDailyHandler
+  'gsc-daily': gscDailyHandler,
+  'monitor-vitals': monitorVitalsHandler
 } as const;

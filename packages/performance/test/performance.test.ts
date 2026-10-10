@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import path from 'path';
 import fs from 'fs';
-import { parseLab, parseDiagnostics, parseResources, parseField, parseReport, letterFor, rate, runLighthouseLocal, findBrowser, Lhr } from '@glitch/performance';
+import { parseLab, parseDiagnostics, parseResources, parseField, parseReport, letterFor, rate, runLighthouseLocal, findBrowser, isLocalHost, Lhr } from '@glitch/performance';
 import { sampleLhr, sampleCrux, startFixtureSite } from '@glitch/testing';
 
 describe('ratings', () => {
@@ -81,6 +81,13 @@ describe('GTmetrix-style report (real Lighthouse 12 result)', () => {
     expect(m.grade.performance).toBe(62);
     expect(m.screenshot).toBeNull();
     expect(m.totals.requests).toBe(57); // the minimal sample still lists its requests
+  });
+});
+
+describe('local hosts are measured locally even with a PageSpeed key', () => {
+  it('recognises this machine and private networks, not public domains', () => {
+    for (const u of ['http://127.0.0.1:3000/', 'http://localhost/', 'http://192.168.1.5/', 'http://10.0.0.8/', 'http://172.20.0.1/', 'http://[::1]/', 'http://[fd00::1]/', 'http://tienda.local/']) expect(isLocalHost(u)).toBe(true);
+    for (const u of ['https://www.iexe.edu.mx/', 'http://172.32.0.1/', 'https://fdsite.com/', 'https://fc-barcelona.com/']) expect(isLocalHost(u)).toBe(false);
   });
 });
 

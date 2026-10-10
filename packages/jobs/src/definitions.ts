@@ -7,7 +7,8 @@ export const JOB_TYPES = {
   retention: { queue: 'maintenance', attempts: 3, label: 'Limpieza por retención' },
   performance: { queue: 'performance', attempts: 1, label: 'Core Web Vitals' },
   'gsc-import': { queue: 'imports', attempts: 2, label: 'Importación de Search Console' },
-  'gsc-daily': { queue: 'maintenance', attempts: 2, label: 'Actualización diaria de Search Console' }
+  'gsc-daily': { queue: 'maintenance', attempts: 2, label: 'Actualización diaria de Search Console' },
+  'monitor-vitals': { queue: 'performance', attempts: 1, label: 'Core Web Vitals programado' }
 } as const;
 
 export type JobType = keyof typeof JOB_TYPES;

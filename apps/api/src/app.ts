@@ -47,6 +47,11 @@ import {
   explorerPageDetail,
   explorerCsv,
   explorerCustom,
+  getMonitorConfig,
+  recordAuditEvent,
+  saveMonitorConfig,
+  pickVitalsUrls,
+  monitorOverview,
   gscStatus,
   gscAuthUrl,
   gscFinishOAuth,
@@ -79,7 +84,7 @@ import { HARD_MAX_URLS, MAX_RPS, fetchSitemap, findBrowser, parseSitemapXml } fr
 import { validateJsonLd } from '@glitch/schema-engine';
 import { renderTemplate, computeJaccardSimilarity, evaluateQualityGate } from '@glitch/content-engine';
 import { registerAuth } from './auth';
-import { enqueue, cancelJob, retryJob, listJobs, queueHealth, setSiteSchedule, getSiteSchedule, closeProducer, uploadDir } from '@glitch/jobs';
+import { enqueue, cancelJob, retryJob, listJobs, queueHealth, setSiteSchedule, getSiteSchedule, setVitalsSchedule, describeCron, closeProducer, uploadDir } from '@glitch/jobs';
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public details: Record<string, unknown> = {}) {
@@ -409,6 +414,77 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     const b = z.object({ cron: z.string().max(100).nullable(), options: crawlBody.optional() }).strict().parse(req.body);
     if (b.options) validatePatterns(b.options);
     return setSiteSchedule(id, b.cron?.trim() || null, crawlOptions(b.options ?? crawlBody.parse({}), (await requireSite(id)).canonicalUrl));
+  });
+
+  // ------------------------------------------------------------------ Monitoreo (optional automation + evolution)
+  const CRAWL_CRON = { daily: '0 3 * * *', weekly: '0 3 * * 1' } as const;
+  const VITALS_CRON = { daily: '0 5 * * *', weekly: '0 5 * * 1' } as const;
+  const freqOf = (cron: string | null | undefined, table: Record<string, string>) => (Object.entries(table).find(([, c]) => c === cron)?.[0] ?? (cron ? 'custom' : null));
+  const monitorState = async (siteId: string) => {
+    const site = await prisma.site.findUniqueOrThrow({ where: { id: siteId } });
+    const cfg = await getMonitorConfig(siteId);
+    const crawl = await getSiteSchedule(siteId);
+    const gsc = await gscStatus(site.workspaceId);
+    return {
+      crawl: { enabled: !!crawl.cron, frequency: freqOf(crawl.cron, CRAWL_CRON), cron: crawl.cron, nextRuns: crawl.nextRuns, maxUrls: (crawl.options as { maxUrls?: number } | null)?.maxUrls ?? 500 },
+      gsc: { enabled: cfg.gscEnabled, configured: gsc.configured, connected: gsc.connected, property: site.gscProperty },
+      vitals: { enabled: cfg.vitalsEnabled, frequency: freqOf(cfg.vitalsCron, VITALS_CRON), nextRuns: cfg.vitalsEnabled ? describeCron(cfg.vitalsCron, site.timezone) : [], urlMode: cfg.vitalsUrlMode, urls: cfg.vitalsUrls, count: cfg.vitalsCount, strategies: cfg.vitalsStrategies, willMeasure: await pickVitalsUrls(siteId), source: process.env.PSI_API_KEY ? 'psi' : 'lighthouse-local' }
+    };
+  };
+  app.get('/api/v1/sites/:id/monitor', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return monitorState(id);
+  });
+  const monitorBody = z
+    .object({
+      crawl: z.object({ enabled: z.boolean(), frequency: z.enum(['daily', 'weekly']).default('weekly'), maxUrls: z.number().int().min(1).max(100_000).default(500) }).strict(),
+      gsc: z.object({ enabled: z.boolean() }).strict(),
+      vitals: z
+        .object({
+          enabled: z.boolean(),
+          frequency: z.enum(['daily', 'weekly']).default('weekly'),
+          urlMode: z.enum(['top', 'manual']).default('top'),
+          urls: z.array(z.string().url().max(2000)).max(20).default([]),
+          count: z.number().int().min(1).max(20).default(5),
+          strategies: z.array(z.enum(['mobile', 'desktop'])).min(1).max(2).default(['mobile'])
+        })
+        .strict()
+    })
+    .strict();
+  app.put('/api/v1/sites/:id/monitor', async req => {
+    const { id } = idParam.parse(req.params);
+    const site = await requireSite(id);
+    const b = monitorBody.parse(req.body);
+    if (b.gsc.enabled && !site.gscProperty) throw new ApiError(400, 'GSC_NO_PROPERTY', 'Conecta Search Console y elige la propiedad de este sitio antes de activar la importación diaria.');
+    const host = new URL(site.canonicalUrl).hostname;
+    if (b.vitals.urls.some(u => new URL(u).hostname !== host)) throw new ApiError(400, 'FOREIGN_URL', `Solo se pueden medir URLs de ${host}.`);
+    const prevOptions = ((await getSiteSchedule(id)).options ?? {}) as Record<string, unknown>;
+    await setSiteSchedule(id, b.crawl.enabled ? CRAWL_CRON[b.crawl.frequency] : null, crawlOptions(crawlBody.parse({ ...prevOptions, maxUrls: b.crawl.maxUrls }), site.canonicalUrl));
+    const vitalsCron = VITALS_CRON[b.vitals.frequency];
+    await saveMonitorConfig(id, { gscEnabled: b.gsc.enabled, vitalsEnabled: b.vitals.enabled, vitalsCron, vitalsUrlMode: b.vitals.urlMode, vitalsUrls: b.vitals.urls, vitalsCount: b.vitals.count, vitalsStrategies: b.vitals.strategies });
+    await setVitalsSchedule(id, b.vitals.enabled ? vitalsCron : null);
+    await recordAuditEvent({ workspaceId: site.workspaceId, userId: req.auth!.user.id, action: 'monitor.updated', entity: 'Site', entityId: id, details: { crawl: b.crawl.enabled ? b.crawl.frequency : 'off', gsc: b.gsc.enabled, vitals: b.vitals.enabled ? b.vitals.frequency : 'off' } });
+    return monitorState(id);
+  });
+  /** Runs every enabled part now (skipping parts already queued or running). */
+  app.post('/api/v1/sites/:id/monitor/run', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const site = await requireSite(id);
+    const state = await monitorState(id);
+    const busy = async (type: string) => !!(await prisma.job.findFirst({ where: { siteId: id, type, status: { in: [...ACTIVE] } } }));
+    const queued: Record<string, string> = {};
+    const o = { siteId: id, workspaceId: site.workspaceId };
+    if (state.crawl.enabled && !(await busy('crawl'))) queued.crawl = (await enqueue('crawl', { siteId: id, options: (await getSiteSchedule(id)).options ?? {} }, o)).id;
+    if (state.gsc.enabled && site.gscProperty && !(await busy('gsc-import'))) queued.gsc = (await enqueue('gsc-import', { siteId: id, days: 90 }, o)).id;
+    if (state.vitals.enabled && !(await busy('monitor-vitals')) && !(await busy('performance'))) queued.vitals = (await enqueue('monitor-vitals', { siteId: id }, o)).id;
+    if (!Object.keys(queued).length) throw new ApiError(400, 'NOTHING_TO_RUN', 'No hay nada activo para ejecutar, o ya se está ejecutando.');
+    return reply.status(202).send({ queued });
+  });
+  app.get('/api/v1/sites/:id/monitor/overview', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return monitorOverview(id);
   });
 
   // ------------------------------------------------------------------ SEO explorer (Screaming Frog-style)

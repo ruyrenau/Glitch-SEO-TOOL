@@ -186,6 +186,22 @@ export async function setSiteSchedule(siteId: string, cron: string | null, optio
   return getSiteSchedule(siteId);
 }
 
+/** Weekly (or custom) Core Web Vitals for a site, from "Monitoreo". */
+export async function setVitalsSchedule(siteId: string, cron: string | null) {
+  const site = await prisma.site.findUniqueOrThrow({ where: { id: siteId } });
+  await ready();
+  const q = getQueue('performance');
+  const id = `site-vitals:${siteId}`;
+  if (cron) {
+    const next = describeCron(cron, site.timezone);
+    if (next[1].getTime() - next[0].getTime() < 86400_000 - 60_000) throw new WorkflowError('CRON_TOO_FREQUENT', 'Mide Core Web Vitals como máximo una vez al día.', 400);
+    await q.upsertJobScheduler(id, { pattern: cron, tz: site.timezone }, { name: 'monitor-vitals', data: { siteId, trigger: 'schedule' }, opts: { attempts: 1, removeOnComplete: { age: 7 * 86400 }, removeOnFail: false } });
+    return next;
+  }
+  await q.removeJobScheduler(id).catch(() => undefined);
+  return [];
+}
+
 export async function getSiteSchedule(siteId: string) {
   const site = await prisma.site.findUniqueOrThrow({ where: { id: siteId } });
   if (!site.crawlSchedule) return { cron: null, timezone: site.timezone, options: null, nextRuns: [] };

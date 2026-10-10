@@ -3,7 +3,7 @@ import type { GoFn } from '@/lib/types';
 
 import React from 'react';
 import {
-  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket
+  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity
 } from 'lucide-react';
 import { Badge, Button, Card } from './ui';
 
@@ -130,6 +130,27 @@ const SECTIONS: Section[] = [
       'Solo se rastrea el mismo dominio. Las direcciones privadas están bloqueadas por seguridad.'
     ],
     limits: ['Sin "Ejecutar JavaScript" no ve el contenido que se genera en el navegador.', 'Ejecutar JavaScript necesita Chrome, Chromium o Edge instalado en el servidor.', 'Un solo crawl a la vez por sitio.']
+  },
+  {
+    id: 'monitor',
+    nav: 'monitor',
+    icon: Activity,
+    title: 'Monitoreo',
+    status: 'ready',
+    what: 'Activa, si quieres, el crawl, la importación de Search Console y la medición de Core Web Vitals automáticos, y muestra en una sola pantalla cómo evoluciona el sitio con un análisis de lo que cambió.',
+    why: 'Enterarte de una caída de tráfico, de páginas que dejaron de indexarse o de una página que se volvió lenta sin tener que revisar cada sección.',
+    steps: [
+      'Todo empieza apagado. Activa lo que quieras: crawl (semanal o diario), Search Console (diario) y Core Web Vitals (semanal o diario, sobre las páginas con más clics o las que elijas).',
+      'Pulsa "Guardar". Verás cuándo es la próxima ejecución. "Ejecutar ahora lo activo" lo corre en ese momento.',
+      'En "Análisis de cambios" revisa lo marcado como Atención y Revisar. Cada punto dice qué cambió, cuánto, qué pasó en las mismas fechas y tiene un botón al detalle.',
+      'En "Evolución" pasa el mouse por las gráficas: las líneas rojas son alertas y las verdes, cambios SEO aplicados.'
+    ],
+    read: [
+      ['Variación normal', 'Search Console sube y baja cada semana. Solo se marca un cambio si es mayor que la variación habitual del sitio (al menos 15 %).'],
+      ['Al mismo tiempo', 'Alertas y cambios SEO de esas fechas. Es contexto para investigar, no una causa comprobada.'],
+      ['Crawl parcial', 'Si un crawl tuvo límites, no se comparan sus páginas indexables con el anterior.']
+    ],
+    limits: ['Lo programado solo corre mientras la herramienta está encendida; si estaba apagada, se ejecuta al volver a abrirla.', 'El análisis usa reglas fijas, no inteligencia artificial.']
   },
   {
     id: 'explorer',

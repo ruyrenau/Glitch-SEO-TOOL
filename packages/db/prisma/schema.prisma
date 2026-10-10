@@ -138,6 +138,7 @@ model Site {
   wpConnection       WordPressConnection?
   gscProperty        String?
   gscImports         GscImport[]
+  monitor            SiteMonitor?
   geoPrompts         GeoPrompt[]
 }
 
@@ -679,4 +680,21 @@ model SeoChangeProposal {
   updatedAt    DateTime  @updatedAt
 
   @@index([siteId, status])
+}
+
+/// "Monitoreo": what runs automatically for a site. Everything is off until the user turns it on.
+/// The crawl part lives in Site.crawlSchedule (shared with the crawl section).
+model SiteMonitor {
+  id               String   @id @default(uuid())
+  siteId           String   @unique
+  site             Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  gscEnabled       Boolean  @default(false)
+  vitalsEnabled    Boolean  @default(false)
+  vitalsCron       String   @default("0 5 * * 1")
+  /// top = the pages with most Search Console clicks (falls back to the most linked pages); manual = vitalsUrls
+  vitalsUrlMode    String   @default("top")
+  vitalsUrls       Json?
+  vitalsCount      Int      @default(5)
+  vitalsStrategies Json?
+  updatedAt        DateTime @updatedAt
 }

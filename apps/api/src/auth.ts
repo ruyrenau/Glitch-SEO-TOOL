@@ -47,6 +47,8 @@ const RULES: Array<[RegExp, RegExp, Permission]> = [
   [/^GET$/, /^\/api\/v1\/gsc\/oauth\/(start|callback)$/, 'site:manage'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/gsc\/import$/, 'seo:operate'],
   [/^PUT$/, /^\/api\/v1\/sites\/:id\/schedule$/, 'seo:operate'],
+  [/^PUT$/, /^\/api\/v1\/sites\/:id\/monitor$/, 'seo:operate'],
+  [/^POST$/, /^\/api\/v1\/sites\/:id\/monitor\/run$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/performance$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/seo-edits$/, 'content:edit'],
   [/^POST$/, /^\/api\/v1\/seo-edits\/:id\/(review|apply|verify|revert)$/, 'seo:operate'],

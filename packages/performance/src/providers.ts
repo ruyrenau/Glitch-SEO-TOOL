@@ -104,9 +104,19 @@ export async function runPsi(url: string, opts: RunOptions & { apiKey: string; e
   };
 }
 
-/** PSI when a key is configured (lab + field), otherwise local Lighthouse (lab only). */
+/** Hosts Google's servers cannot reach (this machine or a private network): always measured locally. */
+export function isLocalHost(url: string): boolean {
+  try {
+    const h = new URL(url).hostname.replace(/^\[|\]$/g, '');
+    return h === 'localhost' || h.endsWith('.local') || h === '::1' || /^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h) || (h.includes(":") && /^(fc|fd)/i.test(h));
+  } catch {
+    return false;
+  }
+}
+
+/** PSI when a key is configured (lab + field), otherwise local Lighthouse (lab only). Local hosts always run locally. */
 export async function measure(url: string, opts: RunOptions & { apiKey?: string | null }): Promise<PerformanceResult> {
   const key = opts.apiKey ?? process.env.PSI_API_KEY;
-  if (key) return runPsi(url, { ...opts, apiKey: key });
+  if (key && !isLocalHost(url)) return runPsi(url, { ...opts, apiKey: key });
   return runLighthouseLocal(url, opts);
 }

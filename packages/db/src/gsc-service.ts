@@ -244,7 +244,7 @@ export async function gscReport(siteId: string) {
   };
 }
 
-/** Sites with a property in workspaces with a Google account (for the daily refresh). */
+/** Sites whose daily Search Console refresh is turned on in "Monitoreo" (and that have a property and a Google account). */
 export async function sitesForDailyGsc() {
-  return prisma.site.findMany({ where: { gscProperty: { not: null }, status: 'active', workspace: { googleAccount: { isNot: null } } }, select: { id: true, workspaceId: true } });
+  return prisma.site.findMany({ where: { gscProperty: { not: null }, status: 'active', monitor: { gscEnabled: true }, workspace: { googleAccount: { isNot: null } } }, select: { id: true, workspaceId: true } });
 }
