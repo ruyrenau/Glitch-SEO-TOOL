@@ -9,7 +9,7 @@ import { Badge, Button, Card, Empty, ErrorBox, Skeleton, inputCls } from './ui';
 
 type Tone = 'bad' | 'warn' | 'good' | 'info';
 interface Insight { id: string; tone: Tone; area: string; title: string; detail: string; related: string[]; link: { nav: string; explorer?: { tab: string; filter?: string } } | null }
-interface MonitorEvent { date: string; kind: 'crawl' | 'alert' | 'change'; label: string; severity?: string }
+export interface MonitorEvent { date: string; kind: 'crawl' | 'alert' | 'change'; label: string; severity?: string }
 interface Overview {
   site: { name: string; crawlSchedule: string | null; gscProperty: string | null };
   gsc: { importedAt: string | null; daily: Array<{ date: string; clicks: number; impressions: number; ctr: number; position: number }> };
@@ -31,7 +31,7 @@ const SWATCH = ['bg-indigo-600 dark:bg-indigo-500', 'bg-teal-600'];
 type Pt = { x: number; y: number | null };
 const fmtNum = (v: number, unit?: string) => (unit === 'ms' ? (v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${Math.round(v)} ms`) : unit === 'pos' ? v.toFixed(1) : fmt(Math.round(v)));
 
-function TimeChart({ title, series, events, unit, invert }: { title: string; series: Array<{ label: string; points: Pt[] }>; events: MonitorEvent[]; unit?: 'ms' | 'pos'; invert?: boolean }) {
+export function TimeChart({ title, series, events, unit, invert }: { title: string; series: Array<{ label: string; points: Pt[] }>; events: MonitorEvent[]; unit?: 'ms' | 'pos'; invert?: boolean }) {
   const [hover, setHover] = useState<number | null>(null);
   const all = series.flatMap(s => s.points).filter(p => p.y !== null) as Array<{ x: number; y: number }>;
   if (all.length < 2) return <figure className="text-xs"><figcaption className="font-semibold mb-1">{title}</figcaption><p className="text-slate-500 py-6">Aún no hay suficientes datos.</p></figure>;

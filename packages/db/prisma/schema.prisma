@@ -86,6 +86,7 @@ model Workspace {
   sites       Site[]
   auditEvents AuditEvent[]
   googleAccount GoogleAccount?
+  aiKeys        AiProviderKey[]
 }
 
 model WorkspaceMember {
@@ -139,6 +140,9 @@ model Site {
   gscProperty        String?
   gscImports         GscImport[]
   monitor            SiteMonitor?
+  aiPrompts          AiPrompt[]
+  aiObservations     AiObservation[]
+  aiAnalyses         AiAnalysis[]
   geoPrompts         GeoPrompt[]
 }
 
@@ -697,4 +701,71 @@ model SiteMonitor {
   vitalsCount      Int      @default(5)
   vitalsStrategies Json?
   updatedAt        DateTime @updatedAt
+}
+
+/// API keys for AI providers (stored encrypted; managed by Admins in "Configuración").
+model AiProviderKey {
+  id          String    @id @default(uuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  provider    String // anthropic, openai, google, serpapi
+  keyEnc      String // AES-256-GCM (CREDENTIALS_KEY)
+  keyHint     String // last 4 characters, to recognise the key
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, provider])
+}
+
+/// A long-tail question or compound phrase tracked in AI answers, with its keyword group (e.g. "Políticas Públicas").
+model AiPrompt {
+  id           String          @id @default(uuid())
+  siteId       String
+  site         Site            @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  text         String
+  keyword      String
+  active       Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  observations AiObservation[]
+
+  @@index([siteId, keyword])
+}
+
+/// One check of one question in one AI engine on one date: a "Directo" row (brand mentioned) and a "Citación" row (site cited).
+model AiObservation {
+  id             String   @id @default(uuid())
+  promptId       String
+  prompt         AiPrompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  siteId         String
+  site           Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  engine         String // chatgpt, claude, gemini, google_ai
+  date           String // YYYY-MM-DD
+  source         String   @default("manual") // manual | api
+  mentioned      Boolean  @default(false)
+  mentionPos     Int? // 1 = first place, 3 = top 3, 4 = 4th or lower
+  mentionText    String?
+  mentionComment String?
+  cited          Boolean  @default(false)
+  citePos        Int?
+  citeText       String?
+  citeComment    String?
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([promptId, engine, date])
+  @@index([siteId, date])
+}
+
+/// AI-written analysis of the visibility data (kept for history).
+model AiAnalysis {
+  id          String   @id @default(uuid())
+  siteId      String
+  site        Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  provider    String
+  model       String
+  text        String
+  createdById String?
+  createdAt   DateTime @default(now())
 }

@@ -3,7 +3,7 @@ import type { GoFn } from '@/lib/types';
 
 import React from 'react';
 import {
-  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity
+  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound
 } from 'lucide-react';
 import { Badge, Button, Card } from './ui';
 
@@ -423,12 +423,36 @@ const SECTIONS: Section[] = [
     limits: ['Los crawls programados se ejecutan como máximo una vez por hora por sitio.', 'Una importación de log fallida se reintenta subiendo el archivo otra vez.']
   },
   {
-    id: 'pending',
-    icon: Gauge,
-    title: 'Sección marcada "PRONTO"',
-    status: 'pending',
-    what: 'GEO / motores de IA todavía no está construida. Al abrirla verás qué falta; no muestra números inventados.',
-    why: 'Están en el roadmap del proyecto.'
+    id: 'geo',
+    nav: 'geo',
+    icon: Sparkles,
+    title: 'Visibilidad en IA',
+    status: 'ready',
+    what: 'Mide si ChatGPT, Claude, Gemini y la IA de Google mencionan tu marca (Directo) o citan tu sitio (Citación) cuando alguien hace preguntas de cola larga, y cómo cambia semana a semana.',
+    why: 'Cada vez más gente pregunta a una IA en lugar de buscar en Google. Saber si te recomiendan, y si subes o bajas, es la nueva posición en buscadores.',
+    steps: [
+      'En "Preguntas", agrega cada palabra compuesta o pregunta completa con su keyword (grupo), por ejemplo "Políticas Públicas".',
+      'Haz la pregunta en cada IA. En "Registrar revisión" elige pregunta, motor y fecha.',
+      'Fila Directo: ¿aparece la marca? Si sí, elige la posición (1.er lugar, top 3 o 4+) y pega la respuesta. Fila Citación: ¿cita tu sitio? Igual.',
+      'El resultado y la tendencia (Mejoró, Neutral, Empeoró) se calculan solos contra la revisión anterior. Agrega comentarios si hace falta y guarda.',
+      'En "Matriz" ves la última revisión de cada pregunta en cada motor, lo que cambió y la evolución semanal. Filtra por keyword o descarga el CSV.',
+      'En "Análisis", Claude redacta qué subió, qué bajó, qué competidores aparecen y qué hacer (necesita una clave de Anthropic en Configuración).'
+    ],
+    read: [
+      ['Puntos', 'Directo: 1.er lugar 5, top 3 4, más abajo 3. Citación: 1.er lugar 3, top 3 2, más abajo 1. Máximo 8 por revisión.'],
+      ['Evolución', 'Promedio de puntos por revisión en cada semana, para que agregar preguntas no infle el total.']
+    ],
+    limits: ['Hoy el registro es manual. Las consultas automáticas a cada motor se activarán con las claves de API que agregues en Configuración.', 'Las IAs no responden siempre igual: compara tendencias de varias semanas, no una sola revisión.']
+  },
+  {
+    id: 'settings',
+    nav: 'settings',
+    icon: KeyRound,
+    title: 'Configuración (claves de API)',
+    status: 'ready',
+    what: 'Donde un administrador guarda las claves de API de Anthropic, OpenAI, Google AI Studio y SerpAPI.',
+    why: 'Las usa Visibilidad en IA. Se guardan cifradas y solo se muestran sus últimos 4 caracteres.',
+    steps: ['Obtén la clave en la página del proveedor, pégala y pulsa "Guardar". Para cambiarla, pega una nueva; para quitarla, pulsa "Quitar".']
   }
 ];
 

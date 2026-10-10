@@ -48,6 +48,20 @@ import {
   explorerCsv,
   explorerCustom,
   getMonitorConfig,
+  listAiPrompts,
+  createAiPrompt,
+  updateAiPrompt,
+  deleteAiPrompt,
+  saveAiObservation,
+  deleteAiObservation,
+  aiHistory,
+  aiMatrix,
+  aiCsv,
+  listAiAnalyses,
+  runAiAnalysis,
+  listAiKeys,
+  setAiKey,
+  deleteAiKey,
   recordAuditEvent,
   saveMonitorConfig,
   pickVitalsUrls,
@@ -485,6 +499,99 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     const { id } = idParam.parse(req.params);
     await requireSite(id);
     return monitorOverview(id);
+  });
+
+  // ------------------------------------------------------------------ Visibilidad en IA (GEO)
+  const requirePrompt = async (id: string) => {
+    const p = await prisma.aiPrompt.findUnique({ where: { id } });
+    if (!p) throw new ApiError(404, 'NOT_FOUND', 'Pregunta no encontrada');
+    return p;
+  };
+  app.get('/api/v1/sites/:id/ai-visibility/prompts', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return listAiPrompts(id);
+  });
+  app.post('/api/v1/sites/:id/ai-visibility/prompts', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    const b = z.object({ text: z.string().min(3).max(500), keyword: z.string().min(1).max(120) }).strict().parse(req.body);
+    return reply.status(201).send(await createAiPrompt(id, b));
+  });
+  app.patch('/api/v1/ai-prompts/:id', async req => {
+    const { id } = idParam.parse(req.params);
+    await requirePrompt(id);
+    return updateAiPrompt(id, z.object({ text: z.string().min(3).max(500).optional(), keyword: z.string().min(1).max(120).optional(), active: z.boolean().optional() }).strict().parse(req.body));
+  });
+  app.delete('/api/v1/ai-prompts/:id', async req => {
+    const { id } = idParam.parse(req.params);
+    await requirePrompt(id);
+    return deleteAiPrompt(id);
+  });
+  const pos = z.union([z.literal(1), z.literal(3), z.literal(4)]).nullable().optional();
+  app.post('/api/v1/sites/:id/ai-visibility/observations', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    const b = z
+      .object({
+        promptId: z.string().uuid(),
+        engine: z.enum(['chatgpt', 'claude', 'gemini', 'google_ai']),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        mentioned: z.boolean(),
+        mentionPos: pos,
+        mentionText: z.string().max(20_000).nullable().optional(),
+        mentionComment: z.string().max(2000).nullable().optional(),
+        cited: z.boolean(),
+        citePos: pos,
+        citeText: z.string().max(20_000).nullable().optional(),
+        citeComment: z.string().max(2000).nullable().optional()
+      })
+      .strict()
+      .parse(req.body);
+    return saveAiObservation(id, b);
+  });
+  app.get('/api/v1/sites/:id/ai-visibility/history', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    const q = z.object({ promptId: z.string().uuid(), engine: z.string().max(20) }).parse(req.query);
+    return aiHistory(id, q.promptId, q.engine);
+  });
+  app.delete('/api/v1/ai-observations/:id', async req => {
+    const { id } = idParam.parse(req.params);
+    if (!(await prisma.aiObservation.findUnique({ where: { id } }))) throw new ApiError(404, 'NOT_FOUND', 'Revisión no encontrada');
+    return deleteAiObservation(id);
+  });
+  app.get('/api/v1/sites/:id/ai-visibility/matrix', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return aiMatrix(id, z.object({ keyword: z.string().max(120).optional() }).parse(req.query));
+  });
+  app.get('/api/v1/sites/:id/ai-visibility/export.csv', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    reply.header('content-type', 'text/csv; charset=utf-8').header('content-disposition', 'attachment; filename="visibilidad-ia.csv"');
+    return '\ufeff' + (await aiCsv(id));
+  });
+  app.get('/api/v1/sites/:id/ai-visibility/analyses', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return listAiAnalyses(id);
+  });
+  app.post('/api/v1/sites/:id/ai-visibility/analyses', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return reply.status(201).send(await runAiAnalysis(id, req.auth!.user.id));
+  });
+  // API keys of AI providers (Admins). Values are never returned, only a 4-character hint.
+  app.get('/api/v1/ai-keys', async req => listAiKeys(req.auth!.workspaceId));
+  app.put('/api/v1/ai-keys/:provider', async req => {
+    const { provider } = z.object({ provider: z.string().max(20) }).parse(req.params);
+    const b = z.object({ key: z.string().min(1).max(500) }).strict().parse(req.body);
+    return setAiKey(req.auth!.workspaceId, provider, b.key, req.auth!.user.id);
+  });
+  app.delete('/api/v1/ai-keys/:provider', async req => {
+    const { provider } = z.object({ provider: z.string().max(20) }).parse(req.params);
+    return deleteAiKey(req.auth!.workspaceId, provider, req.auth!.user.id);
   });
 
   // ------------------------------------------------------------------ SEO explorer (Screaming Frog-style)

@@ -61,7 +61,12 @@ const RULES: Array<[RegExp, RegExp, Permission]> = [
   [/^POST$/, /^\/api\/v1\/generated-pages\/(:id\/wordpress\/(dry-run|push)|bulk-push)$/, 'wordpress:send'],
   [/^POST$/, /^\/api\/v1\/wordpress\/publications\/:id\/rollback$/, 'wordpress:send'],
   [/^(POST|PATCH)$/, /^\/api\/v1\/users(\/:id(\/reset-password)?)?$/, 'users:manage'],
-  [/^GET$/, /^\/api\/v1\/users$/, 'users:manage']
+  [/^GET$/, /^\/api\/v1\/users$/, 'users:manage'],
+  // Visibilidad en IA: editors record checks; the AI analysis spends the workspace's API credit; keys are for Admins.
+  [/^POST$/, /^\/api\/v1\/sites\/:id\/ai-visibility\/(prompts|observations)$/, 'content:edit'],
+  [/^(PATCH|DELETE)$/, /^\/api\/v1\/(ai-prompts|ai-observations)\/:id$/, 'content:edit'],
+  [/^POST$/, /^\/api\/v1\/sites\/:id\/ai-visibility\/analyses$/, 'seo:operate'],
+  [/^(GET|PUT|DELETE)$/, /^\/api\/v1\/ai-keys(\/:provider)?$/, 'users:manage']
 ];
 
 export function permissionFor(method: string, route: string): Permission {
@@ -89,6 +94,8 @@ async function workspaceOfResource(route: string, id: string): Promise<string | 
     const p = await prisma.wordPressPublication.findUnique({ where: { id }, select: { generatedPage: { select: { site: { select: { workspaceId: true } } } } } });
     return p ? p.generatedPage.site?.workspaceId ?? null : undefined;
   }
+  if (/^\/api\/v1\/ai-prompts\/:id/.test(route)) return viaSite(await prisma.aiPrompt.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
+  if (/^\/api\/v1\/ai-observations\/:id/.test(route)) return viaSite(await prisma.aiObservation.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
   if (/^\/api\/v1\/performance-runs\/:id/.test(route)) return viaSite(await prisma.performanceRun.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
   if (/^\/api\/v1\/seo-edits\/:id/.test(route)) return viaSite(await prisma.seoChangeProposal.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
   if (/^\/api\/v1\/jobs\/:id/.test(route)) return (await prisma.job.findUnique({ where: { id }, select: { workspaceId: true } }))?.workspaceId;

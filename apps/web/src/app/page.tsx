@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   LayoutDashboard, Globe, FileText, ShieldAlert, Gauge, Code2, Layers, Send, Search, Sparkles, Cpu, History, Sun, Moon, AlertTriangle, Menu, Bell, BookOpen, Users, LogOut, UserCircle, ScanSearch,
   PanelLeftClose,
+  Settings,
   Activity,
   Rocket,
   PencilLine,
@@ -21,6 +22,8 @@ import { SeoEditPanel } from '@/components/SeoEditPanel';
 import { WizardView } from '@/components/WizardView';
 import { GscView } from '@/components/GscView';
 import { MonitorView } from '@/components/MonitorView';
+import { AiVisibilityView } from '@/components/AiVisibilityView';
+import { SettingsView } from '@/components/SettingsView';
 import { SeoChangesView } from '@/components/SeoChangesView';
 import type { Site } from '@/lib/types';
 import { ErrorBox, Roadmap, Skeleton } from '@/components/ui';
@@ -35,7 +38,7 @@ import { SchemaView, AuditView } from '@/components/ToolsViews';
 import { WordPressView } from '@/components/WordPressView';
 import { ContentView } from '@/components/ContentView';
 
-type NavId = 'wizard' | 'overview' | 'monitor' | 'sites' | 'logs' | 'crawler' | 'explorer' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'programmatic' | 'wordpress' | 'seochanges' | 'gsc' | 'geo' | 'automations' | 'audit' | 'manual' | 'users' | 'account';
+type NavId = 'wizard' | 'overview' | 'monitor' | 'sites' | 'logs' | 'crawler' | 'explorer' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'programmatic' | 'wordpress' | 'seochanges' | 'gsc' | 'geo' | 'automations' | 'audit' | 'manual' | 'users' | 'settings' | 'account';
 
 const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ className?: string }>; ready: boolean; perm?: Permission }> = [
   { id: 'wizard', label: 'Inicio guiado', icon: Rocket, ready: true },
@@ -53,14 +56,14 @@ const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ classNa
   { id: 'programmatic', label: 'Contenido programático', icon: Layers, ready: true },
   { id: 'wordpress', label: 'WordPress', icon: Send, ready: true },
   { id: 'gsc', label: 'Search Console', icon: Search, ready: true },
-  { id: 'geo', label: 'GEO / motores de IA', icon: Sparkles, ready: false },
+  { id: 'geo', label: 'Visibilidad en IA', icon: Sparkles, ready: true },
   { id: 'automations', label: 'Jobs y automatizaciones', icon: Cpu, ready: true },
   { id: 'audit', label: 'Audit log', icon: History, ready: true },
-  { id: 'users', label: 'Usuarios', icon: Users, ready: true, perm: 'users:manage' }
+  { id: 'users', label: 'Usuarios', icon: Users, ready: true, perm: 'users:manage' },
+  { id: 'settings', label: 'Configuración', icon: Settings, ready: true, perm: 'users:manage' }
 ];
 
 const ROADMAP: Partial<Record<NavId, { status: string; items: string[] }>> = {
-  geo: { status: 'Sin proveedores configurados.', items: ['Prompts objetivo y repeticiones', 'Menciones, citas y competidores por respuesta', 'Mostrar volatilidad, no rankings'] },
 };
 
 function Dashboard() {
@@ -152,7 +155,7 @@ function Dashboard() {
 
   const current = nav === 'manual' ? { label: 'Manual de uso' } : nav === 'account' ? { label: 'Mi cuenta' } : NAV.find(n => n.id === nav)!;
   const visibleNav = NAV.filter(n => !n.perm || can(n.perm));
-  const needsSite = ['overview', 'monitor', 'logs', 'crawler', 'explorer', 'seochanges', 'gsc', 'issues', 'alerts', 'programmatic', 'wordpress', 'vitals'].includes(nav);
+  const needsSite = ['overview', 'monitor', 'geo', 'logs', 'crawler', 'explorer', 'seochanges', 'gsc', 'issues', 'alerts', 'programmatic', 'wordpress', 'vitals'].includes(nav);
 
   return (
     <div className={dark ? 'dark' : ''}>
@@ -285,6 +288,8 @@ function Dashboard() {
                 {nav === 'wordpress' && <WordPressView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'explorer' && <ExplorerView key={`${siteId}-${explorerPreset?.n ?? 0}`} siteId={siteId} initial={explorerPreset ?? undefined} detailExtra={d => <SeoEditPanel siteId={siteId} detail={d} goChanges={() => go('seochanges')} />} />}
                 {nav === 'seochanges' && <SeoChangesView key={siteId} siteId={siteId} />}
+                {nav === 'geo' && <AiVisibilityView key={siteId} siteId={siteId} go={go} />}
+                {nav === 'settings' && can('users:manage') && <SettingsView />}
                 {nav === 'monitor' && <MonitorView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'gsc' && <GscView key={siteId} siteId={siteId} go={go} notice={gscNotice} />}
                 {nav === 'vitals' && <PerformanceView key={siteId} siteId={siteId} />}
