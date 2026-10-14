@@ -15,7 +15,8 @@
     "react-dom": "^19.0.0",
     "lucide-react": "^1.16.0",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^3.0.2"
+    "tailwind-merge": "^3.0.2",
+    "@glitch/schema-engine": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",

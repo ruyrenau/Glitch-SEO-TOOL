@@ -36,7 +36,8 @@ class HttpError extends Error {
 // Route → permission. Anything that changes data and is not listed requires site:manage.
 // ---------------------------------------------------------------------------
 const RULES: Array<[RegExp, RegExp, Permission]> = [
-  [/^POST$/, /^\/api\/v1\/(schemas\/validate|generated-pages\/preview)$/, 'read'],
+  [/^POST$/, /^\/api\/v1\/(schemas\/validate|generated-pages\/preview|schema\/validate|schema\/prefill)$/, 'read'],
+  [/^(POST|PUT|DELETE)$/, /^\/api\/v1\/schema-templates(\/:id)?$/, 'content:edit'],
   // Every signed-in user can end their own session and change their own password.
   [/^POST$/, /^\/api\/v1\/auth\/(logout|password)$/, 'read'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/(log-imports|sitemap|crawls)$/, 'seo:operate'],

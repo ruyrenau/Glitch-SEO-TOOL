@@ -87,6 +87,7 @@ model Workspace {
   auditEvents AuditEvent[]
   googleAccount GoogleAccount?
   aiKeys        AiProviderKey[]
+  schemaTemplates SchemaTemplate[]
 }
 
 model WorkspaceMember {
@@ -768,4 +769,18 @@ model AiAnalysis {
   text        String
   createdById String?
   createdAt   DateTime @default(now())
+}
+
+/// Saved schema generator forms (one or several schemas) to reuse or to fill from a CSV.
+model SchemaTemplate {
+  id          String    @id @default(uuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  forms       Json
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([workspaceId])
 }

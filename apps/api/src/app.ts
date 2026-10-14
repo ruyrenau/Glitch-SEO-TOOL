@@ -48,6 +48,7 @@ import {
   explorerCsv,
   explorerCustom,
   getMonitorConfig,
+  Prisma,
   listAiPrompts,
   createAiPrompt,
   updateAiPrompt,
@@ -94,8 +95,8 @@ import {
   MAX_BATCH,
   DuplicateImportError
 } from '@glitch/db';
-import { HARD_MAX_URLS, MAX_RPS, fetchSitemap, findBrowser, parseSitemapXml } from '@glitch/crawler';
-import { validateJsonLd } from '@glitch/schema-engine';
+import { HARD_MAX_URLS, MAX_RPS, fetchSitemap, findBrowser, parseSitemapXml, fetchWithRedirects, extractPageHints, suggestSchemaForms } from '@glitch/crawler';
+import { validateJsonLd, validateSchema, CATALOG } from '@glitch/schema-engine';
 import { renderTemplate, computeJaccardSimilarity, evaluateQualityGate } from '@glitch/content-engine';
 import { registerAuth } from './auth';
 import { enqueue, cancelJob, retryJob, listJobs, queueHealth, setSiteSchedule, getSiteSchedule, setVitalsSchedule, describeCron, closeProducer, uploadDir } from '@glitch/jobs';
@@ -864,6 +865,49 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   app.post('/api/v1/schemas/validate', async req => {
     const body = req.body;
     return validateJsonLd(typeof body === 'string' ? body : JSON.stringify(body ?? {}));
+  });
+
+  // ------------------------------------------------------------------ Schema.org generator
+  app.get('/api/v1/schema/catalog', async () => CATALOG);
+  /** Full report: per node, Google-required fields (errors), recommended fields (warnings), formats. */
+  app.post('/api/v1/schema/validate', async req => {
+    const body = req.body;
+    return validateSchema(typeof body === 'string' ? body : (body ?? {}) as object);
+  });
+  /** Reads any public page and proposes forms from what it already says. */
+  app.post('/api/v1/schema/prefill', async req => {
+    const { url } = z.object({ url: z.string().url().max(2000) }).strict().parse(req.body);
+    const allowHosts = (process.env.CRAWL_ALLOW_PRIVATE_HOSTS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+    const r = await fetchWithRedirects(url, { userAgent: 'GlitchSeoOpsBot/0.2 (schema generator)', timeoutMs: 15_000, allowHosts, maxBodyBytes: 3 * 1024 * 1024 });
+    if (r.error && !r.body) throw new ApiError(400, 'FETCH_FAILED', `No se pudo leer la página: ${r.error}`);
+    if (!r.body) throw new ApiError(400, 'NOT_HTML', `La página respondió ${r.status} sin HTML.`);
+    if (r.status >= 400) throw new ApiError(400, 'HTTP_ERROR', `La página respondió ${r.status}.`);
+    const hints = extractPageHints(r.body, r.finalUrl);
+    return { finalUrl: r.finalUrl, hints, suggestions: suggestSchemaForms(hints) };
+  });
+  const schemaTemplateBody = z.object({ name: z.string().trim().min(1).max(120), forms: z.array(z.record(z.unknown())).min(1).max(20) }).strict();
+  app.get('/api/v1/schema-templates', async req => prisma.schemaTemplate.findMany({ where: { workspaceId: req.auth!.workspaceId }, orderBy: { updatedAt: 'desc' } }));
+  app.post('/api/v1/schema-templates', async (req, reply) => {
+    const b = schemaTemplateBody.parse(req.body);
+    const t = await prisma.schemaTemplate.create({ data: { workspaceId: req.auth!.workspaceId, name: b.name, forms: b.forms as Prisma.InputJsonValue, createdById: req.auth!.user.id } });
+    return reply.status(201).send(t);
+  });
+  const requireTemplate = async (id: string, workspaceId: string) => {
+    const t = await prisma.schemaTemplate.findFirst({ where: { id, workspaceId } });
+    if (!t) throw new ApiError(404, 'NOT_FOUND', 'Plantilla no encontrada');
+    return t;
+  };
+  app.put('/api/v1/schema-templates/:id', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireTemplate(id, req.auth!.workspaceId);
+    const b = schemaTemplateBody.parse(req.body);
+    return prisma.schemaTemplate.update({ where: { id }, data: { name: b.name, forms: b.forms as Prisma.InputJsonValue } });
+  });
+  app.delete('/api/v1/schema-templates/:id', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireTemplate(id, req.auth!.workspaceId);
+    await prisma.schemaTemplate.delete({ where: { id } });
+    return { deleted: true };
   });
 
   const previewBody = z.object({

@@ -297,6 +297,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@glitch/schema-engine':
+        specifier: workspace:*
+        version: link:../../packages/schema-engine
       clsx:
         specifier: ^2.1.1
         version: 2.1.1

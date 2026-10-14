@@ -302,12 +302,23 @@ const SECTIONS: Section[] = [
     id: 'schema',
     nav: 'schema',
     icon: Code2,
-    title: 'Datos estructurados',
-    status: 'partial',
-    what: 'Validador de JSON-LD: revisa la sintaxis y las propiedades recomendadas del tipo.',
-    why: 'Un bloque JSON-LD con un error de sintaxis se ignora por completo. Validarlo antes de publicar evita perder el marcado.',
-    steps: ['Pega el JSON-LD en el editor.', 'Pulsa "Validar".', 'Corrige los errores (en rojo) y revisa las advertencias (en amarillo).'],
-    limits: ['Validar la estructura no garantiza resultados enriquecidos en Google.', 'La generación de schema por página y su envío a WordPress aún no existen.']
+    title: 'Schema.org (datos estructurados)',
+    status: 'ready',
+    what: 'Genera, valida y produce en masa el JSON-LD de cualquier página de cualquier rubro: organización, negocio local (54 giros), producto, servicio, artículo, evento, curso, vacante, receta, FAQ, paso a paso, migas de pan, video, software, persona y cualquier otro tipo de schema.org.',
+    why: 'El schema ayuda a Google a mostrar resultados enriquecidos (precio, estrellas, eventos, empleos, recetas) y a las IAs a entender y citar la página. Un error de formato hace que se ignore completo.',
+    steps: [
+      'Generador: pega la URL de la página y pulsa "Rellenar desde la página"; la herramienta propone los schemas con lo que la página ya dice. O elige el tipo y el giro y llena el formulario.',
+      'Los campos con * los exige Google; los marcados "recomendado" mejoran el resultado. "Más campos" muestra el resto y "Propiedades adicionales" acepta cualquier propiedad de schema.org.',
+      'La validación en vivo dice qué falta y qué formato está mal. Cuando diga "Listo para Google", copia la etiqueta y pégala en el <head> de la página.',
+      'Guarda la configuración como plantilla para reutilizarla.',
+      'Masivo (CSV): usa {{columna}} en los campos de una plantilla y pega un CSV; se genera un schema por fila y se descarga en CSV o JSONL.',
+      'Validador: pega cualquier JSON-LD o lee el que ya tiene una URL.'
+    ],
+    read: [
+      ['Duraciones', 'Escribe "1 h 30 min" o "45 min"; se convierte solo al formato de Google (PT1H30M).'],
+      ['Varios schemas', 'Si la página lleva más de uno (por ejemplo Organización + Sitio web), se combinan en una sola etiqueta con @graph.']
+    ],
+    limits: ['Cumplir la validación no garantiza que Google muestre el resultado enriquecido: el contenido debe coincidir con lo visible en la página.', 'Todavía no se envía a WordPress automáticamente; copia la etiqueta o usa el CSV.']
   },
   {
     id: 'programmatic',

@@ -1,3 +1,5 @@
+import { validateSchema } from './validate';
+
 export interface SchemaValidationResult {
   isValid: boolean;
   type: string;
@@ -5,56 +7,15 @@ export interface SchemaValidationResult {
   warnings: string[];
 }
 
+/** Flat summary used by the CLI and the old endpoint; the full report is validateSchema(). */
 export function validateJsonLd(jsonString: string): SchemaValidationResult {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-
-  let parsed: any;
-  try {
-    parsed = JSON.parse(jsonString);
-  } catch (err: any) {
-    return {
-      isValid: false,
-      type: 'Unknown',
-      errors: ['Invalid JSON syntax: ' + err.message],
-      warnings: []
-    };
-  }
-
-  if (!parsed['@context']) {
-    errors.push('Missing required "@context" property (expected "https://schema.org").');
-  } else if (!/schema\.org/i.test(String(parsed['@context']))) {
-    warnings.push('"@context" is not pointing to standard schema.org namespace.');
-  }
-
-  const type = parsed['@type'] || 'Unknown';
-  if (type === 'Unknown') {
-    errors.push('Missing "@type" property.');
-  }
-
-  // Type specific validations
-  if (type === 'Article' || type === 'BlogPosting') {
-    if (!parsed.headline) errors.push('Articles must have a "headline" property.');
-    if (!parsed.author) warnings.push('Articles strongly recommend an "author" property.');
-    if (!parsed.datePublished) warnings.push('Articles recommend a "datePublished" property.');
-  }
-
-  if (type === 'Organization' || type === 'LocalBusiness') {
-    if (!parsed.name) errors.push('Organization must have a "name" property.');
-    if (!parsed.url) warnings.push('Organization recommends a "url" property.');
-  }
-
-  if (type === 'FAQPage') {
-    if (!parsed.mainEntity || !Array.isArray(parsed.mainEntity)) {
-      errors.push('FAQPage requires "mainEntity" array of Questions.');
-    }
-  }
-
+  const r = validateSchema(jsonString);
+  const prefix = (n: { label: string; path: string }) => (r.nodes.length > 1 ? `${n.label}${n.path ? ` (${n.path})` : ''}: ` : '');
   return {
-    isValid: errors.length === 0,
-    type,
-    errors,
-    warnings
+    isValid: r.ok,
+    type: r.nodes.map(n => n.type).join(', ') || 'Unknown',
+    errors: [...r.errors, ...r.nodes.flatMap(n => n.errors.map(e => prefix(n) + e))],
+    warnings: [...r.warnings, ...r.nodes.flatMap(n => n.warnings.map(w => prefix(n) + w))]
   };
 }
 

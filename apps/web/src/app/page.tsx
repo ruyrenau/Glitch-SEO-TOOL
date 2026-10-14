@@ -34,7 +34,8 @@ import { CrawlView } from '@/components/CrawlView';
 import { IssuesView } from '@/components/IssuesView';
 import { AlertsView } from '@/components/AlertsView';
 import { ManualView } from '@/components/ManualView';
-import { SchemaView, AuditView } from '@/components/ToolsViews';
+import { AuditView } from '@/components/ToolsViews';
+import { SchemaGeneratorView } from '@/components/SchemaGeneratorView';
 import { WordPressView } from '@/components/WordPressView';
 import { ContentView } from '@/components/ContentView';
 
@@ -52,7 +53,7 @@ const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ classNa
   { id: 'issues', label: 'Issues técnicos', icon: AlertTriangle, ready: true },
   { id: 'alerts', label: 'Alertas', icon: Bell, ready: true },
   { id: 'vitals', label: 'Core Web Vitals', icon: Gauge, ready: true },
-  { id: 'schema', label: 'Datos estructurados', icon: Code2, ready: true },
+  { id: 'schema', label: 'Schema.org', icon: Code2, ready: true },
   { id: 'programmatic', label: 'Contenido programático', icon: Layers, ready: true },
   { id: 'wordpress', label: 'WordPress', icon: Send, ready: true },
   { id: 'gsc', label: 'Search Console', icon: Search, ready: true },
@@ -283,7 +284,7 @@ function Dashboard() {
                 {nav === 'crawler' && <CrawlView key={siteId} siteId={siteId} onFinished={loadSites} />}
                 {nav === 'issues' && <IssuesView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'alerts' && <AlertsView key={siteId} siteId={siteId} go={go} />}
-                {nav === 'schema' && <SchemaView />}
+                {nav === 'schema' && <SchemaGeneratorView />}
                 {nav === 'programmatic' && <ContentView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'wordpress' && <WordPressView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'explorer' && <ExplorerView key={`${siteId}-${explorerPreset?.n ?? 0}`} siteId={siteId} initial={explorerPreset ?? undefined} detailExtra={d => <SeoEditPanel siteId={siteId} detail={d} goChanges={() => go('seochanges')} />} />}
