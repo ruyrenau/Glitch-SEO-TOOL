@@ -278,6 +278,8 @@ export function MonitorView({ siteId, go }: { siteId: string; go: GoFn }) {
         <div className="mt-2"><ErrorBox error={error} /></div>
       </Card>
 
+      <NotifyCard siteId={siteId} canEdit={canEdit} />
+
       <Card title="Análisis de cambios">
         {!ov ? <Skeleton rows={4} /> : !ov.insights.length ? (
           <Empty>{activeCount || ov.crawl.length || ov.gsc.daily.length ? 'Sin cambios relevantes: todo se movió dentro de lo normal para este sitio.' : 'Activa al menos una automatización (o haz un crawl e importa Search Console) para empezar a ver la evolución.'}</Empty>
@@ -353,5 +355,89 @@ export function MonitorView({ siteId, go }: { siteId: string; go: GoFn }) {
         </Card>
       )}
     </div>
+  );
+}
+
+interface NotifyState { config: { enabled: boolean; level: 'bad' | 'bad_warn'; configured: boolean; hint: string | null }; sent: Array<{ id: string; title: string; tone: string; channel: string; ok: boolean; error: string | null; sentAt: string }> }
+
+/** "Avisos": the important changes of the analysis, sent to Slack, Teams, Discord or any webhook. */
+function NotifyCard({ siteId, canEdit }: { siteId: string; canEdit: boolean }) {
+  const [st, setSt] = useState<NotifyState | null>(null);
+  const [url, setUrl] = useState('');
+  const [level, setLevel] = useState<'bad' | 'bad_warn'>('bad');
+  const [enabled, setEnabled] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    try {
+      const r = await apiGet<NotifyState>(`/api/v1/sites/${siteId}/monitor/notifications`);
+      setSt(r);
+      setEnabled(r.config.enabled);
+      setLevel(r.config.level);
+    } catch (e) {
+      setError(e);
+    }
+  }, [siteId]);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const act = async (fn: () => Promise<unknown>, ok: string) => {
+    setBusy(true);
+    setError(null);
+    setMsg(null);
+    try {
+      await fn();
+      setMsg(ok);
+      setUrl('');
+      await load();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!st) return null;
+  return (
+    <Card title="Avisos a Slack, Teams, Discord o webhook">
+      <div className="text-xs space-y-3">
+        <p className="text-slate-600 dark:text-slate-300">Cuando termina un crawl, una importación de Search Console o una medición de velocidad, los cambios importantes del análisis se envían a tu canal. Cada cambio se avisa una sola vez (no se repite en 14 días).</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Switch checked={enabled} onChange={setEnabled} label="Avisos activados" disabled={!canEdit} />
+          <span className="font-semibold">{enabled ? 'Activados' : 'Desactivados'}</span>
+          <select aria-label="Qué avisar" className={inputCls} disabled={!canEdit} value={level} onChange={e => setLevel(e.target.value as 'bad' | 'bad_warn')}>
+            <option value="bad">Solo lo marcado "Atención"</option>
+            <option value="bad_warn">"Atención" y "Revisar"</option>
+          </select>
+          {st.config.configured && <Badge tone="good">Webhook guardado: {st.config.hint}</Badge>}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <input type="password" autoComplete="off" aria-label="URL del webhook" className={`${inputCls} flex-1 min-w-[18rem] font-mono`} disabled={!canEdit} placeholder={st.config.configured ? 'Pega una URL nueva para reemplazarla' : 'https://hooks.slack.com/services/…'} value={url} onChange={e => setUrl(e.target.value)} />
+          <Button aria-label="Guardar avisos" disabled={!canEdit || busy} onClick={() => act(() => apiSend('PUT', `/api/v1/sites/${siteId}/monitor/notifications`, { enabled, level, ...(url.trim() ? { webhookUrl: url.trim() } : {}) }), 'Avisos guardados.')}>Guardar</Button>
+          <Button variant="secondary" disabled={!canEdit || busy || !st.config.configured} onClick={() => act(() => apiSend('POST', `/api/v1/sites/${siteId}/monitor/notifications/test`, {}), 'Mensaje de prueba enviado. Revisa tu canal.')}>Enviar prueba</Button>
+          <Button variant="secondary" disabled={!canEdit || busy || !st.config.configured || !st.config.enabled} onClick={() => act(async () => { const r = await apiSend<{ sent: number; reason: string }>('POST', `/api/v1/sites/${siteId}/monitor/notifications/send`, {}); if (!r.sent) throw new Error(r.reason === 'nothing-new' ? 'No hay cambios importantes nuevos que avisar.' : `No se envió: ${r.reason}`); }, 'Avisos enviados.')}>Avisar ahora</Button>
+        </div>
+        <details className="text-slate-500">
+          <summary className="cursor-pointer">Cómo obtener la URL del webhook</summary>
+          <ul className="list-disc ml-5 mt-1 space-y-0.5">
+            <li><strong>Slack:</strong> api.slack.com/apps → crea una app → Incoming Webhooks → actívalos → "Add New Webhook to Workspace" → elige el canal → copia la URL (empieza con https://hooks.slack.com/).</li>
+            <li><strong>Microsoft Teams:</strong> en el canal → … → Flujos de trabajo → "Publicar en un canal cuando se reciba una solicitud de webhook" → copia la URL.</li>
+            <li><strong>Discord:</strong> configuración del canal → Integraciones → Webhooks → Nuevo webhook → Copiar URL.</li>
+            <li><strong>Otro sistema (Zapier, Make, n8n, propio):</strong> cualquier URL que reciba un POST con JSON.</li>
+          </ul>
+          <p className="mt-1">La URL funciona como contraseña: se guarda cifrada y no se vuelve a mostrar.</p>
+        </details>
+        <ErrorBox error={error} />
+        {msg && <p role="status" className="text-emerald-700 dark:text-emerald-400">{msg}</p>}
+        {st.sent.length > 0 && (
+          <div>
+            <h4 className="font-semibold mb-1">Últimos avisos</h4>
+            <ul className="space-y-0.5 max-h-40 overflow-auto">
+              {st.sent.map(n => <li key={n.id} className="flex gap-2"><span className="text-slate-500 w-32 shrink-0">{fmtDate(n.sentAt)}</span><span className={n.ok ? '' : 'text-rose-600'}>{n.ok ? '✓' : '✕'} {n.title}{n.error ? ` (${n.error})` : ''}</span></li>)}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }

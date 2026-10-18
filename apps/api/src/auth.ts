@@ -49,7 +49,10 @@ const RULES: Array<[RegExp, RegExp, Permission]> = [
   [/^POST$/, /^\/api\/v1\/sites\/:id\/gsc\/import$/, 'seo:operate'],
   [/^PUT$/, /^\/api\/v1\/sites\/:id\/schedule$/, 'seo:operate'],
   [/^PUT$/, /^\/api\/v1\/sites\/:id\/monitor$/, 'seo:operate'],
+  [/^POST$/, /^\/api\/v1\/sites\/:id\/reports$/, 'seo:operate'],
+  [/^DELETE$/, /^\/api\/v1\/reports\/:id$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/monitor\/run$/, 'seo:operate'],
+  [/^(PUT|POST)$/, /^\/api\/v1\/sites\/:id\/monitor\/notifications(\/test|\/send)?$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/performance$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/seo-edits$/, 'content:edit'],
   [/^POST$/, /^\/api\/v1\/seo-edits\/:id\/(review|apply|verify|revert)$/, 'seo:operate'],
@@ -95,6 +98,7 @@ async function workspaceOfResource(route: string, id: string): Promise<string | 
     const p = await prisma.wordPressPublication.findUnique({ where: { id }, select: { generatedPage: { select: { site: { select: { workspaceId: true } } } } } });
     return p ? p.generatedPage.site?.workspaceId ?? null : undefined;
   }
+  if (/^\/api\/v1\/reports\/:id/.test(route)) return viaSite(await prisma.reportShare.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
   if (/^\/api\/v1\/ai-prompts\/:id/.test(route)) return viaSite(await prisma.aiPrompt.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
   if (/^\/api\/v1\/ai-observations\/:id/.test(route)) return viaSite(await prisma.aiObservation.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
   if (/^\/api\/v1\/performance-runs\/:id/.test(route)) return viaSite(await prisma.performanceRun.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
@@ -136,7 +140,8 @@ function clearFailures(ip: string, username: string) {
   failures.delete(`u:${ip}|${username}`);
 }
 
-const PUBLIC = [/^\/health(\/|$)/, /^\/docs(\/|$)/, /^\/api\/v1\/auth\/login$/];
+// The client report link is public on purpose: the unguessable token is the credential.
+const PUBLIC = [/^\/health(\/|$)/, /^\/docs(\/|$)/, /^\/api\/v1\/auth\/login$/, /^\/api\/v1\/public\/reports\/[\w-]+$/];
 const ALLOWED_WHILE_CHANGING_PASSWORD = /^\/api\/v1\/auth\/(me|password|logout)$/;
 
 export async function registerAuth(app: FastifyInstance) {

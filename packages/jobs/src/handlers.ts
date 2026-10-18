@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { Prisma, prisma, importLogFile, runCrawl, deleteLogImport, purgeExpiredSessions, purgeOldCrawlDetail, runGscImport, sitesForDailyGsc, getMonitorConfig, pickVitalsUrls } from '@glitch/db';
+import { Prisma, prisma, importLogFile, runCrawl, deleteLogImport, purgeExpiredSessions, purgeOldCrawlDetail, runGscImport, sitesForDailyGsc, getMonitorConfig, pickVitalsUrls, notifyMonitorChanges } from '@glitch/db';
 import { enqueue } from './producer';
 import { measure, PerformanceError } from '@glitch/performance';
 
@@ -58,6 +58,7 @@ export async function crawlHandler(p: { siteId: string; options?: Record<string,
     onProgress: pr => ctx.progress(Math.min(99, Math.round((pr.crawled / maxUrls) * 100)), { crawlRunId: runId, ...pr })
   });
   ctx.log(`${run.urlsCrawled} páginas, ${run.issuesFound} tipos de issue (${run.status})`);
+  await notifyAfter(p.siteId, ctx);
   return { crawlRunId: run.id, status: run.status, pages: run.urlsCrawled, issues: run.issuesFound };
 }
 
@@ -156,9 +157,20 @@ export async function performanceHandler(p: { siteId: string; urls: string[]; st
   return { measured: ok, failed, total: work.length };
 }
 
+/** Monitoreo alerts after new data arrives; a failed notification never fails the job. */
+async function notifyAfter(siteId: string, ctx: JobContext) {
+  try {
+    const r = await notifyMonitorChanges(siteId);
+    if (r.reason !== 'disabled') ctx.log(`Avisos: ${r.sent} enviados, ${r.skipped} ya avisados (${r.reason})`);
+  } catch (e) {
+    ctx.log(`Avisos: no se pudieron enviar (${(e as Error).message})`, 'warn');
+  }
+}
+
 /** Imports Search Analytics for one site. */
 export async function gscImportHandler(p: { siteId: string; days?: number }, ctx: JobContext) {
   const imp = await runGscImport(p.siteId, { days: p.days, log: m => ctx.log(m), signal: ctx.signal });
+  await notifyAfter(p.siteId, ctx);
   return { gscImportId: imp.id, pages: imp.pageRows, queries: imp.queryRows, startDate: imp.startDate, endDate: imp.endDate };
 }
 
@@ -176,7 +188,9 @@ export async function monitorVitalsHandler(p: { siteId: string }, ctx: JobContex
   if (!cfg.vitalsEnabled) return { skipped: 'disabled' };
   const urls = await pickVitalsUrls(p.siteId);
   ctx.log(`${urls.length} URLs: ${urls.join(', ')}`);
-  return performanceHandler({ siteId: p.siteId, urls, strategies: cfg.vitalsStrategies }, ctx);
+  const r = await performanceHandler({ siteId: p.siteId, urls, strategies: cfg.vitalsStrategies }, ctx);
+  await notifyAfter(p.siteId, ctx);
+  return r;
 }
 
 export const HANDLERS = {

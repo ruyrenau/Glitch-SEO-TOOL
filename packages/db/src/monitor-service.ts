@@ -1,4 +1,9 @@
+import crypto from 'crypto';
+import { decryptSecret, encryptSecret } from '@glitch/core';
+import { assertSafeUrl } from '@glitch/crawler';
 import { prisma } from './client';
+import { recordAuditEvent } from './audit';
+import { WorkflowError } from './errors';
 import { latestGscImport } from './gsc-service';
 
 /**
@@ -284,4 +289,94 @@ export async function monitorOverview(siteId: string) {
     insights,
     lastImports: imports.length
   };
+}
+
+// ---------------------------------------------------------------------------
+// Notifications: Slack, Microsoft Teams, Discord or any webhook
+
+export interface NotifyConfig {
+  enabled: boolean;
+  level: 'bad' | 'bad_warn';
+  configured: boolean;
+  hint: string | null;
+}
+
+export async function getNotifyConfig(siteId: string): Promise<NotifyConfig> {
+  const m = await prisma.siteMonitor.findUnique({ where: { siteId } });
+  return { enabled: !!m?.notifyEnabled, level: m?.notifyLevel === 'bad_warn' ? 'bad_warn' : 'bad', configured: !!m?.webhookEnc, hint: m?.webhookHint ?? null };
+}
+
+const channelOf = (url: string) =>
+  /^https:\/\/hooks\.slack\.com\//.test(url) ? 'slack' : /^https:\/\/(discord|discordapp)\.com\/api\/webhooks\//.test(url) ? 'discord' : /webhook\.office\.com|\.logic\.azure\.com|powerautomate|environment\.api\.powerplatform/.test(url) ? 'teams' : 'webhook';
+
+export async function saveNotifyConfig(siteId: string, input: { enabled: boolean; level: 'bad' | 'bad_warn'; webhookUrl?: string | null }) {
+  const data: Record<string, unknown> = { notifyEnabled: input.enabled, notifyLevel: input.level };
+  if (input.webhookUrl !== undefined) {
+    if (input.webhookUrl === null || input.webhookUrl === '') Object.assign(data, { webhookEnc: null, webhookHint: null });
+    else {
+      const u = input.webhookUrl.trim();
+      const local = (process.env.CRAWL_ALLOW_PRIVATE_HOSTS ?? '').split(',').map(x => x.trim()).filter(Boolean);
+      const okHttp = /^http:\/\//.test(u) && local.some(h => { try { return new URL(u).hostname === h; } catch { return false; } });
+      if (!/^https:\/\/[^\s]+$/.test(u) && !okHttp) throw new WorkflowError('INVALID_WEBHOOK', 'La URL del webhook debe empezar con https://.', 400);
+      Object.assign(data, { webhookEnc: encryptSecret(u), webhookHint: `${channelOf(u)} …${u.slice(-6)}` });
+    }
+  }
+  if (input.enabled && input.webhookUrl === undefined && !(await prisma.siteMonitor.findUnique({ where: { siteId } }))?.webhookEnc) throw new WorkflowError('WEBHOOK_REQUIRED', 'Agrega la URL del webhook para activar los avisos.', 400);
+  if (input.enabled && input.webhookUrl === null) throw new WorkflowError('WEBHOOK_REQUIRED', 'Agrega la URL del webhook para activar los avisos.', 400);
+  await prisma.siteMonitor.upsert({ where: { siteId }, create: { siteId, ...data }, update: data });
+  return getNotifyConfig(siteId);
+}
+
+const EMOJI: Record<string, string> = { bad: '🔴', warn: '🟠', good: '🟢', info: 'ℹ️' };
+
+/** Posts a message in the format each service expects. Never throws. */
+async function postWebhook(url: string, siteName: string, items: Insight[], intro: string) {
+  const channel = channelOf(url);
+  const lines = items.map(i => `${EMOJI[i.tone]} *${i.title}*\n${i.detail}${i.related.length ? `\n_Al mismo tiempo:_ ${i.related.slice(0, 3).join(' · ')}` : ''}`);
+  const text = `*G.SEO — ${siteName}*\n${intro}\n\n${lines.join('\n\n')}`;
+  const body =
+    channel === 'slack' ? { text } :
+    channel === 'discord' ? { content: text.replace(/\*([^*]+)\*/g, '**$1**').slice(0, 1990) } :
+    channel === 'teams' ? { text: text.replace(/\n/g, '\n\n') } :
+    { source: 'G.SEO', site: siteName, message: intro, items: items.map(i => ({ id: i.id, tone: i.tone, area: i.area, title: i.title, detail: i.detail, related: i.related })) };
+  try {
+    await assertSafeUrl(url, { allowHosts: (process.env.CRAWL_ALLOW_PRIVATE_HOSTS ?? '').split(',').map(s => s.trim()).filter(Boolean) });
+    const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(10_000), redirect: 'error' });
+    return { channel, ok: res.ok, error: res.ok ? null : `HTTP ${res.status}` };
+  } catch (e) {
+    return { channel, ok: false, error: (e as Error).message.slice(0, 300) };
+  }
+}
+
+const signatureOf = (i: Insight) => crypto.createHash('sha1').update(`${i.id}|${i.title}`).digest('hex');
+
+/**
+ * After a crawl, a Search Console import or a Core Web Vitals run: sends the important changes not sent in the
+ * last 14 days ("Atención", plus "Revisar" if chosen). Never throws; returns what happened.
+ */
+export async function notifyMonitorChanges(siteId: string) {
+  const m = await prisma.siteMonitor.findUnique({ where: { siteId }, include: { site: true } });
+  if (!m?.notifyEnabled || !m.webhookEnc) return { sent: 0, skipped: 0, reason: 'disabled' };
+  const { insights } = await monitorOverview(siteId);
+  const wanted = insights.filter(i => i.tone === 'bad' || (m.notifyLevel === 'bad_warn' && i.tone === 'warn'));
+  const recent = new Set((await prisma.monitorNotification.findMany({ where: { siteId, sentAt: { gte: new Date(Date.now() - 14 * 86400_000) }, ok: true }, select: { signature: true } })).map(n => n.signature));
+  const fresh = wanted.filter(i => !recent.has(signatureOf(i)));
+  if (!fresh.length) return { sent: 0, skipped: wanted.length, reason: 'nothing-new' };
+  const r = await postWebhook(decryptSecret(m.webhookEnc), m.site.name, fresh, `${fresh.length} ${fresh.length === 1 ? 'cambio importante' : 'cambios importantes'} en el monitoreo:`);
+  await prisma.monitorNotification.createMany({ data: fresh.map(i => ({ siteId, signature: signatureOf(i), title: i.title.slice(0, 300), tone: i.tone, channel: r.channel, ok: r.ok, error: r.error })) });
+  await recordAuditEvent({ workspaceId: m.site.workspaceId, userId: null, action: r.ok ? 'monitor.notified' : 'monitor.notify_failed', entity: 'Site', entityId: siteId, details: { count: fresh.length, channel: r.channel, error: r.error } });
+  return { sent: r.ok ? fresh.length : 0, skipped: wanted.length - fresh.length, reason: r.ok ? 'sent' : r.error };
+}
+
+export async function testMonitorWebhook(siteId: string) {
+  const m = await prisma.siteMonitor.findUnique({ where: { siteId }, include: { site: true } });
+  if (!m?.webhookEnc) throw new WorkflowError('WEBHOOK_REQUIRED', 'Guarda primero la URL del webhook.', 400);
+  const sample: Insight = { id: 'test', tone: 'info', area: 'gsc', title: 'Mensaje de prueba', detail: 'Si ves esto, los avisos de Monitoreo llegarán a este canal.', related: [], link: null };
+  const r = await postWebhook(decryptSecret(m.webhookEnc), m.site.name, [sample], 'Prueba de conexión.');
+  if (!r.ok) throw new WorkflowError('WEBHOOK_FAILED', `El webhook no aceptó el mensaje: ${r.error}`, 502);
+  return r;
+}
+
+export async function listMonitorNotifications(siteId: string) {
+  return prisma.monitorNotification.findMany({ where: { siteId }, orderBy: { sentAt: 'desc' }, take: 30 });
 }

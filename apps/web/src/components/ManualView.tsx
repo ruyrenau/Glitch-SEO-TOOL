@@ -3,7 +3,7 @@ import type { GoFn } from '@/lib/types';
 
 import React from 'react';
 import {
-  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound
+  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart
 } from 'lucide-react';
 import { Badge, Button, Card } from './ui';
 
@@ -143,7 +143,8 @@ const SECTIONS: Section[] = [
       'Todo empieza apagado. Activa lo que quieras: crawl (semanal o diario), Search Console (diario) y Core Web Vitals (semanal o diario, sobre las páginas con más clics o las que elijas).',
       'Pulsa "Guardar". Verás cuándo es la próxima ejecución. "Ejecutar ahora lo activo" lo corre en ese momento.',
       'En "Análisis de cambios" revisa lo marcado como Atención y Revisar. Cada punto dice qué cambió, cuánto, qué pasó en las mismas fechas y tiene un botón al detalle.',
-      'En "Evolución" pasa el mouse por las gráficas: las líneas rojas son alertas y las verdes, cambios SEO aplicados.'
+      'En "Evolución" pasa el mouse por las gráficas: las líneas rojas son alertas y las verdes, cambios SEO aplicados.',
+      'Avisos: en "Avisos a Slack, Teams, Discord o webhook" pega la URL del webhook de tu canal, elige si avisar solo de lo grave o también de lo que hay que revisar, y pulsa "Enviar prueba". Después de cada crawl, importación o medición automática te llega lo importante, una sola vez.'
     ],
     read: [
       ['Variación normal', 'Search Console sube y baja cada semana. Solo se marca un cambio si es mayor que la variación habitual del sitio (al menos 15 %).'],
@@ -454,6 +455,23 @@ const SECTIONS: Section[] = [
       ['Evolución', 'Promedio de puntos por revisión en cada semana, para que agregar preguntas no infle el total.']
     ],
     limits: ['Hoy el registro es manual. Las consultas automáticas a cada motor se activarán con las claves de API que agregues en Configuración.', 'Las IAs no responden siempre igual: compara tendencias de varias semanas, no una sola revisión.']
+  },
+  {
+    id: 'reports',
+    nav: 'reports',
+    icon: FileBarChart,
+    title: 'Reportes',
+    status: 'ready',
+    what: 'Crea un reporte para el cliente con Resumen, Search Console, Evolución, Salud técnica, Core Web Vitals y Visibilidad en IA, para compartir por enlace o descargar en PDF.',
+    why: 'Mostrar el avance al cliente sin darle acceso a la herramienta y sin armar el reporte a mano.',
+    steps: [
+      'Escribe un título, marca las secciones y elige cuándo caduca el enlace.',
+      'Pulsa "Crear reporte". Se guarda una foto de los datos de ese momento.',
+      'Usa "Copiar enlace" para mandarlo (el cliente no necesita usuario) o "Descargar PDF".',
+      '"Retirar" desactiva el enlace al instante. Verás cuántas veces se abrió.'
+    ],
+    read: [['Foto fija', 'El reporte no cambia aunque cambien los datos después. Para datos nuevos, crea otro reporte.']],
+    limits: ['Quien tenga el enlace puede verlo: compártelo solo con el cliente.', 'El PDF necesita Chrome, Chromium o Edge instalado en el servidor.', 'No incluye las respuestas pegadas de IA ni datos internos.']
   },
   {
     id: 'settings',

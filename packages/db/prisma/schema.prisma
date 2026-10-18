@@ -141,6 +141,8 @@ model Site {
   gscProperty        String?
   gscImports         GscImport[]
   monitor            SiteMonitor?
+  monitorNotifications MonitorNotification[]
+  reports            ReportShare[]
   aiPrompts          AiPrompt[]
   aiObservations     AiObservation[]
   aiAnalyses         AiAnalysis[]
@@ -701,7 +703,28 @@ model SiteMonitor {
   vitalsUrls       Json?
   vitalsCount      Int      @default(5)
   vitalsStrategies Json?
+  /// Alerts of the change analysis to Slack / Teams / Discord / any webhook (URL encrypted: it works as a password).
+  notifyEnabled    Boolean  @default(false)
+  notifyLevel      String   @default("bad") // bad = only "Atención"; bad_warn = also "Revisar"
+  webhookEnc       String?
+  webhookHint      String?
   updatedAt        DateTime @updatedAt
+}
+
+/// Changes already notified, so the same one is not sent again every run.
+model MonitorNotification {
+  id        String   @id @default(uuid())
+  siteId    String
+  site      Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  signature String
+  title     String
+  tone      String
+  channel   String
+  ok        Boolean
+  error     String?
+  sentAt    DateTime @default(now())
+
+  @@index([siteId, sentAt])
 }
 
 /// API keys for AI providers (stored encrypted; managed by Admins in "Configuración").
@@ -783,4 +806,22 @@ model SchemaTemplate {
   updatedAt   DateTime  @updatedAt
 
   @@index([workspaceId])
+}
+
+/// A client report: a frozen snapshot of the chosen sections, shared through a secret link (no login).
+model ReportShare {
+  id          String    @id @default(uuid())
+  siteId      String
+  site        Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  token       String    @unique
+  title       String
+  sections    Json
+  snapshot    Json
+  createdById String?
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  views       Int       @default(0)
+
+  @@index([siteId, createdAt])
 }

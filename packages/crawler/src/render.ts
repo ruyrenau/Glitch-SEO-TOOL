@@ -113,3 +113,26 @@ export async function createRenderer(opts: { userAgent: string; timeoutMs: numbe
     close: () => browser.close().catch(() => undefined)
   };
 }
+
+/**
+ * Prints a page to PDF with the installed Chrome/Edge (used for client reports, which are rendered by our own
+ * web app). Waits for an element marked [data-report-ready] so charts are drawn before printing.
+ */
+export async function renderPdf(url: string, opts: { timeoutMs?: number } = {}): Promise<Buffer> {
+  const executablePath = findBrowser();
+  if (!executablePath) throw new RenderError('BROWSER_NOT_FOUND', 'Para generar el PDF se necesita Chrome, Chromium o Edge instalado en el servidor (o CHROME_PATH).');
+  const puppeteer = await import('puppeteer-core');
+  const browser = await puppeteer.launch({ executablePath, headless: true, args: ['--no-sandbox', '--disable-gpu', '--no-first-run', '--disable-dev-shm-usage'] });
+  try {
+    const page = await browser.newPage();
+    await page.emulateMediaType('print');
+    await page.goto(url, { waitUntil: 'networkidle0', timeout: opts.timeoutMs ?? 60_000 });
+    await page.waitForSelector('[data-report-ready]', { timeout: opts.timeoutMs ?? 60_000 });
+    const pdf = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '14mm', bottom: '14mm', left: '12mm', right: '12mm' } });
+    return Buffer.from(pdf);
+  } catch (e) {
+    throw new RenderError('RENDER_FAILED', `No se pudo generar el PDF: ${(e as Error).message}`);
+  } finally {
+    await browser.close().catch(() => undefined);
+  }
+}

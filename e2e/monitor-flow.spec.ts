@@ -24,7 +24,7 @@ test('Monitoreo: off by default, turn on a weekly crawl, run it now and see the 
 
   await page.getByRole('switch', { name: 'Crawl automático' }).click();
   await page.getByLabel('Frecuencia del crawl').selectOption('weekly');
-  await page.getByRole('button', { name: 'Guardar' }).click();
+  await page.getByRole('button', { name: 'Guardar', exact: true }).click();
   await expect(page.getByText('Guardado.')).toBeVisible();
   await expect(page.getByText(/^Próximo:/)).toBeVisible();
 
@@ -45,6 +45,6 @@ test('Monitoreo: off by default, turn on a weekly crawl, run it now and see the 
 
   // Turn it off again (the schedule is removed).
   await page.getByRole('switch', { name: 'Crawl automático' }).click();
-  await page.getByRole('button', { name: 'Guardar' }).click();
+  await page.getByRole('button', { name: 'Guardar', exact: true }).click();
   await expect(page.getByText(/^Próximo:/)).toHaveCount(0);
 });

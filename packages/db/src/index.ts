@@ -14,3 +14,4 @@ export * from './seo-edit-service';
 export * from './gsc-service';
 export * from './monitor-service';
 export * from './ai-visibility-service';
+export * from './report-service';

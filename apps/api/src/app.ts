@@ -48,6 +48,16 @@ import {
   explorerCsv,
   explorerCustom,
   getMonitorConfig,
+  REPORT_SECTIONS,
+  createReport,
+  listReports,
+  revokeReport,
+  publicReport,
+  getNotifyConfig,
+  saveNotifyConfig,
+  testMonitorWebhook,
+  listMonitorNotifications,
+  notifyMonitorChanges,
   Prisma,
   listAiPrompts,
   createAiPrompt,
@@ -95,7 +105,7 @@ import {
   MAX_BATCH,
   DuplicateImportError
 } from '@glitch/db';
-import { HARD_MAX_URLS, MAX_RPS, fetchSitemap, findBrowser, parseSitemapXml, fetchWithRedirects, extractPageHints, suggestSchemaForms } from '@glitch/crawler';
+import { HARD_MAX_URLS, MAX_RPS, fetchSitemap, findBrowser, parseSitemapXml, fetchWithRedirects, extractPageHints, suggestSchemaForms, renderPdf } from '@glitch/crawler';
 import { validateJsonLd, validateSchema, CATALOG } from '@glitch/schema-engine';
 import { renderTemplate, computeJaccardSimilarity, evaluateQualityGate } from '@glitch/content-engine';
 import { registerAuth } from './auth';
@@ -496,6 +506,28 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     if (!Object.keys(queued).length) throw new ApiError(400, 'NOTHING_TO_RUN', 'No hay nada activo para ejecutar, o ya se está ejecutando.');
     return reply.status(202).send({ queued });
   });
+  app.get('/api/v1/sites/:id/monitor/notifications', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return { config: await getNotifyConfig(id), sent: await listMonitorNotifications(id) };
+  });
+  app.put('/api/v1/sites/:id/monitor/notifications', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    const b = z.object({ enabled: z.boolean(), level: z.enum(['bad', 'bad_warn']).default('bad'), webhookUrl: z.string().max(2000).nullable().optional() }).strict().parse(req.body);
+    return saveNotifyConfig(id, b);
+  });
+  app.post('/api/v1/sites/:id/monitor/notifications/test', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return testMonitorWebhook(id);
+  });
+  /** Sends now whatever important change has not been notified yet. */
+  app.post('/api/v1/sites/:id/monitor/notifications/send', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return notifyMonitorChanges(id);
+  });
   app.get('/api/v1/sites/:id/monitor/overview', async req => {
     const { id } = idParam.parse(req.params);
     await requireSite(id);
@@ -865,6 +897,45 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   app.post('/api/v1/schemas/validate', async req => {
     const body = req.body;
     return validateJsonLd(typeof body === 'string' ? body : JSON.stringify(body ?? {}));
+  });
+
+  // ------------------------------------------------------------------ Client reports
+  const sectionEnum = z.enum(Object.keys(REPORT_SECTIONS) as [string, ...string[]]);
+  app.get('/api/v1/reports/sections', async () => REPORT_SECTIONS);
+  app.get('/api/v1/sites/:id/reports', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return listReports(id);
+  });
+  app.post('/api/v1/sites/:id/reports', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    const b = z.object({ title: z.string().max(200).default(''), sections: z.array(sectionEnum).min(1).max(6), expiresDays: z.number().int().min(1).max(365).nullable().default(90) }).strict().parse(req.body);
+    return reply.status(201).send(await createReport(id, b as Parameters<typeof createReport>[1], req.auth!.user.id));
+  });
+  const requireReport = async (id: string) => {
+    const r = await prisma.reportShare.findUnique({ where: { id } });
+    if (!r) throw new ApiError(404, 'NOT_FOUND', 'Reporte no encontrado');
+    return r;
+  };
+  app.delete('/api/v1/reports/:id', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireReport(id);
+    return revokeReport(id, req.auth!.user.id);
+  });
+  /** PDF of a report, printed by Chrome from the public page of our own web app. */
+  app.get('/api/v1/reports/:id/pdf', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const r = await requireReport(id);
+    if (r.revokedAt) throw new ApiError(400, 'REPORT_REVOKED', 'Este reporte fue retirado.');
+    const pdf = await renderPdf(`${webOrigin()}/r/${r.token}?print=1`);
+    const safe = r.title.normalize('NFD').replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').slice(0, 80) || 'reporte';
+    return reply.header('content-type', 'application/pdf').header('content-disposition', `attachment; filename="${safe}.pdf"`).send(pdf);
+  });
+  /** Public (no login): the client's link. Only live reports; never internal data. */
+  app.get('/api/v1/public/reports/:token', async req => {
+    const { token } = z.object({ token: z.string().min(20).max(64).regex(/^[\w-]+$/) }).parse(req.params);
+    return publicReport(token);
   });
 
   // ------------------------------------------------------------------ Schema.org generator

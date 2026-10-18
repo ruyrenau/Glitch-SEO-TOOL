@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import http from 'http';
+import type { AddressInfo } from 'net';
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '@glitch/db';
 import { getQueue } from '@glitch/jobs';
@@ -115,6 +117,46 @@ describe('Monitoreo', () => {
     expect(o.crawl.map((c: { indexable: number }) => c.indexable)).toEqual([100, 88]);
     expect(o.vitals[0]).toMatchObject({ strategy: 'mobile', fieldLcp: 2100 });
     expect(o.events.some((e: { kind: string }) => e.kind === 'alert')).toBe(true);
+  });
+
+  it('sends the important changes to a webhook once and never repeats them', async () => {
+    const received: Array<Record<string, unknown>> = [];
+    const hook = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', c => (body += c));
+      req.on('end', () => {
+        received.push(JSON.parse(body));
+        res.writeHead(200).end('ok');
+      });
+    });
+    await new Promise<void>(r => hook.listen(0, '127.0.0.1', () => r()));
+    process.env.CRAWL_ALLOW_PRIVATE_HOSTS = '127.0.0.1';
+    const url = `http://127.0.0.1:${(hook.address() as AddressInfo).port}/hook`;
+    try {
+      const put = (payload: object) => app.inject({ method: 'PUT', url: `/api/v1/sites/${siteId}/monitor/notifications`, payload });
+      expect((await put({ enabled: true, level: 'bad' })).json().error.code).toBe('WEBHOOK_REQUIRED');
+      expect((await put({ enabled: true, level: 'bad', webhookUrl: 'http://ejemplo.com/hook' })).json().error.code).toBe('INVALID_WEBHOOK');
+      const cfg = (await put({ enabled: true, level: 'bad', webhookUrl: url })).json();
+      expect(cfg).toMatchObject({ enabled: true, configured: true, hint: expect.stringMatching(/^webhook …/) });
+      expect(JSON.stringify(cfg)).not.toContain('127.0.0.1');
+
+      expect((await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/monitor/notifications/test` })).statusCode).toBe(200);
+      expect(received[0]).toMatchObject({ source: 'G.SEO', message: 'Prueba de conexión.' });
+
+      const first = (await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/monitor/notifications/send` })).json();
+      expect(first.sent).toBeGreaterThanOrEqual(3); // clicks drop, indexable drop, 5xx, LCP, alerts…
+      const msg = received[1] as { items: Array<{ tone: string; title: string }> };
+      expect(msg.items.every(i => i.tone === 'bad')).toBe(true);
+      expect(msg.items.map(i => i.title)).toEqual(expect.arrayContaining([expect.stringMatching(/^Clics bajaron/), '12 páginas dejaron de ser indexables']));
+
+      const again = (await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/monitor/notifications/send` })).json();
+      expect(again).toMatchObject({ sent: 0, reason: 'nothing-new' }); // not repeated
+      const list = (await app.inject(`/api/v1/sites/${siteId}/monitor/notifications`)).json();
+      expect(list.sent.length).toBe(first.sent);
+    } finally {
+      delete process.env.CRAWL_ALLOW_PRIVATE_HOSTS;
+      await new Promise<void>(r => hook.close(() => r()));
+    }
   });
 
   it('measures the pages with most Search Console clicks', async () => {
