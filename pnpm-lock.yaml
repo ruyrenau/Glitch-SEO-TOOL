@@ -229,6 +229,9 @@ importers:
       '@glitch/log-parser':
         specifier: workspace:*
         version: link:../../packages/log-parser
+      '@glitch/performance':
+        specifier: workspace:*
+        version: link:../../packages/performance
       '@glitch/schema-engine':
         specifier: workspace:*
         version: link:../../packages/schema-engine
