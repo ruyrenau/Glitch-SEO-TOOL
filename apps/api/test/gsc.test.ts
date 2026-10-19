@@ -116,6 +116,15 @@ describe('Google Search Console', () => {
     // /about matched despite the trailing slash, so it is not reported as missing impressions.
     expect(rep.crawl.indexableWithoutImpressions).not.toContain(`${site.origin}/about`);
     expect(rep.crawl.indexableWithoutImpressionsCount).toBeGreaterThan(3);
+    // Month-by-month page history for "Contenido en declive": 16 complete months.
+    const months = await prisma.gscPageMonth.groupBy({ by: ['month'], where: { siteId } });
+    expect(months).toHaveLength(16);
+    expect(await prisma.gscPageMonth.count({ where: { siteId } })).toBe(64);
+    // A second import only asks for the two latest months again.
+    const before = google.requests.length;
+    await waitForJob(app, (await post(`/api/v1/sites/${siteId}/gsc/import`, { days: 28 })).json().jobId);
+    expect(google.requests.slice(before).filter(r => r.includes('searchAnalytics')).length).toBe(3 + 2);
+    expect(await prisma.gscPageMonth.count({ where: { siteId } })).toBe(64);
   });
 
   it('adds clicks, impressions and position to the explorer', async () => {

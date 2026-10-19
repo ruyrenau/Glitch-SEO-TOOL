@@ -86,6 +86,9 @@ import {
   gscReport,
   cannibalizationReport,
   aiReadinessReport,
+  duplicateContentReport,
+  decliningContentReport,
+  keywordTopicsReport,
   explorerStructure,
   lookupEditable,
   proposeChange,
@@ -1215,6 +1218,25 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     const q = z.object({ minImpressions: z.coerce.number().int().min(1).max(100000).optional(), minShare: z.coerce.number().min(1).max(50).optional() }).parse(req.query);
     await requireSite(id);
     return cannibalizationReport(id, { minImpressions: q.minImpressions, minShare: q.minShare ? q.minShare / 100 : undefined });
+  });
+
+  // Análisis de contenido: duplicates and thin pages (crawl), declining pages (monthly GSC), keyword topics (GSC).
+  app.get('/api/v1/sites/:id/content/duplicates', async req => {
+    const { id } = idParam.parse(req.params);
+    const q = z.object({ crawlRunId: z.string().uuid().optional(), threshold: z.coerce.number().int().min(50).max(99).optional(), minWords: z.coerce.number().int().min(10).max(5000).optional() }).parse(req.query);
+    await requireSite(id);
+    return duplicateContentReport(id, { crawlRunId: q.crawlRunId, threshold: q.threshold ? q.threshold / 100 : undefined, minWords: q.minWords });
+  });
+  app.get('/api/v1/sites/:id/content/declining', async req => {
+    const { id } = idParam.parse(req.params);
+    const q = z.object({ minClicks: z.coerce.number().int().min(1).max(1_000_000).optional(), minDrop: z.coerce.number().int().min(5).max(95).optional() }).parse(req.query);
+    await requireSite(id);
+    return decliningContentReport(id, { minClicks: q.minClicks, minDrop: q.minDrop ? q.minDrop / 100 : undefined });
+  });
+  app.get('/api/v1/sites/:id/content/topics', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return keywordTopicsReport(id);
   });
 
   // "Listo para IA": per-page AI readiness of a crawl, plus robots.txt access for AI bots and llms.txt.

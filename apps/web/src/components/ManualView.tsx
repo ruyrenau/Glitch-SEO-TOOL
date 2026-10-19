@@ -3,7 +3,7 @@ import type { GoFn } from '@/lib/types';
 
 import React from 'react';
 import {
-  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart, Bot
+  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart, Bot, FileSearch
 } from 'lucide-react';
 import { Badge, Button, Card } from './ui';
 
@@ -455,6 +455,29 @@ const SECTIONS: Section[] = [
       ['Evolución', 'Promedio de puntos por revisión en cada semana, para que agregar preguntas no infle el total.']
     ],
     limits: ['Hoy el registro es manual. Las consultas automáticas a cada motor se activarán con las claves de API que agregues en Configuración.', 'Las IAs no responden siempre igual: compara tendencias de varias semanas, no una sola revisión.']
+  },
+  {
+    id: 'contentaudit',
+    nav: 'contentaudit',
+    icon: FileSearch,
+    title: 'Análisis de contenido',
+    status: 'ready',
+    what: 'Tres análisis de contenido: páginas duplicadas, casi duplicadas o con poco texto (a partir del crawl), páginas que pierden clics mes a mes y tus búsquedas de Search Console agrupadas por tema con la página que debe posicionar cada tema.',
+    why: 'El contenido repetido o pobre diluye el sitio, el contenido que envejece pierde tráfico poco a poco, y sin un mapa de temas varias páginas compiten por lo mismo mientras otros temas no tienen página.',
+    steps: [
+      'Duplicados y poco texto: haz un crawl. Revisa "Duplicados exactos" y "Casi duplicados" (ajusta la similitud mínima). En cada grupo se propone qué página conservar y qué hacer con las demás. En "Poco texto" elige el mínimo de palabras.',
+      'En declive: importa Search Console. La primera vez se descargan hasta 16 meses de clics por página; después solo los meses nuevos. Cada página muestra cuánto cayó, su curva mensual y el diagnóstico (perdió posiciones, bajó la demanda o bajó el CTR).',
+      'Temas de keywords: con Search Console importado, abre un tema para ver sus búsquedas, la página principal y las páginas que aparecen. Filtra por "Disperso" o "Sin página fuerte" para encontrar trabajo.',
+      'Descarga cualquier lista en CSV para el equipo de contenido.'
+    ],
+    read: [
+      ['Similitud', 'Se compara solo el texto principal (sin menú, cabecera ni pie) con una huella del texto; 90 % quiere decir que casi todas las frases coinciden.'],
+      ['Resuelto', 'La copia ya tiene canonical hacia la principal o ya no es indexable: no compite.'],
+      ['De temporada', 'Cayó contra los 3 meses anteriores, pero tiene los mismos clics que hace un año. Requiere 15 meses de historial.'],
+      ['Disperso', 'La página principal se lleva menos del 70 % de las impresiones del tema: varias páginas se lo reparten.'],
+      ['Sin página fuerte', 'La posición media del tema es peor que 20: conviene crear o ampliar una página dedicada.']
+    ],
+    limits: ['Los duplicados usan el HTML guardado del crawl (hasta 10,000 páginas) y no detectan textos reescritos con otras palabras.', 'Los temas se arman con reglas de palabras y páginas compartidas, no con IA; revisa los grupos antes de reorganizar el sitio.', 'Search Console solo guarda 16 meses.']
   },
   {
     id: 'aiready',

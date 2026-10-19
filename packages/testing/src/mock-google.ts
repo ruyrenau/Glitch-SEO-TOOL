@@ -10,7 +10,7 @@ export interface MockGoogle {
   /** Point GOOGLE_AUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_REVOKE_URL and GSC_API_URL here. */
   env: Record<string, string>;
   /** Search Analytics rows per property: page-level and query+page-level. */
-  data: Map<string, { pages: Array<{ page: string; clicks: number; impressions: number; position: number }>; queries: Array<{ query: string; page: string; clicks: number; impressions: number; position: number }> }>;
+  data: Map<string, { pages: Array<{ page: string; clicks: number; impressions: number; position: number }>; queries: Array<{ query: string; page: string; clicks: number; impressions: number; position: number }>; /** Optional page rows per month (YYYY-MM) for month-long queries. */ months?: Record<string, Array<{ page: string; clicks: number; impressions: number; position: number }>> }>;
   properties: Array<{ siteUrl: string; permissionLevel: string }>;
   revoked: string[];
   requests: string[];
@@ -93,7 +93,8 @@ export async function startMockGoogle(): Promise<MockGoogle> {
               const im = Math.floor(totI / days) + (i < totI % days ? 1 : 0);
               rows.push({ keys: [date], clicks: c, impressions: im, ctr: ctr(c, im), position: 7.5 });
             }
-          } else if (q.dimensions.join() === 'page') rows = d.pages.map(p => ({ keys: [p.page], clicks: p.clicks, impressions: p.impressions, ctr: ctr(p.clicks, p.impressions), position: p.position }));
+          } else if (q.dimensions.join() === 'page' && d.months && q.startDate.slice(0, 7) === q.endDate.slice(0, 7)) rows = (d.months[q.startDate.slice(0, 7)] ?? []).map(p => ({ keys: [p.page], clicks: p.clicks, impressions: p.impressions, ctr: ctr(p.clicks, p.impressions), position: p.position }));
+          else if (q.dimensions.join() === 'page') rows = d.pages.map(p => ({ keys: [p.page], clicks: p.clicks, impressions: p.impressions, ctr: ctr(p.clicks, p.impressions), position: p.position }));
           else rows = d.queries.map(x => ({ keys: [x.query, x.page], clicks: x.clicks, impressions: x.impressions, ctr: ctr(x.clicks, x.impressions), position: x.position }));
           return send(200, { rows: rows.slice(q.startRow, q.startRow + q.rowLimit) });
         }

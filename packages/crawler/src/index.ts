@@ -8,3 +8,4 @@ export * from './diff';
 export * from './render';
 export * from './schema-prefill';
 export * from './ai-readiness';
+export * from './content-fingerprint';

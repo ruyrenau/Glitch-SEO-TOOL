@@ -122,6 +122,11 @@ export async function runGscImport(siteId: string, opts: { days?: number; log?: 
     await prisma.gscDailyStat.createMany({ data: daily.map(r => ({ importId: imp.id, date: r.keys[0], clicks: r.clicks, impressions: r.impressions, ctr: r.ctr, position: r.position })) });
     for (let i = 0; i < pages.length; i += 1000) await prisma.gscPageStat.createMany({ data: pages.slice(i, i + 1000).map(r => ({ importId: imp.id, page: r.keys[0], clicks: r.clicks, impressions: r.impressions, ctr: r.ctr, position: r.position })) });
     for (let i = 0; i < queries.length; i += 1000) await prisma.gscQueryStat.createMany({ data: queries.slice(i, i + 1000).map(r => ({ importId: imp.id, query: r.keys[0], page: r.keys[1], clicks: r.clicks, impressions: r.impressions, ctr: r.ctr, position: r.position })) });
+    try {
+      await syncMonthlyPages(siteId, site.gscProperty, client, end, log, opts.signal);
+    } catch (e) {
+      log(`Historial mensual no actualizado: ${(e as Error).message}`); // the main import is still valid
+    }
     const done = await prisma.gscImport.update({ where: { id: imp.id }, data: { status: 'completed', pageRows: pages.length, queryRows: queries.length, truncated: pages.length >= 100_000 || queries.length >= 100_000, completedAt: new Date() } });
 
     const old = await prisma.gscImport.findMany({ where: { siteId }, orderBy: { createdAt: 'desc' }, skip: KEEP_IMPORTS, select: { id: true } });
@@ -133,6 +138,40 @@ export async function runGscImport(siteId: string, opts: { days?: number; log?: 
     if (e instanceof GscError) wrap(e);
     throw e;
   }
+}
+
+/** Complete calendar months (YYYY-MM) that end on or before `end`, newest first, up to `n` (Search Console keeps 16). */
+export function completeMonths(end: Date, n = 16) {
+  const out: string[] = [];
+  const d = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1));
+  const lastDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0)).getUTCDate();
+  if (end.getUTCDate() < lastDay) d.setUTCMonth(d.getUTCMonth() - 1);
+  for (let i = 0; i < n; i++) {
+    out.push(d.toISOString().slice(0, 7));
+    d.setUTCMonth(d.getUTCMonth() - 1);
+  }
+  return out;
+}
+
+/**
+ * Clicks per page per month, for "Contenido en declive". Fetches the months not stored yet, and always the
+ * two most recent (Google may still adjust them); older months never change.
+ */
+async function syncMonthlyPages(siteId: string, property: string, client: SearchConsoleClient, end: Date, log: (m: string) => void, signal?: AbortSignal) {
+  const months = completeMonths(end);
+  const have = new Set((await prisma.gscPageMonth.groupBy({ by: ['month'], where: { siteId } })).map(r => r.month));
+  const todo = months.filter((m, i) => i < 2 || !have.has(m));
+  for (const m of todo) {
+    if (signal?.aborted) throw new Error('Cancelado');
+    const [y, mo] = m.split('-').map(Number);
+    const startDate = `${m}-01`;
+    const endDate = new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
+    const rows = await client.query(property, { startDate, endDate, dimensions: ['page'], maxRows: 25_000 });
+    await prisma.gscPageMonth.deleteMany({ where: { siteId, month: m } });
+    for (let i = 0; i < rows.length; i += 1000) await prisma.gscPageMonth.createMany({ data: rows.slice(i, i + 1000).map(r => ({ siteId, month: m, page: r.keys[0], clicks: r.clicks, impressions: r.impressions, ctr: r.ctr, position: r.position })) });
+  }
+  await prisma.gscPageMonth.deleteMany({ where: { siteId, month: { lt: months[months.length - 1] } } });
+  log(`Historial mensual: ${todo.length} mes(es) actualizados`);
 }
 
 export async function latestGscImport(siteId: string) {

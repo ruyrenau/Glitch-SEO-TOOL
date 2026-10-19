@@ -147,6 +147,7 @@ model Site {
   aiObservations     AiObservation[]
   aiAnalyses         AiAnalysis[]
   geoPrompts         GeoPrompt[]
+  gscMonths      GscPageMonth[]
 }
 
 model LogImport {
@@ -228,6 +229,7 @@ model CrawlRun {
   issues         Issue[]
   alerts         Alert[]
   aiReadiness    AiReadinessPage[]
+  fingerprints   ContentFingerprint[]
 }
 
 model CrawledPage {
@@ -841,4 +843,34 @@ model AiReadinessPage {
 
   @@unique([crawlRunId, url])
   @@index([crawlRunId, score])
+}
+
+/// Search Console clicks of one page in one calendar month (kept across imports, up to 16 months).
+model GscPageMonth {
+  id          String @id @default(uuid())
+  siteId      String
+  site        Site   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  month       String // YYYY-MM
+  page        String
+  clicks      Int
+  impressions Int
+  ctr         Float
+  position    Float
+
+  @@index([siteId, month])
+  @@index([siteId, page])
+}
+
+/// Text fingerprint of a crawled page's main content (for duplicate and thin content).
+model ContentFingerprint {
+  id         String   @id @default(uuid())
+  crawlRunId String
+  crawlRun   CrawlRun @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
+  url        String
+  words      Int
+  textHash   String
+  minhash    Json
+
+  @@unique([crawlRunId, url])
+  @@index([crawlRunId, textHash])
 }
