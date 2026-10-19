@@ -13,6 +13,9 @@ export interface PageSnapshot {
   wordCount: number;
   blockedByRobots: boolean;
   schemaTypes: string[];
+  /** Where the URL ended up after redirects (absent in older callers = no redirect information). */
+  finalUrl?: string | null;
+  redirected?: boolean;
 }
 
 export type ChangeType =
@@ -30,7 +33,10 @@ export type ChangeType =
   | 'H1_CHANGED'
   | 'CONTENT_SHRUNK'
   | 'SCHEMA_REMOVED'
-  | 'ROBOTS_BLOCKED_NEW';
+  | 'ROBOTS_BLOCKED_NEW'
+  | 'REDIRECT_ADDED'
+  | 'REDIRECT_REMOVED'
+  | 'REDIRECT_TARGET_CHANGED';
 
 export interface PageChange {
   type: ChangeType;
@@ -70,8 +76,11 @@ export function diffCrawls(before: PageSnapshot[], after: PageSnapshot[], opts: 
       push(a.indexabilityReason === 'noindex' ? 'NOINDEX_ADDED' : 'BECAME_NON_INDEXABLE', url, 'indexable', a.indexabilityReason);
     }
     if (!b.isIndexable && a.isIndexable) push('BECAME_INDEXABLE', url, b.indexabilityReason, 'indexable');
-    // Content comparisons only make sense when both versions were fetched as HTML.
-    if (b.statusCode === 200 && a.statusCode === 200) {
+    if (!b.redirected && a.redirected) push('REDIRECT_ADDED', url, null, a.finalUrl);
+    else if (b.redirected && !a.redirected) push('REDIRECT_REMOVED', url, b.finalUrl, null);
+    else if (b.redirected && a.redirected && b.finalUrl !== a.finalUrl) push('REDIRECT_TARGET_CHANGED', url, b.finalUrl, a.finalUrl);
+    // Content comparisons only make sense when both versions were fetched as HTML at this URL.
+    if (b.statusCode === 200 && a.statusCode === 200 && !b.redirected && !a.redirected) {
       if ((b.canonical ?? null) !== (a.canonical ?? null)) push('CANONICAL_CHANGED', url, b.canonical, a.canonical);
       if ((b.title ?? '') !== (a.title ?? '')) push('TITLE_CHANGED', url, b.title, a.title);
       if ((b.metaDescription ?? '') !== (a.metaDescription ?? '')) push('META_DESCRIPTION_CHANGED', url, b.metaDescription, a.metaDescription);

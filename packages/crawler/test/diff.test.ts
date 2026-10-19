@@ -17,6 +17,15 @@ const page = (url: string, o: Partial<PageSnapshot> = {}): PageSnapshot => ({
 });
 
 describe('diffCrawls', () => {
+  it('reports redirects that appear, disappear or change destination', () => {
+    const d = diffCrawls(
+      [page('/r1'), page('/r2', { redirected: true, finalUrl: '/x' }), page('/r3', { redirected: true, finalUrl: '/x' })],
+      [page('/r1', { redirected: true, finalUrl: '/y', title: 'Other' }), page('/r2'), page('/r3', { redirected: true, finalUrl: '/z' })],
+      { newerCrawlComplete: true }
+    );
+    expect(d.changes.map(c => [c.url, c.type, c.after])).toEqual([['/r1', 'REDIRECT_ADDED', '/y'], ['/r2', 'REDIRECT_REMOVED', null], ['/r3', 'REDIRECT_TARGET_CHANGED', '/z']]);
+  });
+
   const before = [page('/a'), page('/b'), page('/c'), page('/d'), page('/gone'), page('/e', { statusCode: 404, isIndexable: false, indexabilityReason: 'HTTP 404' })];
   const after = [
     page('/a', { isIndexable: false, indexabilityReason: 'noindex' }),

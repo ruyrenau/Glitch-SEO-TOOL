@@ -65,6 +65,13 @@ const RULES: Array<[RegExp, RegExp, Permission]> = [
   [/^POST$/, /^\/api\/v1\/sites\/:id\/agents\/audit$/, 'seo:operate'],
   [/^PUT$/, /^\/api\/v1\/sites\/:id\/agents\/catalog$/, 'content:edit'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/agents\/catalog\/publish$/, 'wordpress:send'],
+  // Content gaps spend SerpAPI credit (operation); briefs may spend AI credit.
+  [/^POST$/, /^\/api\/v1\/sites\/:id\/content-gaps$/, 'seo:operate'],
+  [/^POST$/, /^\/api\/v1\/content-gaps\/:id\/briefs$/, 'content:edit'],
+  // Experiments: recording and analysing them is an operation.
+  [/^POST$/, /^\/api\/v1\/sites\/:id\/experiments$/, 'seo:operate'],
+  [/^(PATCH|DELETE)$/, /^\/api\/v1\/experiments\/:id$/, 'seo:operate'],
+  [/^POST$/, /^\/api\/v1\/experiments\/:id\/analyze$/, 'seo:operate'],
   // Backlinks and SERP tracking are operations (they make requests to other sites / spend SerpAPI credit).
   [/^POST$/, /^\/api\/v1\/sites\/:id\/(backlinks|serp\/run|serp\/keywords)$/, 'seo:operate'],
   [/^(PUT|DELETE)$/, /^\/api\/v1\/sites\/:id\/serp\/(config|keywords\/:keywordId)$/, 'seo:operate'],
@@ -119,6 +126,8 @@ async function workspaceOfResource(route: string, id: string, current: string): 
     const p = await prisma.wordPressPublication.findUnique({ where: { id }, select: { generatedPage: { select: { site: { select: { workspaceId: true } } } } } });
     return p ? p.generatedPage.site?.workspaceId ?? null : undefined;
   }
+  if (/^\/api\/v1\/content-gaps\/:id/.test(route)) return viaSite(await prisma.contentGap.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
+  if (/^\/api\/v1\/experiments\/:id/.test(route)) return viaSite(await prisma.seoExperiment.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
   if (/^\/api\/v1\/consolidations\/:id/.test(route)) return viaSite(await prisma.consolidation.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
   if (/^\/api\/v1\/reports\/:id/.test(route)) return viaSite(await prisma.reportShare.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
   if (/^\/api\/v1\/ai-prompts\/:id/.test(route)) return viaSite(await prisma.aiPrompt.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));

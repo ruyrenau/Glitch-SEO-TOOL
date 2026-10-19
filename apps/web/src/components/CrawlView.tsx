@@ -251,7 +251,7 @@ export function CrawlView({ siteId, onFinished }: { siteId: string; onFinished: 
         )}
       </Card>
 
-      {selected && runs?.find(r => r.id === selected)?.status === 'completed' && <DiffPanel runId={selected} />}
+      {selected && runs?.find(r => r.id === selected)?.status === 'completed' && <DiffPanel runId={selected} runs={runs} />}
       {selected && <PagesTable runId={selected} />}
     </div>
   );

@@ -3,7 +3,6 @@
 Lista viva de lo que falta. Al terminar algo, se marca con [x] y se anota el commit.
 
 ## SEO técnico
-- [ ] **Comparar dos crawls**: URLs nuevas y eliminadas, títulos, canonicals y redirecciones que cambiaron (antes y después de un deploy o una migración).
 - [ ] **Asistente de migraciones**: subir un mapa de URLs viejas → nuevas y revisar que cada 301 llegue bien, cadenas y bucles (el rescate de 404 ya está en Arquitectura).
 - [ ] **Auditoría de hreflang a fondo**: enlaces de regreso, códigos de idioma válidos, destinos indexables.
 - [ ] **Robots.txt y sitemaps**: probar una URL contra robots.txt; cruzar sitemap contra lo indexable.
@@ -30,6 +29,7 @@ Lista viva de lo que falta. Al terminar algo, se marca con [x] y se anota el com
 - [ ] Sección de GA4 en los Reportes para clientes.
 
 ## Hecho recientemente
+- [x] Comparar crawls (cualquier par, redirecciones, resumen, CSV), Experimentos SEO con grupo de control (Search Console), Brechas de contenido frente a competidores con briefs (SerpAPI + Claude) y tendencia de CrUX
 - [x] Agentes de IA: navegación de agentes con Chrome (controles, etiquetas, ventanas, captcha, precios, tareas) y catálogo para agentes en WordPress (agent.json, catálogo, servidor MCP de solo lectura, plugin glitch-agents.php)
 - [x] Registro solo con tickets de la cuenta maestra; Administración con tickets, interruptor de registro, espacios por cuenta, usuarios y espacios de la instancia (3a850e3)
 - [x] Cuentas y colaboradores: registro con espacio propio y límites, varios espacios por persona, invitaciones por correo con rol, quitar miembros, recuperar contraseña por correo, panel de administración de la instancia (0ea036e)

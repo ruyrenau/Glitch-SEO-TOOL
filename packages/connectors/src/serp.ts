@@ -21,9 +21,13 @@ export const SERP_FEATURES: Record<SerpFeature, { label: string; above: boolean 
 };
 
 export interface SerpResult {
-  organic: Array<{ position: number; url: string; domain: string; title: string }>;
+  organic: Array<{ position: number; url: string; domain: string; title: string; snippet?: string }>;
   features: SerpFeature[];
   aiOverview: { present: boolean; sources: Array<{ url: string; domain: string; title: string }> };
+  /** "People also ask" questions. */
+  questions?: string[];
+  /** "Related searches" at the bottom of the page. */
+  related?: string[];
 }
 
 export class SerpError extends Error {
@@ -43,7 +47,7 @@ const domainOf = (u: string) => {
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 export function parseSerpApi(j: Json, aiExtra?: Json | null): SerpResult {
-  const organic = ((j.organic_results ?? []) as Json[]).filter(r => r.link).map(r => ({ position: Number(r.position) || 0, url: String(r.link), domain: domainOf(String(r.link)), title: String(r.title ?? '') }));
+  const organic = ((j.organic_results ?? []) as Json[]).filter(r => r.link).map(r => ({ position: Number(r.position) || 0, url: String(r.link), domain: domainOf(String(r.link)), title: String(r.title ?? ''), ...(r.snippet ? { snippet: String(r.snippet) } : {}) }));
   const f = new Set<SerpFeature>();
   const ai = aiExtra?.ai_overview ?? j.ai_overview;
   if (ai && !ai.error) f.add('ai_overview');
@@ -58,7 +62,9 @@ export function parseSerpApi(j: Json, aiExtra?: Json | null): SerpResult {
   if ((j.inline_images ?? []).length) f.add('images');
   if ((j.ads ?? []).length) f.add('ads');
   const refs = ((ai?.references ?? []) as Json[]).filter(r => r.link).map(r => ({ url: String(r.link), domain: domainOf(String(r.link)), title: String(r.title ?? r.source ?? '') }));
-  return { organic, features: [...f], aiOverview: { present: f.has('ai_overview'), sources: refs } };
+  const questions = ((j.related_questions ?? []) as Json[]).map(q => String(q.question ?? '')).filter(Boolean);
+  const related = ((j.related_searches ?? []) as Json[]).map(q => String(q.query ?? '')).filter(Boolean);
+  return { organic, features: [...f], aiOverview: { present: f.has('ai_overview'), sources: refs }, questions, related };
 }
 
 export class SerpApiClient {

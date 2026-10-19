@@ -17,7 +17,9 @@ import {
   BadgeCheck,
   Trophy,
   ShieldCheck,
-  MousePointerClick
+  MousePointerClick,
+  Target,
+  FlaskConical
 } from 'lucide-react';
 import { API_URL, ApiRequestError, UNAUTHORIZED_EVENT, apiGet, apiSend } from '@/lib/api';
 import { AuthProvider, useAuth } from '@/lib/auth';
@@ -40,6 +42,8 @@ import { ArchitectureView } from '@/components/ArchitectureView';
 import { EntitiesView } from '@/components/EntitiesView';
 import { AuthorityView } from '@/components/AuthorityView';
 import { AgentsView } from '@/components/AgentsView';
+import { ExperimentsView } from '@/components/ExperimentsView';
+import { GapsView } from '@/components/GapsView';
 import { AiVisibilityView } from '@/components/AiVisibilityView';
 import { SettingsView } from '@/components/SettingsView';
 import { SeoChangesView } from '@/components/SeoChangesView';
@@ -57,7 +61,7 @@ import { SchemaGeneratorView } from '@/components/SchemaGeneratorView';
 import { WordPressView } from '@/components/WordPressView';
 import { ContentView } from '@/components/ContentView';
 
-type NavId = 'wizard' | 'overview' | 'monitor' | 'sites' | 'logs' | 'crawler' | 'explorer' | 'architecture' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'entities' | 'programmatic' | 'wordpress' | 'seochanges' | 'gsc' | 'ga4' | 'authority' | 'geo' | 'aiready' | 'agents' | 'contentaudit' | 'reports' | 'automations' | 'audit' | 'manual' | 'users' | 'settings' | 'account' | 'admin';
+type NavId = 'wizard' | 'overview' | 'monitor' | 'sites' | 'logs' | 'crawler' | 'explorer' | 'architecture' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'entities' | 'programmatic' | 'wordpress' | 'seochanges' | 'gsc' | 'ga4' | 'authority' | 'geo' | 'aiready' | 'agents' | 'experiments' | 'gaps' | 'contentaudit' | 'reports' | 'automations' | 'audit' | 'manual' | 'users' | 'settings' | 'account' | 'admin';
 
 const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ className?: string }>; ready: boolean; perm?: Permission }> = [
   { id: 'wizard', label: 'Inicio guiado', icon: Rocket, ready: true },
@@ -79,6 +83,8 @@ const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ classNa
   { id: 'gsc', label: 'Search Console', icon: Search, ready: true },
   { id: 'ga4', label: 'Google Analytics', icon: BarChart3, ready: true },
   { id: 'authority', label: 'Autoridad y SERP', icon: Trophy, ready: true },
+  { id: 'gaps', label: 'Brechas de contenido', icon: Target, ready: true },
+  { id: 'experiments', label: 'Experimentos SEO', icon: FlaskConical, ready: true },
   { id: 'geo', label: 'Visibilidad en IA', icon: Sparkles, ready: true },
   { id: 'contentaudit', label: 'Análisis de contenido', icon: FileSearch, ready: true },
   { id: 'aiready', label: 'Listo para IA', icon: Bot, ready: true },
@@ -183,7 +189,7 @@ function Dashboard() {
 
   const current = nav === 'manual' ? { label: 'Manual de uso' } : nav === 'account' ? { label: 'Mi cuenta' } : nav === 'admin' ? { label: 'Administración' } : NAV.find(n => n.id === nav)!;
   const visibleNav = [...NAV.filter(n => !n.perm || can(n.perm)), ...(user.isSuperAdmin ? [{ id: 'admin' as NavId, label: 'Administración', icon: ShieldCheck, ready: true }] : [])];
-  const needsSite = ['overview', 'monitor', 'architecture', 'entities', 'authority', 'agents', 'ga4', 'geo', 'aiready', 'contentaudit', 'reports', 'logs', 'crawler', 'explorer', 'seochanges', 'gsc', 'issues', 'alerts', 'programmatic', 'wordpress', 'vitals'].includes(nav);
+  const needsSite = ['overview', 'monitor', 'architecture', 'entities', 'authority', 'agents', 'experiments', 'gaps', 'ga4', 'geo', 'aiready', 'contentaudit', 'reports', 'logs', 'crawler', 'explorer', 'seochanges', 'gsc', 'issues', 'alerts', 'programmatic', 'wordpress', 'vitals'].includes(nav);
 
   return (
     <div className={dark ? 'dark' : ''}>
@@ -316,6 +322,8 @@ function Dashboard() {
                 {nav === 'entities' && <EntitiesView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'authority' && <AuthorityView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'agents' && <AgentsView key={siteId} siteId={siteId} go={go} />}
+                {nav === 'experiments' && <ExperimentsView key={siteId} siteId={siteId} go={go} />}
+                {nav === 'gaps' && <GapsView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'reports' && <ReportsView key={siteId} siteId={siteId} />}
                 {nav === 'aiready' && <AiReadinessView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'contentaudit' && <ContentAuditView key={siteId} siteId={siteId} go={go} />}

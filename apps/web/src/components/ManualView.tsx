@@ -3,7 +3,7 @@ import type { GoFn } from '@/lib/types';
 
 import React from 'react';
 import {
-  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart, Bot, FileSearch, BarChart3, Network, BadgeCheck, Trophy, MousePointerClick
+  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart, Bot, FileSearch, BarChart3, Network, BadgeCheck, Trophy, MousePointerClick, Target, FlaskConical
 } from 'lucide-react';
 import { Badge, Button, Card } from './ui';
 
@@ -124,7 +124,7 @@ const SECTIONS: Section[] = [
     read: [
       ['Indexable', '"sí" si responde 200, no tiene noindex, no está bloqueada y su canonical apunta a sí misma. Si no, se indica el motivo.'],
       ['Enlaces entrantes', 'Cuántas páginas rastreadas enlazan a esta. 0 en una página del sitemap = posible huérfana.'],
-      ['Cambios respecto al crawl anterior', 'Los filtros en rojo son regresiones: páginas rotas, noindex añadido, canonical cambiado, contenido reducido, schema eliminado.']
+      ['Comparar crawls (antes y después)', 'Abajo del crawl elegido. Por defecto compara con el anterior; en "Comparar contra" eliges cualquier otro (por ejemplo, el de antes de un deploy o una migración). Muestra páginas nuevas y desaparecidas, títulos, metas, H1, canonicals, noindex, estados HTTP y redirecciones nuevas, quitadas o con otro destino. En rojo, posibles problemas; en verde, mejoras. Busca por URL y exporta todo a CSV.']
     ],
     tips: [
       'Logout, carrito, checkout, wp-admin y búsquedas internas nunca se solicitan.',
@@ -315,9 +315,11 @@ const SECTIONS: Section[] = [
       'Elige Móvil, Escritorio o ambos y pulsa "Medir". El worker mide una URL a la vez (unos 20 segundos cada una).',
       'Cada URL muestra un reporte tipo GTmetrix: captura, nota de la A a la F (70 % rendimiento + 30 % estructura), LCP, TBT y CLS, principales problemas filtrables por métrica, peso y peticiones por tipo de archivo, cascada de peticiones y la secuencia visual de carga.',
       'Abre un problema para ver qué archivos lo causan y cuánto se ahorraría. En el historial, haz clic en una medición anterior para ver su reporte.',
-      'Abajo, en "Usuarios reales (CrUX)", están los datos de campo cuando hay clave de PageSpeed.'
+      'Abajo, en "Usuarios reales (CrUX)", están los datos de campo cuando hay clave de PageSpeed.',
+      'Al final, "Datos reales de usuarios (CrUX)" muestra la tendencia semana a semana (unos 6–9 meses) del sitio completo y de la página que elijas, en celular o escritorio. Necesita habilitar la "Chrome UX Report API" en tu proyecto de Google Cloud (misma clave de PageSpeed).'
     ],
     read: [
+      ['Tendencia CrUX', 'Cada punto es el percentil 75 de los 28 días anteriores. Las líneas punteadas marcan los límites de bueno y malo. "Aprueba Core Web Vitals" = LCP, INP y CLS en bueno. Un cambio tarda hasta 4 semanas en verse completo.'],
       ['Usuarios reales (CrUX)', 'Percentil 75 de visitas reales de Chrome en los últimos 28 días. Es lo que cuenta para Google. Solo con PSI_API_KEY y si la página tiene tráfico suficiente; si no, se usan los datos de todo el sitio y se indica.'],
       ['Laboratorio (simulado)', 'Una carga con red y CPU limitadas en un navegador. Sirve para diagnosticar y comparar cambios; no representa a tus usuarios.'],
       ['Umbrales', 'LCP ≤ 2.5 s, INP ≤ 200 ms y CLS ≤ 0.1 son "Bueno". INP solo existe con usuarios reales; en laboratorio se usa TBT como aproximación.'],
@@ -627,6 +629,53 @@ const SECTIONS: Section[] = [
       ['MCP', 'Model Context Protocol: un estándar para que los asistentes de IA usen herramientas. El plugin ofrece get_business_info, search_catalog, get_item y how_to_contact. Es de solo lectura y limita 120 consultas por minuto por IP.']
     ],
     limits: ['Todavía no hay un estándar único para agentes; agent.json es un formato propio de G.SEO y MCP es lo más adoptado hoy.', 'La revisión no envía formularios ni compra: revisa que se pueda, no lo hace.', 'Publicar necesita WordPress conectado con un usuario administrador. Si tienes WooCommerce, los productos se agregan solos.']
+  },
+  {
+    id: 'gaps',
+    nav: 'gaps',
+    icon: Target,
+    title: 'Brechas de contenido',
+    status: 'ready',
+    what: 'Busca tus keywords en Google (SerpAPI) y te dice dónde tus competidores salen en el top 10 y tú no. Agrupa las keywords que Google trata como la misma intención y por cada grupo propone crear una página o mejorar una que ya tienes, con un brief de contenido (con o sin IA).',
+    why: 'Es la forma más directa de saber qué contenido te falta para ganarle a tu competencia, con datos reales de Google y no con suposiciones.',
+    steps: [
+      'Necesitas la clave de SerpAPI en Configuración → Claves de API (cada keyword gasta 1 búsqueda de tu plan).',
+      'Escribe los dominios de hasta 5 competidores. Si ya usas el seguimiento de SERP, se sugieren los que más aparecen.',
+      'Agrega keywords: escríbelas, o usa los botones para traer las de Search Console donde estás débil (posición > 8) y las que sigues en SERP.',
+      'Deja marcado "Agregar búsquedas relacionadas" para descubrir keywords nuevas (usa el presupuesto que sobre). Pulsa "Buscar brechas".',
+      'En "Oportunidades de contenido" abre cada grupo: verás las preguntas de Google, las páginas de la competencia que rankean y si ya tienes una página para mejorar.',
+      'Pulsa "Brief sin IA" (estructura con preguntas y competidores) o "Brief con IA" (Claude escribe título, meta, estructura H2/H3, qué aportar que la competencia no tenga, schema y enlaces). Copia o descarga el .md para tu redactor.'
+    ],
+    read: [
+      ['No apareces', 'Al menos un competidor está en el top 10 y tú no apareces ni en Search Console (o estás después del 20).'],
+      ['Detrás de ellos', 'Apareces, pero por debajo del mejor competidor (o solo en Search Console, entre 10 y 20).'],
+      ['Mismo grupo', 'Keywords cuyos top 10 comparten 3 o más resultados: Google las ve como la misma intención, así que van en una sola página.'],
+      ['Puntaje', 'Suma de (11 − posición) de cada competidor en el top 10: más competidores y más arriba = más oportunidad.']
+    ],
+    limits: ['SerpAPI no da la lista de keywords de un competidor (eso requiere herramientas de pago como Ahrefs o Semrush): revisa las keywords que tú le das, más sus búsquedas relacionadas.', 'Los resultados son de escritorio, para el país e idioma configurados en Autoridad y SERP.', 'El brief con IA usa solo lo que hay en los resultados; los datos del negocio aparecen como [DATO DEL CLIENTE].']
+  },
+  {
+    id: 'experiments',
+    nav: 'experiments',
+    icon: FlaskConical,
+    title: 'Experimentos SEO',
+    status: 'ready',
+    what: 'Anotas "el día X cambié estas páginas" y la herramienta compara los clics, impresiones, CTR y posición de Search Console antes y después, contra un grupo de control. Te dice si funcionó, empeoró o si la diferencia puede ser ruido.',
+    why: 'Sin grupo de control no sabes si subiste por tu cambio o porque llegó la temporada alta o una actualización de Google. El control lo descuenta.',
+    steps: [
+      'Necesitas Search Console conectado con la propiedad del sitio.',
+      'Al hacer un cambio (o después, con una fecha pasada) crea un experimento: nombre, fecha, hipótesis y las páginas que cambiaste.',
+      'Grupo de control: déjalo vacío para usar el resto del sitio, o pon páginas parecidas que NO cambiaste (es más preciso).',
+      'Espera al menos 7 días (mejor 2–4 semanas) y pulsa "Analizar". Puedes actualizar los resultados cuando quieras.',
+      'Anota en "Notas" cualquier otra cosa que haya pasado (otro cambio, una campaña) para interpretar bien el resultado.'
+    ],
+    read: [
+      ['Efecto neto', 'Cuánto cambiaron tus páginas descontando lo que cambió el control. +50% = crecieron 50% más que el control.'],
+      ['Gráfica', 'Clics promedio de 7 días; el periodo antes del cambio vale 100 para los dos grupos. Si la línea azul se separa hacia arriba después de la línea vertical, el cambio funcionó.'],
+      ['Veredicto', 'Funcionó o Empeoró solo si la diferencia es estadísticamente significativa (p < 0.05). Si no, "Sin efecto claro".'],
+      ['Posición', 'Negativo es bueno: subiste en Google.']
+    ],
+    limits: ['Search Console publica con 2–3 días de retraso.', 'Con pocas visitas (menos de ~30 clics en el periodo) no se puede concluir nada: usa páginas con más tráfico o más páginas.', 'Si cambias otras cosas en las mismas páginas durante la ventana, el resultado las mezcla.']
   },
   {
     id: 'reports',

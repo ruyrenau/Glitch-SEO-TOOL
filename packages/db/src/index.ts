@@ -28,3 +28,5 @@ export * from './serp-service';
 export * from './mailer';
 export * from './account-service';
 export * from './agent-service';
+export * from './experiment-service';
+export * from './gap-service';

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  Activity, AlertTriangle, ArrowRight, BadgeCheck, BarChart3, Bell, Network, Trophy, BookOpen, Bot, CheckCircle2, Circle, Code2, FileBarChart, FileSearch, FileText, Gauge, Globe, Layers, Loader2, PencilLine, Play, ScanSearch, Search, Send, Settings, ShieldAlert, Sparkles, MousePointerClick
+  Activity, AlertTriangle, ArrowRight, BadgeCheck, BarChart3, Bell, Network, Trophy, BookOpen, Bot, CheckCircle2, Circle, Code2, FileBarChart, FileSearch, FileText, Gauge, Globe, Layers, Loader2, PencilLine, Play, ScanSearch, Search, Send, Settings, ShieldAlert, Sparkles, MousePointerClick, Target, FlaskConical
 } from 'lucide-react';
 import { apiGet, apiSend, fmt, waitForJob } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -36,6 +36,8 @@ const GROUPS: Array<{ title: string; cards: SectionCard[] }> = [
     cards: [
       { nav: 'explorer', icon: ScanSearch, title: 'Explorador SEO', what: 'Todas las URLs del crawl en pestañas, como Screaming Frog: títulos, metas, H1, imágenes, canonicals, recursos, enlaces externos, estructura y búsqueda personalizada.', when: 'Para revisar página por página y exportar listas a CSV.' },
       { nav: 'architecture', icon: Network, title: 'Arquitectura', what: 'Link Score (PageRank interno), páginas huérfanas y profundas, sugerencias de enlaces que se insertan en WordPress, mapa de redirecciones 301 para URLs rotas y comparación del HTML con y sin JavaScript.', when: 'Para repartir la fuerza del sitio, rescatar URLs rotas y revisar sitios hechos con JavaScript.', needs: 'Un crawl' },
+      { nav: 'gaps', icon: Target, title: 'Brechas de contenido', what: 'Encuentra keywords donde tus competidores salen en el top 10 y tú no, las agrupa por intención y te da un brief para cada página nueva o mejora.', when: 'Para decidir qué contenido escribir.', needs: 'Clave de SerpAPI' },
+      { nav: 'experiments', icon: FlaskConical, title: 'Experimentos SEO', what: 'Anota qué cambiaste y cuándo, y mide en Search Console si funcionó frente a un grupo de control.', when: 'Cada vez que cambies títulos, contenido o estructura.', needs: 'Search Console' },
       { nav: 'agents', icon: MousePointerClick, title: 'Agentes de IA', what: 'Revisa si un agente de IA puede encontrar tus precios, contactarte y usar tu botón principal, y publica un catálogo con servidor MCP en WordPress para que los agentes te consulten directo.', when: 'Para que los asistentes que compran o cotizan por la gente puedan elegirte.', needs: 'Chrome; WordPress para publicar' },
       { nav: 'issues', icon: AlertTriangle, title: 'Issues técnicos', what: 'Los problemas del crawl ordenados por gravedad, con las URLs afectadas y qué hacer para arreglarlos.', when: 'Para tener una lista de trabajo priorizada.' },
       { nav: 'crawler', icon: ShieldAlert, title: 'Crawl y auditoría', what: 'Crawls con más opciones (hasta 100,000 URLs, JavaScript, exclusiones, modo lista) y programados para que corran solos.', when: 'Para crawls grandes o periódicos.' },

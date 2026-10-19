@@ -58,9 +58,15 @@ test('a bad deploy between two crawls raises alerts and shows up in the diff', a
   await expect(page.getByRole('button', { name: 'Iniciar crawl' })).toBeEnabled({ timeout: 30_000 });
 
   await page.getByRole('button', { name: 'Ver detalle' }).first().click();
-  await expect(page.getByText('Cambios respecto al crawl anterior')).toBeVisible();
+  await expect(page.getByText('Comparar crawls (antes y después)')).toBeVisible();
+  await expect(page.getByLabel('Resumen de cambios')).toContainText('Posibles problemas');
   await page.getByRole('button', { name: /noindex añadido · 1/ }).click();
   await expect(page.getByRole('cell', { name: '/about' })).toBeVisible();
+  const csv = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Exportar CSV' }).click();
+  expect((await csv).suggestedFilename()).toBe('cambios-entre-crawls.csv');
+  await page.getByLabel('Buscar URL en los cambios').fill('/nada-asi');
+  await expect(page.getByText('Ningún cambio coincide con el filtro.')).toBeVisible();
 
   await page.getByRole('button', { name: 'Alertas' }).click();
   await expect(page.getByText('noindex añadido')).toBeVisible();

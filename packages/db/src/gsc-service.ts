@@ -83,6 +83,13 @@ export async function gscDisconnect(workspaceId: string, userId: string | null) 
   return { disconnected: true };
 }
 
+/** Search Console client of the workspace's connected Google account. */
+export async function gscClientFor(workspaceId: string) {
+  return clientFor(workspaceId);
+}
+/** Maps connector errors to WorkflowError (use as `.catch(wrapGscError)`). */
+export const wrapGscError = (e: unknown): never => wrap(e);
+
 async function clientFor(workspaceId: string) {
   const acc = await prisma.googleAccount.findUnique({ where: { workspaceId } });
   if (!acc) throw new WorkflowError('GSC_NOT_CONNECTED', 'Conecta primero una cuenta de Google en la sección Search Console.', 400);

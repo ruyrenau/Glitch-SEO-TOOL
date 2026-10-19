@@ -87,6 +87,15 @@ import {
   cannibalizationReport,
   aiReadinessReport,
   latestAgentAudit,
+  listExperiments,
+  latestContentGap,
+  gapKeywordSuggestions,
+  startContentGap,
+  createGapBrief,
+  createExperiment,
+  updateExperiment,
+  deleteExperiment,
+  runExperimentAnalysis,
   startAgentAudit,
   getAgentCatalog,
   saveAgentCatalog,
@@ -167,6 +176,7 @@ import {
 import { HARD_MAX_URLS, MAX_RPS, fetchSitemap, findBrowser, parseSitemapXml, fetchWithRedirects, extractPageHints, suggestSchemaForms, renderPdf } from '@glitch/crawler';
 import { validateJsonLd, validateSchema, CATALOG } from '@glitch/schema-engine';
 import { renderTemplate, computeJaccardSimilarity, evaluateQualityGate } from '@glitch/content-engine';
+import { fetchCruxHistory, CruxError, type CruxHistory } from '@glitch/performance';
 import { registerAuth } from './auth';
 import { enqueue, cancelJob, retryJob, listJobs, queueHealth, setSiteSchedule, getSiteSchedule, setVitalsSchedule, describeCron, closeProducer, uploadDir } from '@glitch/jobs';
 
@@ -857,6 +867,62 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     return validateAgentEndpoints(id);
   });
 
+  // Experimentos SEO: before/after with a control group (Search Console).
+  const experimentBody = z.object({
+    name: z.string().min(1).max(200),
+    hypothesis: z.string().max(2000).nullable().optional(),
+    changeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    testUrls: z.array(z.string().url()).min(1).max(200),
+    controlUrls: z.array(z.string().url()).max(200).optional(),
+    windowDays: z.number().int().min(7).max(90).optional()
+  });
+  app.get('/api/v1/sites/:id/experiments', async req => {
+    const { id } = idParam.parse(req.params);
+    const site = await requireSite(id);
+    return { gscReady: !!site.gscProperty, items: await listExperiments(id) };
+  });
+  app.post('/api/v1/sites/:id/experiments', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const b = experimentBody.strict().parse(req.body);
+    await requireSite(id);
+    return reply.status(201).send(await createExperiment(id, b, req.auth!.user.id));
+  });
+  app.patch('/api/v1/experiments/:id', async req => {
+    const { id } = idParam.parse(req.params);
+    const b = experimentBody.partial().extend({ notes: z.string().max(5000).nullable().optional() }).strict().parse(req.body);
+    return updateExperiment(id, b, req.auth!.user.id);
+  });
+  app.delete('/api/v1/experiments/:id', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    await deleteExperiment(id, req.auth!.user.id);
+    return reply.status(204).send();
+  });
+  app.post('/api/v1/experiments/:id/analyze', async req => {
+    const { id } = idParam.parse(req.params);
+    return runExperimentAnalysis(id);
+  });
+
+  // Brechas de contenido frente a competidores (SerpAPI + Search Console) y briefs.
+  app.get('/api/v1/sites/:id/content-gaps', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    const [latest, suggestions] = await Promise.all([latestContentGap(id), gapKeywordSuggestions(id)]);
+    return { latest, suggestions };
+  });
+  app.post('/api/v1/sites/:id/content-gaps', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const b = z.object({ competitors: z.array(z.string().min(3).max(200)).min(1).max(5), keywords: z.array(z.string().max(120)).min(1).max(100), expand: z.boolean().optional(), maxSearches: z.number().int().min(5).max(100).optional() }).strict().parse(req.body);
+    const site = await requireSite(id);
+    const gap = await startContentGap(id, b);
+    const job = await enqueue('content-gap', { gapId: gap.id }, { siteId: id, workspaceId: site.workspaceId });
+    return reply.status(202).send({ gapId: gap.id, jobId: job.id });
+  });
+  app.post('/api/v1/content-gaps/:id/briefs', async req => {
+    const { id } = idParam.parse(req.params);
+    const b = z.object({ clusterId: z.string().max(20), useAi: z.boolean().default(false) }).strict().parse(req.body);
+    return createGapBrief(id, b.clusterId, { useAi: b.useAi }, req.auth!.user.id);
+  });
+
   // Backlinks: upload a CSV of external links, check each linking page in the background.
   app.get('/api/v1/sites/:id/backlinks', async req => {
     const { id } = idParam.parse(req.params);
@@ -1125,6 +1191,34 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     };
   });
 
+  /** CrUX field data (real Chrome users): weekly history for the origin and, optionally, one URL. Cached 12 h. */
+  const cruxCache = new Map<string, { at: number; value: CruxHistory | null }>();
+  const crux = async (target: { url: string } | { origin: string }, formFactor: 'PHONE' | 'DESKTOP' | 'ALL') => {
+    const k = `${JSON.stringify(target)}|${formFactor}`;
+    const hit = cruxCache.get(k);
+    if (hit && Date.now() - hit.at < 12 * 3600_000) return hit.value;
+    try {
+      const value = await fetchCruxHistory(target, { formFactor });
+      if (cruxCache.size > 500) cruxCache.clear();
+      cruxCache.set(k, { at: Date.now(), value });
+      return value;
+    } catch (e) {
+      if (e instanceof CruxError) throw new ApiError(e.status === 400 ? 400 : 502, 'CRUX_ERROR', e.message);
+      throw e;
+    }
+  };
+  app.get('/api/v1/sites/:id/crux', async req => {
+    const { id } = idParam.parse(req.params);
+    const q = z.object({ url: z.string().url().optional(), formFactor: z.enum(['PHONE', 'DESKTOP', 'ALL']).default('PHONE') }).parse(req.query);
+    const site = await requireSite(id);
+    const configured = !!(process.env.CRUX_API_KEY ?? process.env.PSI_API_KEY);
+    if (!configured) return { configured, origin: null, url: null };
+    const home = new URL(site.canonicalUrl);
+    if (q.url && new URL(q.url).hostname !== home.hostname) throw new ApiError(400, 'FOREIGN_URL', `Only URLs of ${home.hostname} can be queried`);
+    const [origin, url] = await Promise.all([crux({ origin: home.origin }, q.formFactor), q.url ? crux({ url: q.url }, q.formFactor) : null]);
+    return { configured, origin, url };
+  });
+
   /** Full GTmetrix-style report of one measurement (screenshot, filmstrip, issues, waterfall). */
   app.get('/api/v1/performance-runs/:id', async req => {
     const { id } = idParam.parse(req.params);
@@ -1181,14 +1275,23 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     return { ...res, page: q.page, pageSize: q.pageSize };
   });
 
-  app.get('/api/v1/crawls/:id/diff', async req => {
+  app.get('/api/v1/crawls/:id/diff', async (req, reply) => {
     const { id } = idParam.parse(req.params);
-    const { base, type } = z.object({ base: z.string().uuid().optional(), type: z.string().max(40).optional() }).parse(req.query);
+    const { base, type, q, format } = z.object({ base: z.string().uuid().optional(), type: z.string().max(40).optional(), q: z.string().max(200).optional(), format: z.enum(['json', 'csv']).default('json') }).parse(req.query);
     const run = await prisma.crawlRun.findUnique({ where: { id } });
     if (!run) throw new ApiError(404, 'CRAWL_NOT_FOUND', `Crawl ${id} not found`);
     const diff = await getCrawlDiff(id, base);
     if (!diff) throw new ApiError(404, 'NO_BASELINE', 'There is no earlier completed crawl to compare with');
-    const changes = type ? diff.changes.filter(c => c.type === type) : diff.changes;
+    const needle = q?.toLowerCase();
+    const changes = diff.changes.filter(c => (!type || c.type === type) && (!needle || c.url.toLowerCase().includes(needle)));
+    if (format === 'csv') {
+      const cell = (v: unknown) => {
+        const s = v === null || v === undefined ? '' : Array.isArray(v) ? v.join(' | ') : String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const csv = ['url,cambio,antes,despues', ...changes.map(c => [c.url, c.type, c.before, c.after].map(cell).join(','))].join('\n');
+      return reply.header('content-type', 'text/csv; charset=utf-8').header('content-disposition', `attachment; filename="cambios-${id.slice(0, 8)}.csv"`).send('\ufeff' + csv);
+    }
     return { ...diff, changes: changes.slice(0, 1000), totalChanges: changes.length };
   });
 

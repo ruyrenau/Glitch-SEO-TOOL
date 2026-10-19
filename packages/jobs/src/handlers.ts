@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { Prisma, prisma, importLogFile, runCrawl, deleteLogImport, purgeExpiredSessions, purgeOldCrawlDetail, runGscImport, runGa4Import, runBacklinkCheck, runSerpCheck, sitesDueForSerp, runAgentAuditJob, sitesForDailyGsc, getMonitorConfig, pickVitalsUrls, notifyMonitorChanges } from '@glitch/db';
+import { Prisma, prisma, importLogFile, runCrawl, deleteLogImport, purgeExpiredSessions, purgeOldCrawlDetail, runGscImport, runGa4Import, runBacklinkCheck, runSerpCheck, sitesDueForSerp, runAgentAuditJob, runContentGapJob, sitesForDailyGsc, getMonitorConfig, pickVitalsUrls, notifyMonitorChanges } from '@glitch/db';
 import { enqueue } from './producer';
 import { measure, PerformanceError } from '@glitch/performance';
 
@@ -184,6 +184,11 @@ export async function backlinkCheckHandler(p: { importId: string }, ctx: JobCont
   return { importId: r.id, checked: r.checked, rows: r.rows };
 }
 
+export async function contentGapHandler(p: { gapId: string }, ctx: JobContext) {
+  const g = await runContentGapJob(p.gapId, { log: m => ctx.log(m), signal: ctx.signal });
+  return { gapId: g.id };
+}
+
 export async function agentAuditHandler(p: { auditId: string }, ctx: JobContext) {
   const a = await runAgentAuditJob(p.auditId, m => ctx.log(m));
   return { auditId: a.id, pages: (a.urls as string[]).length };
@@ -232,6 +237,7 @@ export const HANDLERS = {
   'backlink-check': backlinkCheckHandler,
   'serp-check': serpCheckHandler,
   'agent-audit': agentAuditHandler,
+  'content-gap': contentGapHandler,
   'serp-daily': serpDailyHandler,
   'gsc-daily': gscDailyHandler,
   'monitor-vitals': monitorVitalsHandler

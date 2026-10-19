@@ -10,7 +10,7 @@ export interface MockGoogle {
   /** Point GOOGLE_AUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_REVOKE_URL and GSC_API_URL here. */
   env: Record<string, string>;
   /** Search Analytics rows per property: page-level and query+page-level. */
-  data: Map<string, { pages: Array<{ page: string; clicks: number; impressions: number; position: number }>; queries: Array<{ query: string; page: string; clicks: number; impressions: number; position: number }>; /** Optional page rows per month (YYYY-MM) for month-long queries. */ months?: Record<string, Array<{ page: string; clicks: number; impressions: number; position: number }>>; /** Optional rows per day and query (dimensions date,query). */ queryDays?: Array<{ date: string; query: string; clicks: number; impressions: number; position: number }> }>;
+  data: Map<string, { pages: Array<{ page: string; clicks: number; impressions: number; position: number }>; queries: Array<{ query: string; page: string; clicks: number; impressions: number; position: number }>; /** Optional page rows per month (YYYY-MM) for month-long queries. */ months?: Record<string, Array<{ page: string; clicks: number; impressions: number; position: number }>>; /** Optional rows per day and query (dimensions date,query). */ queryDays?: Array<{ date: string; query: string; clicks: number; impressions: number; position: number }>; /** Optional rows per day and page (dimensions date,page); when set, date totals come from them. */ pageDays?: Array<{ date: string; page: string; clicks: number; impressions: number; position: number }> }>;
   properties: Array<{ siteUrl: string; permissionLevel: string }>;
   /** GA4 properties ("properties/123") and their reports. */
   ga4Properties: Array<{ property: string; displayName: string }>;
@@ -118,7 +118,22 @@ export async function startMockGoogle(): Promise<MockGoogle> {
           const q = JSON.parse(body) as { startDate: string; endDate: string; dimensions: string[]; rowLimit: number; startRow: number };
           let rows: Array<{ keys: string[]; clicks: number; impressions: number; ctr: number; position: number }>;
           const ctr = (c: number, i: number) => (i ? c / i : 0);
-          if (q.dimensions.join() === 'date') {
+          const inRange = (x: { date: string }) => x.date >= q.startDate && x.date <= q.endDate;
+          if (q.dimensions.join() === 'date' && d.pageDays) {
+            const m = new Map<string, { c: number; i: number; p: number }>();
+            for (const x of d.pageDays.filter(inRange)) {
+              const t = m.get(x.date) ?? { c: 0, i: 0, p: 0 };
+              t.c += x.clicks;
+              t.i += x.impressions;
+              t.p += x.position * x.impressions;
+              m.set(x.date, t);
+            }
+            rows = [...m].sort(([a], [b]) => a.localeCompare(b)).map(([date, t]) => ({ keys: [date], clicks: t.c, impressions: t.i, ctr: ctr(t.c, t.i), position: t.i ? t.p / t.i : 0 }));
+          } else if (q.dimensions.join() === 'date,page') {
+            const f = (q as unknown as { dimensionFilterGroups?: Array<{ filters: Array<{ expression: string }> }> }).dimensionFilterGroups?.[0]?.filters?.[0]?.expression;
+            const re = f ? new RegExp(f) : null;
+            rows = (d.pageDays ?? []).filter(x => inRange(x) && (!re || re.test(x.page))).map(x => ({ keys: [x.date, x.page], clicks: x.clicks, impressions: x.impressions, ctr: ctr(x.clicks, x.impressions), position: x.position }));
+          } else if (q.dimensions.join() === 'date') {
             rows = [];
             const days = Math.round((Date.parse(q.endDate) - Date.parse(q.startDate)) / 86400_000) + 1;
             const totC = d.pages.reduce((s, p) => s + p.clicks, 0);

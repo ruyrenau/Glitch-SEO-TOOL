@@ -67,6 +67,12 @@ describe('crawl diff and alerts (integration)', () => {
     expect(byType('ROBOTS_BLOCKED_NEW')).toEqual(expect.arrayContaining(['/deep/1']));
     const onlyCanon = (await app.inject(`/api/v1/crawls/${second}/diff?type=CANONICAL_CHANGED`)).json();
     expect(onlyCanon.totalChanges).toBe(1);
+    expect((await app.inject(`/api/v1/crawls/${second}/diff?q=dup-a`)).json().changes.every((c: { url: string }) => c.url.includes('dup-a'))).toBe(true);
+    const csv = await app.inject(`/api/v1/crawls/${second}/diff?format=csv&type=NOINDEX_ADDED`);
+    expect(csv.headers['content-type']).toMatch(/text\/csv/);
+    expect(csv.body.replace('﻿', '').split('\n')).toEqual(['url,cambio,antes,despues', `${site.origin}/about,NOINDEX_ADDED,indexable,noindex`]);
+    // Any two crawls: the older one against the newer one shows the reverse.
+    expect((await app.inject(`/api/v1/crawls/${first}/diff?base=${second}`)).json().counts.NOINDEX_ADDED).toBeUndefined();
   });
 
   it('stores alerts, delivers them to the webhook and lets people acknowledge them', async () => {

@@ -10,9 +10,9 @@ type RunConfig = { robots?: { found: boolean; hash?: string | null }; limitReach
 async function snapshots(crawlRunId: string): Promise<PageSnapshot[]> {
   const rows = await prisma.crawledPage.findMany({
     where: { crawlRunId },
-    select: { url: true, statusCode: true, title: true, metaDescription: true, canonical: true, h1: true, isIndexable: true, indexabilityReason: true, wordCount: true, blockedByRobots: true, schemaTypes: true }
+    select: { url: true, statusCode: true, title: true, metaDescription: true, canonical: true, h1: true, isIndexable: true, indexabilityReason: true, wordCount: true, blockedByRobots: true, schemaTypes: true, finalUrl: true, redirectChain: true }
   });
-  return rows.map(r => ({ ...r, schemaTypes: Array.isArray(r.schemaTypes) ? (r.schemaTypes as string[]) : [] }));
+  return rows.map(({ redirectChain, ...r }) => ({ ...r, schemaTypes: Array.isArray(r.schemaTypes) ? (r.schemaTypes as string[]) : [], redirected: Array.isArray(redirectChain) && redirectChain.length > 0 }));
 }
 
 /** The completed crawl of the same site that finished right before `run`. */

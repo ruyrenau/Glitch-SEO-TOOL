@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import type { JobRow } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorBox, Skeleton, inputCls } from './ui';
 import { PerformanceReportView } from './PerformanceReport';
+import { CruxPanel } from './CruxPanel';
 
 type Rating = 'good' | 'needs-improvement' | 'poor';
 interface FieldMetric { p75: number; rating: Rating | null; distribution: [number, number, number] }
@@ -270,6 +271,7 @@ export function PerformanceView({ siteId }: { siteId: string }) {
           );
         })
       )}
+      <CruxPanel siteId={siteId} urls={[...new Set([...candidates.map(c => c.url), ...byUrl.keys()])]} />
     </div>
   );
 }
