@@ -12,7 +12,8 @@ import {
   FileBarChart,
   Bot,
   FileSearch,
-  BarChart3
+  BarChart3,
+  Network
 } from 'lucide-react';
 import { API_URL, ApiRequestError, UNAUTHORIZED_EVENT, apiGet, apiSend } from '@/lib/api';
 import { AuthProvider, useAuth } from '@/lib/auth';
@@ -30,6 +31,7 @@ import { ReportsView } from '@/components/ReportsView';
 import { AiReadinessView } from '@/components/AiReadinessView';
 import { ContentAuditView } from '@/components/ContentAuditView';
 import { Ga4View } from '@/components/Ga4View';
+import { ArchitectureView } from '@/components/ArchitectureView';
 import { AiVisibilityView } from '@/components/AiVisibilityView';
 import { SettingsView } from '@/components/SettingsView';
 import { SeoChangesView } from '@/components/SeoChangesView';
@@ -47,7 +49,7 @@ import { SchemaGeneratorView } from '@/components/SchemaGeneratorView';
 import { WordPressView } from '@/components/WordPressView';
 import { ContentView } from '@/components/ContentView';
 
-type NavId = 'wizard' | 'overview' | 'monitor' | 'sites' | 'logs' | 'crawler' | 'explorer' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'programmatic' | 'wordpress' | 'seochanges' | 'gsc' | 'ga4' | 'geo' | 'aiready' | 'contentaudit' | 'reports' | 'automations' | 'audit' | 'manual' | 'users' | 'settings' | 'account';
+type NavId = 'wizard' | 'overview' | 'monitor' | 'sites' | 'logs' | 'crawler' | 'explorer' | 'architecture' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'programmatic' | 'wordpress' | 'seochanges' | 'gsc' | 'ga4' | 'geo' | 'aiready' | 'contentaudit' | 'reports' | 'automations' | 'audit' | 'manual' | 'users' | 'settings' | 'account';
 
 const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ className?: string }>; ready: boolean; perm?: Permission }> = [
   { id: 'wizard', label: 'Inicio guiado', icon: Rocket, ready: true },
@@ -57,6 +59,7 @@ const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ classNa
   { id: 'logs', label: 'Logs y sitemap', icon: FileText, ready: true },
   { id: 'crawler', label: 'Crawl y auditoría', icon: ShieldAlert, ready: true },
   { id: 'explorer', label: 'Explorador SEO', icon: ScanSearch, ready: true },
+  { id: 'architecture', label: 'Arquitectura', icon: Network, ready: true },
   { id: 'seochanges', label: 'Cambios SEO', icon: PencilLine, ready: true },
   { id: 'issues', label: 'Issues técnicos', icon: AlertTriangle, ready: true },
   { id: 'alerts', label: 'Alertas', icon: Bell, ready: true },
@@ -169,7 +172,7 @@ function Dashboard() {
 
   const current = nav === 'manual' ? { label: 'Manual de uso' } : nav === 'account' ? { label: 'Mi cuenta' } : NAV.find(n => n.id === nav)!;
   const visibleNav = NAV.filter(n => !n.perm || can(n.perm));
-  const needsSite = ['overview', 'monitor', 'ga4', 'geo', 'aiready', 'contentaudit', 'reports', 'logs', 'crawler', 'explorer', 'seochanges', 'gsc', 'issues', 'alerts', 'programmatic', 'wordpress', 'vitals'].includes(nav);
+  const needsSite = ['overview', 'monitor', 'architecture', 'ga4', 'geo', 'aiready', 'contentaudit', 'reports', 'logs', 'crawler', 'explorer', 'seochanges', 'gsc', 'issues', 'alerts', 'programmatic', 'wordpress', 'vitals'].includes(nav);
 
   return (
     <div className={dark ? 'dark' : ''}>
@@ -309,6 +312,7 @@ function Dashboard() {
                 {nav === 'settings' && can('users:manage') && <SettingsView />}
                 {nav === 'monitor' && <MonitorView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'gsc' && <GscView key={siteId} siteId={siteId} go={go} notice={gscNotice} />}
+                {nav === 'architecture' && <ArchitectureView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'ga4' && <Ga4View key={siteId} siteId={siteId} go={go} notice={gscNotice} />}
                 {nav === 'vitals' && <PerformanceView key={siteId} siteId={siteId} />}
                 {nav === 'automations' && <JobsView sites={sites} />}

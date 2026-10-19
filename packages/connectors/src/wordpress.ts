@@ -337,6 +337,43 @@ export class WordPressSeoClient extends WordPressClient {
     return { id: m.id, source_url: m.source_url, alt_text: m.alt_text ?? '', modified_gmt: m.modified_gmt };
   }
 
+  /** Raw (editable) content of a post or page, as stored: Gutenberg block comments and shortcodes included. */
+  async getContent(type: SeoTarget, id: number): Promise<{ raw: string; modified_gmt: string }> {
+    const r = await this.get<{ content: { raw?: string; rendered: string }; modified_gmt: string }>(`/wp/v2/${type === 'post' ? 'posts' : 'pages'}/${id}`, { context: 'edit' });
+    if (r.content.raw === undefined) throw new WordPressError(0, 'NO_RAW_CONTENT', 'WordPress no devolvió el contenido editable (el usuario necesita permiso para editar esta entrada).');
+    return { raw: r.content.raw, modified_gmt: r.modified_gmt };
+  }
+
+  /** Replaces the body of a post or page. Used only to insert approved internal links. */
+  async updateContent(type: SeoTarget, id: number, raw: string): Promise<void> {
+    await this.post(`/wp/v2/${type === 'post' ? 'posts' : 'pages'}/${id}`, { content: raw });
+  }
+
+  /** Whether the Redirection plugin (redirection/v1) is active and reachable. */
+  async hasRedirectionPlugin(): Promise<boolean> {
+    const r = await this.get<{ namespaces?: string[] }>('/', {}).catch(() => null);
+    return !!r?.namespaces?.includes('redirection/v1');
+  }
+
+  /** Creates a 301 in the Redirection plugin (first group, usually "Redirections"). */
+  async createRedirect(fromPath: string, to: string): Promise<{ id: number }> {
+    const groups = await this.get<{ items?: Array<{ id: number; name: string; module_id?: number }> }>('/redirection/v1/group', { per_page: 50 });
+    const group = (groups.items ?? []).find(g => (g.module_id ?? 1) === 1) ?? groups.items?.[0];
+    if (!group) throw new WordPressError(0, 'NO_REDIRECT_GROUP', 'El plugin Redirection no tiene grupos; abre Herramientas → Redirection en WordPress una vez para crearlos.');
+    const r = await this.post<{ items?: Array<{ id: number }> } & { id?: number }>('/redirection/v1/redirect', {
+      url: fromPath,
+      match_type: 'url',
+      action_type: 'url',
+      action_code: 301,
+      action_data: { url: to },
+      group_id: group.id,
+      regex: false,
+      status: 'enabled',
+      title: 'G.SEO'
+    });
+    return { id: r.id ?? r.items?.[0]?.id ?? 0 };
+  }
+
   async updateMediaAlt(id: number, alt: string): Promise<WpMediaItem> {
     const m = await this.post<WpMediaItem>(`/wp/v2/media/${id}`, { alt_text: alt });
     return { id: m.id, source_url: m.source_url, alt_text: m.alt_text ?? '', modified_gmt: m.modified_gmt };

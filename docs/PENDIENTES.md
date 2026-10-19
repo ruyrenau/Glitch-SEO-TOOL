@@ -4,9 +4,8 @@ Lista viva de lo que falta. Al terminar algo, se marca con [x] y se anota el com
 
 ## SEO técnico
 - [ ] **Comparar dos crawls**: URLs nuevas y eliminadas, títulos, canonicals y redirecciones que cambiaron (antes y después de un deploy o una migración).
-- [ ] **Asistente de migraciones**: mapa de URLs viejas → nuevas, revisar que cada 301 llegue bien, cadenas y bucles.
+- [ ] **Asistente de migraciones**: subir un mapa de URLs viejas → nuevas y revisar que cada 301 llegue bien, cadenas y bucles (el rescate de 404 ya está en Arquitectura).
 - [ ] **Auditoría de hreflang a fondo**: enlaces de regreso, códigos de idioma válidos, destinos indexables.
-- [ ] **Enlazado interno**: páginas huérfanas, "PageRank interno", sugerencias de enlaces entre páginas del mismo tema.
 - [ ] **Robots.txt y sitemaps**: probar una URL contra robots.txt; cruzar sitemap contra lo indexable.
 - [ ] **Presupuesto de rastreo**: cruzar logs + crawl + GSC.
 
@@ -26,6 +25,7 @@ Lista viva de lo que falta. Al terminar algo, se marca con [x] y se anota el com
 - [ ] Sección de GA4 en los Reportes para clientes.
 
 ## Hecho recientemente
+- [x] Arquitectura: Link Score, huérfanas y profundidad; sugerencias de enlaces insertables en WordPress; mapa de 301 (.htaccess, Nginx, CSV, plugin Redirection); auditoría de renderizado lado a lado
 - [x] Simulador de RAG ("Vista de bot de IA" en el Explorador) y generador/validador de llms.txt y llms-full.txt (en Listo para IA) (110ede7)
 - [x] Avisos de Monitoreo a Slack/Teams/Discord/webhook y Reportes para clientes (c09d423)
 - [x] Listo para IA y canibalización completa (b317bfb)

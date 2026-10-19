@@ -3,7 +3,7 @@ import type { GoFn } from '@/lib/types';
 
 import React from 'react';
 import {
-  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart, Bot, FileSearch, BarChart3
+  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart, Bot, FileSearch, BarChart3, Network
 } from 'lucide-react';
 import { Badge, Button, Card } from './ui';
 
@@ -187,6 +187,29 @@ const SECTIONS: Section[] = [
       'Máximo 2,000 recursos y enlaces externos por crawl.',
       'La extracción no admite XPath; usa selectores CSS o expresiones regulares.'
     ]
+  },
+  {
+    id: 'architecture',
+    nav: 'architecture',
+    icon: Network,
+    title: 'Arquitectura',
+    status: 'ready',
+    what: 'Tres herramientas sobre el crawl: el enlazado interno (Link Score, huérfanas, profundidad y sugerencias de enlaces que se insertan en WordPress), el mapa de redirecciones 301 para URLs rotas, y la auditoría de renderizado (HTML del servidor contra la página con JavaScript).',
+    why: 'Son las tareas que más tiempo consumen en una agencia: repartir la fuerza del sitio hacia las páginas que importan, rescatar el tráfico de URLs rotas y demostrar qué se pierde cuando el contenido depende de JavaScript.',
+    steps: [
+      'Haz un crawl del sitio (para Renderizado, con "Ejecutar JavaScript").',
+      'Enlazado interno: ordena por "Necesitan enlaces" y pulsa "Buscar enlaces" en una página, o abre "Sugerencias de enlaces". Cada sugerencia dice en qué página, con qué frase y hacia dónde enlazar; "Proponer en WordPress" la manda a Cambios SEO para aprobarla, aplicarla, verificarla o revertirla.',
+      'Redirecciones 301: revisa el destino propuesto de cada URL rota (puedes cambiarlo), marca las que quieras y descárgalas para .htaccess (Apache), Nginx o CSV, o envíalas a WordPress con el plugin Redirection.',
+      'Renderizado JavaScript: mira qué porcentaje del texto y cuántos enlaces solo existen con JavaScript; abre una página para ver el HTML del servidor y la versión renderizada lado a lado. También está en el Explorador → detalle → "HTML vs renderizado".'
+    ],
+    read: [
+      ['Link Score', 'PageRank interno de 0 a 100: cuántos enlaces recibe una página y qué tan fuertes son las páginas que la enlazan.'],
+      ['Huérfanas', 'Páginas sin enlaces internos o que solo aparecen en el sitemap o en Search Console.'],
+      ['Parecido', 'Similitud del texto de las dos páginas (vectores TF-IDF calculados en tu equipo, sin costo). La frase viene de las búsquedas de Search Console de la página destino, su H1 o su título.'],
+      ['Confianza de la 301', 'Alta: la URL rota y la propuesta comparten casi todas las palabras o el contenido anterior se parece mucho. Baja: se propone la carpeta superior o la portada; revísala.'],
+      ['Texto que depende de JS', 'Porcentaje de palabras que solo aparecen después de ejecutar JavaScript. Los bots de IA casi nunca lo ejecutan.']
+    ],
+    limits: ['Insertar enlaces necesita WordPress conectado y que la frase esté en el contenido de la entrada (no en el tema). Solo se enlaza la primera aparición y nunca dentro de títulos o enlaces existentes.', 'Enviar redirecciones a WordPress necesita el plugin gratuito "Redirection".', 'Las sugerencias usan hasta 3,000 páginas del crawl.']
   },
   {
     id: 'seochanges',
@@ -561,7 +584,7 @@ const SECTIONS: Section[] = [
 ];
 
 /** Same order as the side menu. */
-const ORDER = ['wizard', 'overview', 'monitor', 'sites', 'logs', 'crawler', 'explorer', 'seochanges', 'issues', 'alerts', 'vitals', 'schema', 'programmatic', 'wordpress', 'gsc', 'ga4', 'geo', 'contentaudit', 'aiready', 'reports', 'automations', 'audit', 'users', 'settings'];
+const ORDER = ['wizard', 'overview', 'monitor', 'sites', 'logs', 'crawler', 'explorer', 'architecture', 'seochanges', 'issues', 'alerts', 'vitals', 'schema', 'programmatic', 'wordpress', 'gsc', 'ga4', 'geo', 'contentaudit', 'aiready', 'reports', 'automations', 'audit', 'users', 'settings'];
 SECTIONS.sort((a, b) => (ORDER.indexOf(a.id) + 1 || 99) - (ORDER.indexOf(b.id) + 1 || 99));
 
 const STATUS_BADGE = {

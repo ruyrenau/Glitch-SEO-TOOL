@@ -7,6 +7,7 @@ import type { CrawlRun } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorBox, Skeleton, inputCls } from './ui';
 import { CustomSearchPanel, StructurePanel } from './ExplorerExtras';
 import { AiBotViewPanel } from './AiBotView';
+import { RenderDiffPanel } from './RenderDiffPanel';
 
 interface Column { key: string; label: string; type?: 'number' | 'text' | 'url' }
 interface Rows { tab: { id: string; label: string; columns: Column[] }; total: number; page: number; pageSize: number; rows: Array<Record<string, unknown> & { pageId?: string; url?: string }> }
@@ -63,6 +64,7 @@ const DETAIL_TABS = [
   ['images', 'Imágenes'],
   ['serp', 'Vista en Google'],
   ['aiview', 'Vista de bot de IA'],
+  ['render', 'HTML vs renderizado'],
   ['source', 'Código fuente'],
   ['headers', 'Cabeceras'],
   ['issues', 'Issues'],
@@ -120,7 +122,7 @@ function DetailPanel({ crawlId, pageId, extra }: { crawlId: string; pageId: stri
   return (
     <div className="space-y-3">
       <div role="tablist" aria-label="Detalle de la URL" className="flex flex-wrap gap-1">
-        {DETAIL_TABS.filter(([id]) => id !== 'edit' || extra).map(([id, label]) => {
+        {DETAIL_TABS.filter(([id]) => (id !== 'edit' || extra) && (id !== 'render' || (p.js as { rendered?: boolean } | null)?.rendered)).map(([id, label]) => {
           const n = id === 'inlinks' ? d.inlinks.length : id === 'outlinks' ? d.outlinks.length : id === 'images' ? p.images?.length ?? 0 : id === 'issues' ? d.issues.length : null;
           return (
             <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`px-2 py-1 rounded-lg text-[11px] border ${tab === id ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-300 dark:border-slate-700'}`}>
@@ -131,7 +133,7 @@ function DetailPanel({ crawlId, pageId, extra }: { crawlId: string; pageId: stri
         <a href={p.finalUrl} target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 text-[11px] text-indigo-600 dark:text-indigo-400 underline">Abrir <ExternalLink className="w-3 h-3" aria-hidden /></a>
       </div>
       {tab === 'edit' && extra?.(d)}
-      <div className={`text-xs overflow-auto ${tab === 'aiview' ? 'max-h-[36rem]' : 'max-h-80'}`}>
+      <div className={`text-xs overflow-auto ${tab === 'aiview' || tab === 'render' ? 'max-h-[40rem]' : 'max-h-80'}`}>
         {tab === 'info' && (
           <dl className="grid grid-cols-1 md:grid-cols-[14rem_1fr] gap-x-4 gap-y-1">
             {info.filter(([, v]) => v !== null && v !== undefined && v !== '').map(([k, v]) => (
@@ -155,6 +157,7 @@ function DetailPanel({ crawlId, pageId, extra }: { crawlId: string; pageId: stri
             <tbody>{p.images.map((im, i) => <tr key={i}><td className="font-mono text-[11px] break-all py-0.5">{im.src}</td><td>{im.alt === null ? <Badge tone="bad">sin alt</Badge> : im.alt || <span className="text-slate-400">(vacío)</span>}</td><td>{im.width && im.height ? `${im.width}×${im.height}` : <Badge tone="warn">faltan</Badge>}</td></tr>)}</tbody></table>
         ) : <Empty>Sin imágenes.</Empty>)}
         {tab === 'serp' && <SerpPreview url={p.url} title={p.title} desc={p.metaDescription} />}
+        {tab === 'render' && <RenderDiffPanel crawlId={crawlId} pageId={pageId} />}
         {tab === 'aiview' && (d.source ? <AiBotViewPanel crawlId={crawlId} pageId={pageId} /> : <Empty>No se guardó el HTML de esta URL (no es HTML 2xx).</Empty>)}
         {tab === 'source' && (d.source ? <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-slate-50 dark:bg-slate-900 p-2 rounded">{d.source}</pre> : <Empty>No se guardó el código de esta URL (no es HTML 2xx).</Empty>)}
         {tab === 'headers' && (p.headers && Object.keys(p.headers).length ? (

@@ -13,6 +13,8 @@ interface Proposal {
   wpId: number;
   field: string;
   imageSrc: string | null;
+  linkUrl?: string | null;
+  linkAnchor?: string | null;
   oldValue: string;
   newValue: string;
   note: string | null;
@@ -24,7 +26,7 @@ interface Proposal {
   appliedAt: string | null;
 }
 
-const FIELD: Record<string, string> = { postTitle: 'Título de la entrada', slug: 'Slug (URL)', seoTitle: 'Título SEO', metaDescription: 'Meta description', imageAlt: 'Alt de imagen' };
+const FIELD: Record<string, string> = { postTitle: 'Título de la entrada', slug: 'Slug (URL)', seoTitle: 'Título SEO', metaDescription: 'Meta description', imageAlt: 'Alt de imagen', internalLink: 'Enlace interno' };
 const STATUS: Record<string, [string, 'default' | 'good' | 'warn' | 'bad']> = {
   proposed: ['Propuesto', 'default'],
   approved: ['Aprobado', 'warn'],
@@ -55,8 +57,8 @@ export function SeoChangesView({ siteId }: { siteId: string }) {
   }, [load]);
 
   const act = async (p: Proposal, action: 'approve' | 'reject' | 'apply' | 'verify' | 'revert') => {
-    if (action === 'apply' && !confirm(`¿Aplicar en el sitio publicado?\n\n${FIELD[p.field]}\nAntes: ${p.oldValue || '(vacío)'}\nDespués: ${p.newValue}`)) return;
-    if (action === 'revert' && !confirm(`¿Revertir a "${p.oldValue || '(vacío)'}"?`)) return;
+    if (action === 'apply' && !confirm(p.field === 'internalLink' ? `¿Agregar el enlace en el contenido publicado?\n\n«${p.linkAnchor}» → ${p.linkUrl}` : `¿Aplicar en el sitio publicado?\n\n${FIELD[p.field]}\nAntes: ${p.oldValue || '(vacío)'}\nDespués: ${p.newValue}`)) return;
+    if (action === 'revert' && !confirm(p.field === 'internalLink' ? `¿Quitar el enlace «${p.linkAnchor}»? El texto se queda.` : `¿Revertir a "${p.oldValue || '(vacío)'}"?`)) return;
     setBusy(p.id);
     setError(null);
     try {
@@ -107,10 +109,17 @@ export function SeoChangesView({ siteId }: { siteId: string }) {
                     <span className="ml-auto text-slate-400">{fmtDate(p.createdAt)}</span>
                   </div>
                   {p.imageSrc && <div className="font-mono text-[11px] text-slate-500 break-all">{p.imageSrc}</div>}
-                  <div className="grid md:grid-cols-2 gap-2">
-                    <div className="p-2 rounded-lg bg-rose-500/10"><div className="text-[10px] uppercase text-slate-500">Antes</div><div className="break-words line-through decoration-rose-400/60">{p.oldValue || <em>(vacío)</em>}</div></div>
-                    <div className="p-2 rounded-lg bg-emerald-500/10"><div className="text-[10px] uppercase text-slate-500">Después</div><div className="break-words">{p.newValue || <em>(vacío)</em>}</div></div>
-                  </div>
+                  {p.field === 'internalLink' ? (
+                    <div className="p-2 rounded-lg bg-emerald-500/10 space-y-1">
+                      <div>Enlazar <strong>«{p.linkAnchor}»</strong> → <a href={p.linkUrl ?? '#'} target="_blank" rel="noreferrer" className="font-mono text-[11px] text-indigo-600 dark:text-indigo-400 break-all">{p.linkUrl}</a></div>
+                      {p.oldValue && <div className="text-slate-500 break-words">…{p.oldValue}…</div>}
+                    </div>
+                  ) : (
+                    <div className="grid md:grid-cols-2 gap-2">
+                      <div className="p-2 rounded-lg bg-rose-500/10"><div className="text-[10px] uppercase text-slate-500">Antes</div><div className="break-words line-through decoration-rose-400/60">{p.oldValue || <em>(vacío)</em>}</div></div>
+                      <div className="p-2 rounded-lg bg-emerald-500/10"><div className="text-[10px] uppercase text-slate-500">Después</div><div className="break-words">{p.newValue || <em>(vacío)</em>}</div></div>
+                    </div>
+                  )}
                   {p.note && <div className="text-slate-500">Nota: {p.note}</div>}
                   {p.error && <div className="text-rose-600 dark:text-rose-400">{p.error}</div>}
                   {p.verifyDetail && <div className="text-amber-700 dark:text-amber-300">{p.verifyDetail}</div>}

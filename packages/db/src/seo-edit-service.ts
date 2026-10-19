@@ -1,7 +1,7 @@
 import * as cheerio from 'cheerio';
 import { decryptSecret } from '@glitch/core';
 import { WordPressSeoClient, WordPressError, SEO_META_KEYS, WpSeoItem } from '@glitch/connectors';
-import { assertSafeUrl } from '@glitch/crawler';
+import { assertSafeUrl, injectLink, phraseRegex } from '@glitch/crawler';
 import { prisma } from './client';
 import { recordAuditEvent, currentActorId } from './audit';
 import { WorkflowError } from './errors';
@@ -9,11 +9,12 @@ import { WorkflowError } from './errors';
 /**
  * Editing SEO fields of live WordPress content (ADR 012):
  * propose → approve → apply (only if WordPress still has the proposed-from value) → verify on the live page → revert.
- * Content bodies and statuses are never changed.
+ * Statuses are never changed. Content bodies are touched only by approved internal links ("internalLink"):
+ * the link is inserted around one phrase of the current body and reverting removes exactly that link.
  */
 
-export type SeoField = 'postTitle' | 'slug' | 'seoTitle' | 'metaDescription' | 'imageAlt';
-export const FIELD_LABEL: Record<SeoField, string> = { postTitle: 'Título de la entrada', slug: 'Slug', seoTitle: 'Título SEO', metaDescription: 'Meta description', imageAlt: 'Texto alternativo' };
+export type SeoField = 'postTitle' | 'slug' | 'seoTitle' | 'metaDescription' | 'imageAlt' | 'internalLink';
+export const FIELD_LABEL: Record<SeoField, string> = { postTitle: 'Título de la entrada', slug: 'Slug', seoTitle: 'Título SEO', metaDescription: 'Meta description', imageAlt: 'Texto alternativo', internalLink: 'Enlace interno' };
 
 const allowHosts = () => (process.env.CRAWL_ALLOW_PRIVATE_HOSTS ?? '').split(',').map(s => s.trim()).filter(Boolean);
 
@@ -126,6 +127,42 @@ export async function proposeChange(siteId: string, input: ProposeInput) {
   return p;
 }
 
+/** The exact HTML inserted for a link (also what revert looks for). */
+const linkHtml = (href: string, text: string) => `<a href="${href.replace(/"/g, '&quot;')}">${text}</a>`;
+
+/** Proposes linking `anchor` (a phrase already in the body of `url`) to `targetUrl`. */
+export async function proposeInternalLink(siteId: string, input: { url: string; targetUrl: string; anchor: string; note?: string }) {
+  if (!input.anchor.trim()) throw new WorkflowError('EMPTY_VALUE', 'Falta el texto del enlace.', 400);
+  const site = await prisma.site.findUniqueOrThrow({ where: { id: siteId } });
+  const client = await seoClient(siteId);
+  let item: WpSeoItem | null;
+  let raw: string;
+  try {
+    item = await client.findByUrl(input.url);
+    if (!item) throw new WorkflowError('WP_ITEM_NOT_FOUND', 'No se encontró la entrada o página de WordPress de esta URL.', 404);
+    raw = (await client.getContent(item.type, item.id)).raw;
+  } catch (e) {
+    if (e instanceof WorkflowError) throw e;
+    throw new WorkflowError('WORDPRESS_ERROR', wpError(e), 502);
+  }
+  if (raw.includes(`href="${input.targetUrl}"`)) throw new WorkflowError('ALREADY_LINKED', 'El contenido ya enlaza a esa página.', 409);
+  const injected = injectLink(raw, input.anchor, input.targetUrl);
+  if (!injected) throw new WorkflowError('ANCHOR_NOT_FOUND', `La frase "${input.anchor}" no está como texto normal en el contenido de la entrada (puede venir del tema, de un título o de un enlace).`, 400);
+  // The phrase as written in the post, and a little text around it for the review screen.
+  const start = injected.indexOf(linkHtml(input.targetUrl, '').slice(0, -4));
+  const found = injected.slice(start).replace(/^<a [^>]*>/, '').split('</a>')[0];
+  const plain = raw.replace(/<!--[\s\S]*?-->|<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  const at = plain.search(phraseRegex(found));
+  const context = at >= 0 ? plain.slice(Math.max(0, at - 80), at + found.length + 81).trim() : '';
+  const dup = await prisma.seoChangeProposal.findFirst({ where: { siteId, target: item.type, wpId: item.id, field: 'internalLink', linkUrl: input.targetUrl, status: { in: ['proposed', 'approved'] } } });
+  if (dup) throw new WorkflowError('PENDING_EXISTS', 'Ya hay un enlace pendiente de esta página a esa URL.', 409, { proposalId: dup.id });
+  const p = await prisma.seoChangeProposal.create({
+    data: { siteId, url: input.url, target: item.type, wpId: item.id, field: 'internalLink', linkUrl: input.targetUrl, linkAnchor: found, oldValue: context, newValue: linkHtml(input.targetUrl, found), note: input.note, createdById: currentActorId() }
+  });
+  await recordAuditEvent({ workspaceId: site.workspaceId, userId: null, action: 'seo_change.proposed', entity: 'SeoChangeProposal', entityId: p.id, details: { url: p.url, field: p.field, to: input.targetUrl, anchor: found } });
+  return p;
+}
+
 export async function listProposals(siteId: string, status?: string) {
   return prisma.seoChangeProposal.findMany({ where: { siteId, ...(status ? { status } : {}) }, orderBy: { createdAt: 'desc' }, take: 500 });
 }
@@ -164,6 +201,7 @@ export async function applyProposal(id: string) {
   const p = await load(id);
   if (p.status !== 'approved') throw new WorkflowError('NOT_APPROVED', 'Solo se aplican cambios aprobados.');
   const client = await seoClient(p.siteId);
+  if (p.field === 'internalLink') return applyLink(p, client);
   try {
     const current = await readCurrent(client, p);
     if (current !== p.oldValue) {
@@ -182,11 +220,46 @@ export async function applyProposal(id: string) {
   return updated;
 }
 
+/** Internal links go into the CURRENT body, so edits made in WordPress meanwhile are kept. */
+async function applyLink(p: Awaited<ReturnType<typeof load>>, client: WordPressSeoClient) {
+  const t = p.target as 'post' | 'page';
+  try {
+    const { raw } = await client.getContent(t, p.wpId);
+    const injected = injectLink(raw, p.linkAnchor!, p.linkUrl!);
+    if (!injected) {
+      await prisma.seoChangeProposal.update({ where: { id: p.id }, data: { status: 'conflict', error: `La frase "${p.linkAnchor}" ya no está como texto normal en el contenido.` } });
+      throw new WorkflowError('REMOTE_CHANGED', 'El contenido cambió y la frase ya no está disponible; no se aplicó.', 409);
+    }
+    await client.updateContent(t, p.wpId, injected);
+  } catch (e) {
+    if (e instanceof WorkflowError) throw e;
+    await prisma.seoChangeProposal.update({ where: { id: p.id }, data: { status: 'failed', error: wpError(e) } });
+    throw new WorkflowError('WORDPRESS_ERROR', wpError(e), 502);
+  }
+  const updated = await prisma.seoChangeProposal.update({ where: { id: p.id }, data: { status: 'applied', appliedAt: new Date(), appliedById: currentActorId(), error: null, verifyStatus: null, verifyDetail: null } });
+  await recordAuditEvent({ workspaceId: p.site.workspaceId, userId: null, action: 'seo_change.applied', entity: 'SeoChangeProposal', entityId: p.id, details: { url: p.url, field: p.field, to: p.linkUrl, anchor: p.linkAnchor } });
+  return updated;
+}
+
 /** Restores the old value, only if WordPress still has the value we wrote. */
 export async function revertProposal(id: string) {
   const p = await load(id);
   if (p.status !== 'applied') throw new WorkflowError('NOT_APPLIED', 'Solo se revierten cambios aplicados.');
   const client = await seoClient(p.siteId);
+  if (p.field === 'internalLink') {
+    // Removes exactly the link that was inserted, leaving its text.
+    const t = p.target as 'post' | 'page';
+    const { raw } = await client.getContent(t, p.wpId).catch(e => {
+      throw new WorkflowError('WORDPRESS_ERROR', wpError(e), 502);
+    });
+    if (!raw.includes(p.newValue)) throw new WorkflowError('REMOTE_CHANGED', 'El enlace ya no está tal como se insertó; no se revierte para no pisar otros cambios.', 409);
+    await client.updateContent(t, p.wpId, raw.replace(p.newValue, p.linkAnchor!)).catch(e => {
+      throw new WorkflowError('WORDPRESS_ERROR', wpError(e), 502);
+    });
+    const updated = await prisma.seoChangeProposal.update({ where: { id }, data: { status: 'reverted' } });
+    await recordAuditEvent({ workspaceId: p.site.workspaceId, userId: null, action: 'seo_change.reverted', entity: 'SeoChangeProposal', entityId: id });
+    return updated;
+  }
   const current = await readCurrent(client, p).catch(e => {
     throw new WorkflowError('WORDPRESS_ERROR', wpError(e), 502);
   });
@@ -225,7 +298,20 @@ export async function verifyProposal(id: string) {
     const norm = (s: string | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
     const want = norm(p.newValue);
     let found = '';
-    if (p.field === 'slug') {
+    if (p.field === 'internalLink') {
+      const sameTarget = (h: string) => {
+        try {
+          const a = new URL(h, target);
+          const b = new URL(p.linkUrl!);
+          return a.host === b.host && a.pathname.replace(/\/+$/, '') === b.pathname.replace(/\/+$/, '');
+        } catch {
+          return false;
+        }
+      };
+      const a = $('a').filter((_, el) => sameTarget($(el).attr('href') ?? '') && norm($(el).text()).toLowerCase() === norm(p.linkAnchor!).toLowerCase());
+      found = a.length ? `enlace "${norm(a.first().text())}" → ${a.first().attr('href')}` : 'no se encontró el enlace en la página';
+      verifyStatus = a.length ? 'verified' : 'mismatch';
+    } else if (p.field === 'slug') {
       found = `HTTP ${res.status}`;
       verifyStatus = res.ok ? 'verified' : 'mismatch';
     } else if (p.field === 'metaDescription') {

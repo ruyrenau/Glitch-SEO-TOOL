@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  Activity, AlertTriangle, ArrowRight, BarChart3, Bell, BookOpen, Bot, CheckCircle2, Circle, Code2, FileBarChart, FileSearch, FileText, Gauge, Globe, Layers, Loader2, PencilLine, Play, ScanSearch, Search, Send, Settings, ShieldAlert, Sparkles
+  Activity, AlertTriangle, ArrowRight, BarChart3, Bell, Network, BookOpen, Bot, CheckCircle2, Circle, Code2, FileBarChart, FileSearch, FileText, Gauge, Globe, Layers, Loader2, PencilLine, Play, ScanSearch, Search, Send, Settings, ShieldAlert, Sparkles
 } from 'lucide-react';
 import { apiGet, apiSend, fmt, waitForJob } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -35,6 +35,7 @@ const GROUPS: Array<{ title: string; cards: SectionCard[] }> = [
     title: 'SEO técnico',
     cards: [
       { nav: 'explorer', icon: ScanSearch, title: 'Explorador SEO', what: 'Todas las URLs del crawl en pestañas, como Screaming Frog: títulos, metas, H1, imágenes, canonicals, recursos, enlaces externos, estructura y búsqueda personalizada.', when: 'Para revisar página por página y exportar listas a CSV.' },
+      { nav: 'architecture', icon: Network, title: 'Arquitectura', what: 'Link Score (PageRank interno), páginas huérfanas y profundas, sugerencias de enlaces que se insertan en WordPress, mapa de redirecciones 301 para URLs rotas y comparación del HTML con y sin JavaScript.', when: 'Para repartir la fuerza del sitio, rescatar URLs rotas y revisar sitios hechos con JavaScript.', needs: 'Un crawl' },
       { nav: 'issues', icon: AlertTriangle, title: 'Issues técnicos', what: 'Los problemas del crawl ordenados por gravedad, con las URLs afectadas y qué hacer para arreglarlos.', when: 'Para tener una lista de trabajo priorizada.' },
       { nav: 'crawler', icon: ShieldAlert, title: 'Crawl y auditoría', what: 'Crawls con más opciones (hasta 100,000 URLs, JavaScript, exclusiones, modo lista) y programados para que corran solos.', when: 'Para crawls grandes o periódicos.' },
       { nav: 'alerts', icon: Bell, title: 'Alertas', what: 'Compara cada crawl con el anterior y avisa si algo se rompió: noindex nuevo, páginas caídas, canonical cambiado.', when: 'Después de cada deploy o con un crawl programado.' },

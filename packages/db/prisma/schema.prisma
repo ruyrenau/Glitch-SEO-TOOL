@@ -675,7 +675,9 @@ model SeoChangeProposal {
   url          String    // page where the field was seen
   target       String    // post | page | media
   wpId         Int
-  field        String    // postTitle | slug | seoTitle | metaDescription | imageAlt
+  field        String    // postTitle | slug | seoTitle | metaDescription | imageAlt | internalLink
+  linkUrl      String?   // internalLink: page the new link points to
+  linkAnchor   String?   // internalLink: text that becomes the link
   metaKey      String?   // Yoast / Rank Math key for seoTitle and metaDescription
   imageSrc     String?
   oldValue     String    // value in WordPress when proposed (also the backup used to revert)

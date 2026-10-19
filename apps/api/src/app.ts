@@ -86,6 +86,13 @@ import {
   gscReport,
   cannibalizationReport,
   aiReadinessReport,
+  proposeInternalLink,
+  internalLinkReport,
+  internalLinkSuggestions,
+  redirectSuggestions,
+  pushRedirectsToWordPress,
+  renderReport,
+  renderDiff,
   aiBotView,
   generateSiteLlmsTxt,
   validateSiteLlmsTxt,
@@ -692,6 +699,12 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     return aiBotView(p.id, p.pageId, { maxTokens: q.size });
   });
 
+  app.get('/api/v1/crawls/:id/explorer/pages/:pageId/render-diff', async req => {
+    const p = z.object({ id: z.string().uuid(), pageId: z.string().uuid() }).parse(req.params);
+    await requireRun(p.id);
+    return renderDiff(p.id, p.pageId);
+  });
+
   app.get('/api/v1/crawls/:id/explorer/structure', async req => {
     const { id } = idParam.parse(req.params);
     await requireRun(id);
@@ -733,6 +746,43 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
       .strict()
       .parse(req.body);
     return reply.status(201).send(await proposeChange(id, b));
+  });
+  // Internal link (from "Arquitectura" → Enlazado interno): same review flow as the other SEO edits.
+  app.post('/api/v1/sites/:id/seo-edits/link', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    const b = z.object({ url: z.string().url(), targetUrl: z.string().url(), anchor: z.string().min(2).max(120), note: z.string().max(500).optional() }).strict().parse(req.body);
+    return reply.status(201).send(await proposeInternalLink(id, b));
+  });
+
+  // Arquitectura: internal link graph, link suggestions, 301 map and rendering audit.
+  const runQuery = z.object({ crawlRunId: z.string().uuid().optional() });
+  app.get('/api/v1/sites/:id/architecture/links', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return internalLinkReport(id, runQuery.parse(req.query));
+  });
+  app.get('/api/v1/sites/:id/architecture/link-suggestions', async req => {
+    const { id } = idParam.parse(req.params);
+    const q = z.object({ crawlRunId: z.string().uuid().optional(), targetUrl: z.string().url().optional() }).parse(req.query);
+    await requireSite(id);
+    return internalLinkSuggestions(id, q);
+  });
+  app.get('/api/v1/sites/:id/architecture/redirects', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return redirectSuggestions(id, runQuery.parse(req.query));
+  });
+  app.post('/api/v1/sites/:id/architecture/redirects/wordpress', async req => {
+    const { id } = idParam.parse(req.params);
+    const b = z.object({ rules: z.array(z.object({ from: z.string().min(1).max(2000), to: z.string().url() })).min(1).max(500) }).strict().parse(req.body);
+    await requireSite(id);
+    return pushRedirectsToWordPress(id, b.rules, req.auth!.user.id);
+  });
+  app.get('/api/v1/sites/:id/architecture/render', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return renderReport(id, runQuery.parse(req.query));
   });
 
   app.post('/api/v1/seo-edits/:id/review', async req => {

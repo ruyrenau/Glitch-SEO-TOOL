@@ -35,11 +35,14 @@ export interface MockWordPress {
   /** Makes the next N requests answer 503 (to test retries). */
   failNext: (n: number) => void;
   /** Published content with SEO fields (Yoast keys exposed over REST), rendered at /<slug>/. */
-  addPublished: (o: { type?: 'post' | 'page'; slug: string; title: string; seoTitle?: string; metaDescription?: string; imageIds?: number[] }) => MockPost;
+  addPublished: (o: { type?: 'post' | 'page'; slug: string; title: string; seoTitle?: string; metaDescription?: string; imageIds?: number[]; content?: string }) => MockPost;
   addMedia: (o: { file: string; alt: string }) => { id: number; source_url: string };
   media: Map<number, { id: number; source_url: string; alt_text: string; modified_gmt: string }>;
   /** Simulates a page cache that keeps serving stale HTML. */
   freezeHtml: (on: boolean) => void;
+  /** Turns the Redirection plugin on (redirection/v1) and lists the redirects created through it. */
+  enableRedirection: () => void;
+  redirects: Array<{ url: string; to: string; code: number }>;
   close: () => Promise<void>;
 }
 
@@ -57,6 +60,8 @@ export async function startMockWordPress(): Promise<MockWordPress> {
   ];
   let nextId = 100;
   let failures = 0;
+  let redirection = false;
+  const redirects: MockWordPress['redirects'] = [];
   let base = '';
   const media = new Map<number, { id: number; source_url: string; alt_text: string; modified_gmt: string }>();
   let frozen: Map<string, string> | null = null;
@@ -113,12 +118,20 @@ export async function startMockWordPress(): Promise<MockWordPress> {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         return res.end(frozen ? frozen.get(key) : html);
       }
-      if (route === '/') return send(200, { name: 'Mock WP', namespaces: ['oembed/1.0', 'wp/v2', 'yoast/v1'] });
+      if (route === '/') return send(200, { name: 'Mock WP', namespaces: ['oembed/1.0', 'wp/v2', 'yoast/v1', ...(redirection ? ['redirection/v1'] : [])] });
       const expected = 'Basic ' + Buffer.from(`${username}:${appPassword.replace(/\s+/g, '')}`).toString('base64');
       if (req.headers.authorization !== expected) return send(401, { code: 'rest_not_logged_in', message: 'You are not currently logged in.' });
       if (route === '/wp/v2/users/me') return send(200, { id: 2, name: 'Editor', capabilities: { edit_posts: true } });
       if (route === '/wp/v2/categories') return send(200, categories);
       if (route === '/wp/v2/tags') return send(200, []);
+      if (route.startsWith('/redirection/v1/') && !redirection) return send(404, { code: 'rest_no_route', message: 'No route was found matching the URL and request method.' });
+      if (route === '/redirection/v1/group') return send(200, { items: [{ id: 1, name: 'Redirections', module_id: 1 }] });
+      if (route === '/redirection/v1/redirect' && req.method === 'POST') {
+        const r = JSON.parse(body || '{}');
+        if (redirects.some(x => x.url === r.url)) return send(400, { code: 'redirect_exists', message: 'Ya existe una redirección para esa URL.' });
+        redirects.push({ url: r.url, to: r.action_data?.url, code: r.action_code });
+        return send(200, { items: [{ id: redirects.length }] });
+      }
       const input = body ? JSON.parse(body) : {};
       if (route === '/wp/v2/posts' && req.method === 'POST') {
         if (input.status && input.status !== 'draft') return send(403, { code: 'not_allowed_in_test', message: 'mock only accepts drafts' });
@@ -180,7 +193,7 @@ export async function startMockWordPress(): Promise<MockWordPress> {
     failNext: n => (failures = n),
     media,
     addPublished: o => {
-      const p: MockPost = { id: nextId++, type: o.type ?? 'post', status: 'publish', slug: o.slug, title: o.title, content: 'Contenido publicado.', excerpt: '', categories: [1], modified_gmt: tick(), meta: { _yoast_wpseo_title: o.seoTitle ?? '', _yoast_wpseo_metadesc: o.metaDescription ?? '' }, imageIds: o.imageIds };
+      const p: MockPost = { id: nextId++, type: o.type ?? 'post', status: 'publish', slug: o.slug, title: o.title, content: o.content ?? 'Contenido publicado.', excerpt: '', categories: [1], modified_gmt: tick(), meta: { _yoast_wpseo_title: o.seoTitle ?? '', _yoast_wpseo_metadesc: o.metaDescription ?? '' }, imageIds: o.imageIds };
       posts.set(p.id, p);
       return p;
     },
@@ -191,6 +204,8 @@ export async function startMockWordPress(): Promise<MockWordPress> {
       return { id, source_url: item.source_url };
     },
     freezeHtml: on => (frozen = on ? new Map() : null),
+    enableRedirection: () => (redirection = true),
+    redirects,
     close: () => new Promise(r => server.close(() => r()))
   };
 }
