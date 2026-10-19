@@ -376,6 +376,12 @@ export class WordPressSeoClient extends WordPressClient {
     return { id: r.id ?? r.items?.[0]?.id ?? 0 };
   }
 
+  /** Saves a site setting registered with show_in_rest (needs a user who can manage options). */
+  async updateSetting(key: string, value: string): Promise<void> {
+    const r = await this.post<Record<string, unknown>>('/wp/v2/settings', { [key]: value });
+    if (!(key in r)) throw new WordPressError(404, 'rest_invalid_param', `WordPress no tiene registrado el ajuste ${key}.`);
+  }
+
   /** Deletes a redirect created through the Redirection plugin (bulk endpoint of redirection/v1). */
   async deleteRedirect(id: number): Promise<void> {
     await this.post('/redirection/v1/bulk/redirect/delete', { items: [id] });

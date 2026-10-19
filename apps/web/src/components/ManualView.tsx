@@ -3,7 +3,7 @@ import type { GoFn } from '@/lib/types';
 
 import React from 'react';
 import {
-  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart, Bot, FileSearch, BarChart3, Network, BadgeCheck, Trophy
+  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart, Bot, FileSearch, BarChart3, Network, BadgeCheck, Trophy, MousePointerClick
 } from 'lucide-react';
 import { Badge, Button, Card } from './ui';
 
@@ -604,6 +604,29 @@ const SECTIONS: Section[] = [
       ['Bots de entrenamiento y de búsqueda', 'Bloquear GPTBot, ClaudeBot, CCBot o Google-Extended es decisión de negocio. Bloquear OAI-SearchBot, PerplexityBot, Googlebot o Bingbot te quita de sus respuestas.']
     ],
     limits: ['Son reglas fijas: un puntaje alto ayuda, pero no garantiza que una IA te cite. Mídelo en Visibilidad en IA.', 'Usa el HTML guardado del crawl; los crawls viejos cuyo HTML ya se borró no se pueden calificar.', 'Califica hasta 5,000 páginas por crawl.']
+  },
+  {
+    id: 'agents',
+    nav: 'agents',
+    icon: MousePointerClick,
+    title: 'Agentes de IA',
+    status: 'ready',
+    what: 'Revisa si un agente de IA (Claude, Operator de OpenAI, Gemini) puede usar tu sitio: encontrar precios, llenar el formulario de contacto y usar el botón principal. Y publica en WordPress un catálogo que los agentes pueden consultar directo: /.well-known/agent.json, un catálogo JSON y un servidor MCP de solo lectura.',
+    why: 'Cada vez más gente le pide a un agente "cotízame" o "agenda una cita". El agente no ve el diseño, lee el árbol de accesibilidad: si tus botones son <div>, los campos no tienen etiqueta o un popup tapa la página, se atora y se va con otro.',
+    steps: [
+      'Abre "Agentes de IA" → "Navegación de agentes". Se sugieren la portada y las páginas de contacto, precios, servicios y tienda del último crawl; ajusta la lista (hasta 15).',
+      'Pulsa "Revisar como agente". Chrome abre cada página y revisa controles, etiquetas, ventanas emergentes, captchas, precios y botones de acción.',
+      'Mira las 3 tareas (encontrar precios, contactar, actuar) y abre cada página para ver qué falla y cómo arreglarlo.',
+      'En "Catálogo para agentes (MCP)" descarga glitch-agents.php y súbelo a wp-content/mu-plugins/ de tu WordPress (una vez).',
+      'Llena los datos del negocio y tus servicios o productos con precio ("Agregar los del schema del sitio" toma los que ya tienes en JSON-LD). Guarda.',
+      'Pulsa "Publicar en WordPress" y luego "Comprobar en vivo". Con todo en verde, puedes conectar la dirección MCP en Claude o ChatGPT como conector personalizado para probarlo.'
+    ],
+    read: [
+      ['Revisiones', 'Controles semánticos (20), controles con nombre (15), formularios con etiquetas (20), sin ventanas que bloqueen (15), sin captcha (10), oferta legible por máquinas (10) y botón de acción claro (10).'],
+      ['Tareas', 'Puede: lo logra sin trabas. Con trabas: lo logra, pero con riesgo de error. No puede: no hay forma clara de hacerlo.'],
+      ['MCP', 'Model Context Protocol: un estándar para que los asistentes de IA usen herramientas. El plugin ofrece get_business_info, search_catalog, get_item y how_to_contact. Es de solo lectura y limita 120 consultas por minuto por IP.']
+    ],
+    limits: ['Todavía no hay un estándar único para agentes; agent.json es un formato propio de G.SEO y MCP es lo más adoptado hoy.', 'La revisión no envía formularios ni compra: revisa que se pueda, no lo hace.', 'Publicar necesita WordPress conectado con un usuario administrador. Si tienes WooCommerce, los productos se agregan solos.']
   },
   {
     id: 'reports',

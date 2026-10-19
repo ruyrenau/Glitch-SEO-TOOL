@@ -10,6 +10,7 @@ export const JOB_TYPES = {
   'ga4-import': { queue: 'imports', attempts: 2, label: 'Importación de Google Analytics' },
   'backlink-check': { queue: 'crawls', attempts: 1, label: 'Revisión de backlinks' },
   'serp-check': { queue: 'imports', attempts: 2, label: 'Revisión de SERP' },
+  'agent-audit': { queue: 'performance', attempts: 1, label: 'Navegación de agentes' },
   'serp-daily': { queue: 'maintenance', attempts: 2, label: 'SERP semanal (programación)' },
   'gsc-daily': { queue: 'maintenance', attempts: 2, label: 'Actualización diaria de Search Console' },
   'monitor-vitals': { queue: 'performance', attempts: 1, label: 'Core Web Vitals programado' }

@@ -43,6 +43,9 @@ export interface MockWordPress {
   /** Turns the Redirection plugin on (redirection/v1) and lists the redirects created through it. */
   enableRedirection: () => void;
   redirects: Array<{ url: string; to: string; code: number }>;
+  /** Mirrors docs/wordpress/glitch-agents.php: the catalog option, /.well-known/agent.json, the catalog and MCP. */
+  enableAgentsPlugin: () => void;
+  agentCatalog: () => unknown;
   close: () => Promise<void>;
 }
 
@@ -61,6 +64,8 @@ export async function startMockWordPress(): Promise<MockWordPress> {
   let nextId = 100;
   let failures = 0;
   let redirection = false;
+  let agents = false;
+  let agentOption = '';
   const redirects: MockWordPress['redirects'] = [];
   let base = '';
   const media = new Map<number, { id: number; source_url: string; alt_text: string; modified_gmt: string }>();
@@ -96,6 +101,23 @@ export async function startMockWordPress(): Promise<MockWordPress> {
     let body = '';
     req.on('data', c => (body += c));
     req.on('end', () => {
+      // glitch-agents.php (same shapes as the PHP plugin).
+      const catalog = () => {
+        const d = agentOption ? JSON.parse(agentOption) : {};
+        return { business: d.business ?? { name: 'Mock WP', url: `${base}/` }, items: d.items ?? [], updated: d.updated ?? null };
+      };
+      if (agents && u.pathname === '/.well-known/agent.json') return send(200, { schema_version: 'gseo-agent/0.1', name: catalog().business.name, endpoints: { mcp: { url: `${base}/wp-json/gseo/v1/mcp` } } });
+      if (agents && route === '/gseo/v1/catalog') return send(200, catalog());
+      if (agents && route === '/gseo/v1/mcp' && req.method === 'POST') {
+        const m = JSON.parse(body || '{}');
+        if (m.method === 'initialize') return send(200, { jsonrpc: '2.0', id: m.id, result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'gseo-agent-catalog', version: '1' } } });
+        if (m.method === 'tools/list') return send(200, { jsonrpc: '2.0', id: m.id, result: { tools: ['get_business_info', 'search_catalog', 'get_item', 'how_to_contact'].map(name => ({ name, inputSchema: { type: 'object' } })) } });
+        if (m.method === 'tools/call') {
+          const items = catalog().items;
+          return send(200, { jsonrpc: '2.0', id: m.id, result: { content: [{ type: 'text', text: JSON.stringify({ count: items.length, items }) }], isError: false } });
+        }
+        return send(200, { jsonrpc: '2.0', id: m.id, error: { code: -32601, message: 'Method not found' } });
+      }
       // Public HTML of published content (what a visitor or crawler sees).
       if (!route) {
         const slug = u.pathname.split('/').filter(Boolean).pop() ?? '';
@@ -124,6 +146,11 @@ export async function startMockWordPress(): Promise<MockWordPress> {
       if (route === '/wp/v2/users/me') return send(200, { id: 2, name: 'Editor', capabilities: { edit_posts: true } });
       if (route === '/wp/v2/categories') return send(200, categories);
       if (route === '/wp/v2/tags') return send(200, []);
+      if (route === '/wp/v2/settings' && req.method === 'POST') {
+        const input2 = JSON.parse(body || '{}');
+        if (agents && typeof input2.gseo_agent_catalog === 'string') agentOption = input2.gseo_agent_catalog;
+        return send(200, { title: 'Mock WP', ...(agents ? { gseo_agent_catalog: agentOption } : {}) });
+      }
       if (route.startsWith('/redirection/v1/') && !redirection) return send(404, { code: 'rest_no_route', message: 'No route was found matching the URL and request method.' });
       if (route === '/redirection/v1/group') return send(200, { items: [{ id: 1, name: 'Redirections', module_id: 1 }] });
       if (route === '/redirection/v1/redirect' && req.method === 'POST') {
@@ -210,6 +237,8 @@ export async function startMockWordPress(): Promise<MockWordPress> {
     },
     freezeHtml: on => (frozen = on ? new Map() : null),
     enableRedirection: () => (redirection = true),
+    enableAgentsPlugin: () => (agents = true),
+    agentCatalog: () => (agentOption ? JSON.parse(agentOption) : null),
     redirects,
     close: () => new Promise(r => server.close(() => r()))
   };

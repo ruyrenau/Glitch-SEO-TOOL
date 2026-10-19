@@ -61,6 +61,10 @@ const RULES: Array<[RegExp, RegExp, Permission]> = [
   [/^POST$/, /^\/api\/v1\/sites\/:id\/performance$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/seo-edits(\/link)?$/, 'content:edit'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/architecture\/redirects\/wordpress$/, 'wordpress:send'],
+  // Agents: the audit runs Chrome (operation); editors keep the catalog; publishing writes to WordPress.
+  [/^POST$/, /^\/api\/v1\/sites\/:id\/agents\/audit$/, 'seo:operate'],
+  [/^PUT$/, /^\/api\/v1\/sites\/:id\/agents\/catalog$/, 'content:edit'],
+  [/^POST$/, /^\/api\/v1\/sites\/:id\/agents\/catalog\/publish$/, 'wordpress:send'],
   // Backlinks and SERP tracking are operations (they make requests to other sites / spend SerpAPI credit).
   [/^POST$/, /^\/api\/v1\/sites\/:id\/(backlinks|serp\/run|serp\/keywords)$/, 'seo:operate'],
   [/^(PUT|DELETE)$/, /^\/api\/v1\/sites\/:id\/serp\/(config|keywords\/:keywordId)$/, 'seo:operate'],

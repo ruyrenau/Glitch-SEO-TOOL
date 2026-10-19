@@ -27,3 +27,4 @@ export * from './backlink-service';
 export * from './serp-service';
 export * from './mailer';
 export * from './account-service';
+export * from './agent-service';

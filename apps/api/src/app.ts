@@ -86,6 +86,13 @@ import {
   gscReport,
   cannibalizationReport,
   aiReadinessReport,
+  latestAgentAudit,
+  startAgentAudit,
+  getAgentCatalog,
+  saveAgentCatalog,
+  buildAgentDocuments,
+  publishAgentCatalog,
+  validateAgentEndpoints,
   workspaceLimits,
   ensureSuperAdmin,
   importBacklinks,
@@ -201,7 +208,10 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   const app = Fastify({
     logger: opts.logger ?? { level: config.LOG_LEVEL },
     genReqId: req => (typeof req.headers['x-correlation-id'] === 'string' ? req.headers['x-correlation-id'].slice(0, 64) : crypto.randomUUID()),
-    bodyLimit: 5 * 1024 * 1024
+    bodyLimit: 5 * 1024 * 1024,
+    // Behind Apache/Nginx on the same server (TRUST_PROXY=1): the visitor's IP comes from X-Forwarded-For,
+    // trusted only when the request arrives from the local proxy.
+    trustProxy: process.env.TRUST_PROXY === '1' ? ['127.0.0.1', '::1'] : false
   });
 
   await app.register(cors, { origin: (process.env.WEB_ORIGIN ?? 'http://localhost:3000').split(',').map(s => s.trim()), credentials: true, methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'] });
@@ -795,6 +805,56 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     await requireSite(id);
     const b = z.object({ url: z.string().url(), targetUrl: z.string().url(), anchor: z.string().min(2).max(120), note: z.string().max(500).optional() }).strict().parse(req.body);
     return reply.status(201).send(await proposeInternalLink(id, b));
+  });
+
+  // WordPress helper plugins (mu-plugins) shipped with G.SEO, to download from the dashboard.
+  const PLUGIN_FILES = new Set(['glitch-seo-meta.php', 'glitch-agents.php']);
+  app.get('/api/v1/downloads/:file', async (req, reply) => {
+    const { file } = z.object({ file: z.string().max(60) }).parse(req.params);
+    if (!PLUGIN_FILES.has(file)) throw new ApiError(404, 'NOT_FOUND', 'Archivo no disponible.');
+    const full = path.resolve(__dirname, '../../../docs/wordpress', file);
+    return reply.header('content-type', 'application/x-php; charset=utf-8').header('content-disposition', `attachment; filename="${file}"`).send(await fs.promises.readFile(full, 'utf8'));
+  });
+
+  // Agentes: navigation audit (Chrome) and the catalog for agents (agent.json + catalog + MCP in WordPress).
+  app.get('/api/v1/sites/:id/agents/audit', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return latestAgentAudit(id);
+  });
+  app.post('/api/v1/sites/:id/agents/audit', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const b = z.object({ urls: z.array(z.string().url()).max(15).optional() }).strict().parse(req.body ?? {});
+    const site = await requireSite(id);
+    if (!findBrowser()) throw new ApiError(400, 'BROWSER_NOT_FOUND', 'Esta revisión necesita Chrome, Chromium o Edge instalado en el servidor (o CHROME_PATH).');
+    const audit = await startAgentAudit(id, b.urls);
+    const job = await enqueue('agent-audit', { auditId: audit.id }, { siteId: id, workspaceId: site.workspaceId });
+    return reply.status(202).send({ auditId: audit.id, jobId: job.id });
+  });
+  const catalogItem = z.object({ id: z.string().max(80).default(''), kind: z.enum(['service', 'product']), name: z.string().min(1).max(200), description: z.string().max(1000).optional(), url: z.string().url().optional().or(z.literal('')), price: z.number().min(0).nullable().optional(), currency: z.string().max(10).optional(), priceText: z.string().max(100).optional(), availability: z.enum(['InStock', 'OutOfStock', 'PreOrder', 'OnRequest']).nullable().optional(), category: z.string().max(100).optional() });
+  const catalogBusiness = z.object({ name: z.string().min(1).max(200), description: z.string().max(2000).optional(), url: z.string().url(), email: z.string().max(200).optional(), phone: z.string().max(60).optional(), address: z.string().max(300).optional(), hours: z.string().max(300).optional(), areaServed: z.string().max(200).optional(), languages: z.array(z.string().max(20)).max(10).optional(), quoteUrl: z.string().url().optional().or(z.literal('')), bookingUrl: z.string().url().optional().or(z.literal('')), contactUrl: z.string().url().optional().or(z.literal('')) });
+  app.get('/api/v1/sites/:id/agents/catalog', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    const c = await getAgentCatalog(id);
+    return { ...c, preview: buildAgentDocuments(c.business, c.items) };
+  });
+  app.put('/api/v1/sites/:id/agents/catalog', async req => {
+    const { id } = idParam.parse(req.params);
+    const b = z.object({ business: catalogBusiness, items: z.array(catalogItem).max(500) }).strict().parse(req.body);
+    await requireSite(id);
+    const clean = <T extends Record<string, unknown>>(o: T) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== '' && v !== undefined)) as T;
+    return saveAgentCatalog(id, { business: clean(b.business) as never, items: b.items.map(i => clean(i)) as never }, req.auth!.user.id);
+  });
+  app.post('/api/v1/sites/:id/agents/catalog/publish', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return publishAgentCatalog(id, req.auth!.user.id);
+  });
+  app.get('/api/v1/sites/:id/agents/validate', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return validateAgentEndpoints(id);
   });
 
   // Backlinks: upload a CSV of external links, check each linking page in the background.

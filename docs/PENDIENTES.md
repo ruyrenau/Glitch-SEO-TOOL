@@ -30,6 +30,7 @@ Lista viva de lo que falta. Al terminar algo, se marca con [x] y se anota el com
 - [ ] Sección de GA4 en los Reportes para clientes.
 
 ## Hecho recientemente
+- [x] Agentes de IA: navegación de agentes con Chrome (controles, etiquetas, ventanas, captcha, precios, tareas) y catálogo para agentes en WordPress (agent.json, catálogo, servidor MCP de solo lectura, plugin glitch-agents.php)
 - [x] Registro solo con tickets de la cuenta maestra; Administración con tickets, interruptor de registro, espacios por cuenta, usuarios y espacios de la instancia (3a850e3)
 - [x] Cuentas y colaboradores: registro con espacio propio y límites, varios espacios por persona, invitaciones por correo con rol, quitar miembros, recuperar contraseña por correo, panel de administración de la instancia (0ea036e)
 - [x] Autoridad y SERP: inspector de backlinks desde CSV (vivos, perdidos, rel, 404 a rescatar → 301, sospechosos, disavow) y seguimiento semanal de SERP e IA con SerpAPI (bloques, AI Overview, explicación de caídas) (622cdfd)

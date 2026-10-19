@@ -169,6 +169,8 @@ model Site {
   backlinkImports BacklinkImport[]
   serpKeywords   SerpKeyword[]
   gscQueryDays   GscQueryDay[]
+  agentAudits    AgentAudit[]
+  agentCatalog   AgentCatalog?
 }
 
 model LogImport {
@@ -1160,5 +1162,31 @@ model SignupTicket {
 model InstanceSetting {
   key       String   @id
   value     String
+  updatedAt DateTime @updatedAt
+}
+
+/// "Navegación de agentes": how well an autonomous AI agent can use the site's key pages (Chrome + accessibility tree).
+model AgentAudit {
+  id          String    @id @default(uuid())
+  siteId      String
+  site        Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  status      String    @default("running") // running, completed, failed
+  urls        Json
+  pages       Json      @default("[]")
+  summary     Json?
+  error       String?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([siteId, createdAt])
+}
+
+/// Catalog for AI agents (services, products, prices, contact) published as agent.json + catalog + MCP in WordPress.
+model AgentCatalog {
+  id        String   @id @default(uuid())
+  siteId    String   @unique
+  site      Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  items     Json     @default("[]")
+  business  Json     @default("{}")
   updatedAt DateTime @updatedAt
 }
