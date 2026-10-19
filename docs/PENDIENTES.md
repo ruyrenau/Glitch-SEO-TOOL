@@ -15,7 +15,9 @@ Lista viva de lo que falta. Al terminar algo, se marca con [x] y se anota el com
 - [ ] **Automatizar Visibilidad en IA**: consultar ChatGPT, Gemini, Claude y Perplexity con las claves de Configuración y llenar la matriz sola cada semana.
 - [ ] **Cuota frente a competidores**: qué dominios citan las IAs en tus preguntas y con qué frecuencia.
 - [ ] **Consenso de marca y entidades off-page (co-citaciones)**: buscar menciones de la marca en fuentes semilla (Reddit, Quora, Wikipedia, medios, directorios) y comparar el contexto con lo que dice el sitio.
+  - Necesita: clave de SerpAPI (ya está en Configuración) para buscar menciones y clave de Anthropic para que Claude compare el contexto. Reddit y algunos medios bloquean bots: a veces solo se lee el fragmento de Google. Cada análisis cuesta centavos de dólar y se lanza con un botón.
 - [ ] **Optimizador de "Information Gain"**: comparar la página con las fuentes que citan Perplexity o AI Overviews y decir qué dato único, tabla o estadística agregar.
+  - Necesita: clave de Perplexity (agregarla en Configuración) para obtener sus citas, SerpAPI para AI Overviews y Anthropic para que Claude compare los textos. Solo sugiere; no escribe ni publica nada. Cada análisis cuesta centavos de dólar y se lanza con un botón.
 
 ## Google Analytics (GA4), fase 2
 - [ ] Columnas de GA4 en el Explorador.
