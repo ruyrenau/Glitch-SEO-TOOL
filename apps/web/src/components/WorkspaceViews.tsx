@@ -12,9 +12,11 @@ export interface WorkspaceSummary { id: string; name: string; role: Role; roleLa
 
 /** Sidebar selector: which workspace you are working in, and creating a new one. */
 export function WorkspaceSwitcher() {
-  const { workspaces, workspaceId } = useAuth();
+  const { workspaces, workspaceId, canCreateWorkspace } = useAuth();
   const [busy, setBusy] = useState(false);
   if (!workspaces?.length) return null;
+  // A single workspace and no right to create more: nothing to choose.
+  if (workspaces.length === 1 && !canCreateWorkspace) return null;
   const change = async (id: string) => {
     if (id === '__new') {
       const name = window.prompt('Nombre del nuevo espacio de trabajo (por ejemplo, el de un cliente):');
@@ -38,7 +40,7 @@ export function WorkspaceSwitcher() {
       <label htmlFor="workspace-select" className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Espacio de trabajo</label>
       <select id="workspace-select" disabled={busy} value={workspaceId} onChange={e => change(e.target.value)} className="w-full text-xs font-semibold rounded-lg p-2 border bg-slate-50 border-slate-200 dark:bg-slate-900 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
         {workspaces.map(w => <option key={w.id} value={w.id}>{w.name} · {w.roleLabel}</option>)}
-        <option value="__new">+ Nuevo espacio…</option>
+        {canCreateWorkspace && <option value="__new">+ Nuevo espacio…</option>}
       </select>
     </div>
   );
@@ -163,7 +165,7 @@ export function ProfileCard() {
 }
 
 /** Instance administrator: every workspace, its usage and limits. */
-export function AdminView() {
+function AdminWorkspaces() {
   const [rows, setRows] = useState<any[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [edit, setEdit] = useState<Record<string, { maxSites: string; maxCrawlUrls: string }>>({});
@@ -184,9 +186,9 @@ export function AdminView() {
   };
   if (!rows) return error ? <ErrorBox error={error} /> : <Skeleton rows={4} />;
   return (
-    <Card title="Administración de la instancia">
+    <Card title="Espacios de trabajo">
       <div className="text-xs space-y-3">
-        <p className="text-slate-500">Todos los espacios de trabajo de este G.SEO, con su uso y sus límites. Deja un límite vacío para "sin límite". Suspender un espacio impide entrar a él (los datos se conservan). Las cuentas nuevas reciben los límites de las variables SIGNUP_MAX_SITES y SIGNUP_MAX_CRAWL_URLS; el registro se cierra con SIGNUP=closed.</p>
+        <p className="text-slate-500">Todos los espacios de trabajo de este G.SEO, con su uso y sus límites. Deja un límite vacío para "sin límite". Suspender un espacio impide entrar a él (los datos se conservan).</p>
         <ErrorBox error={error} />
         {!rows.length ? <Empty>No hay espacios.</Empty> : (
           <div className="overflow-auto">
@@ -216,5 +218,139 @@ export function AdminView() {
         )}
       </div>
     </Card>
+  );
+}
+
+/** Sign-up: on/off, workspaces per account, and tickets (the only way to create an account). */
+function AdminSignup() {
+  const [settings, setSettings] = useState<{ signupEnabled: boolean; workspacesPerUser: number } | null>(null);
+  const [tickets, setTickets] = useState<any[] | null>(null);
+  const [form, setForm] = useState({ label: '', maxUses: '1', expiresDays: '14', maxSites: '3', maxCrawlUrls: '5000' });
+  const [created, setCreated] = useState<any>(null);
+  const [error, setError] = useState<unknown>(null);
+  const load = useCallback(async () => {
+    try {
+      setSettings(await apiGet('/api/v1/admin/settings'));
+      setTickets(await apiGet('/api/v1/admin/tickets'));
+    } catch (e) {
+      setError(e);
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const num = (s: string) => (s.trim() === '' ? null : Number(s));
+  const saveSettings = async (change: Partial<{ signupEnabled: boolean; workspacesPerUser: number }>) => {
+    setError(null);
+    try {
+      setSettings(await apiSend('PUT', '/api/v1/admin/settings', change));
+    } catch (e) {
+      setError(e);
+    }
+  };
+  const create = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      setCreated(await apiSend('POST', '/api/v1/admin/tickets', { label: form.label || undefined, maxUses: Number(form.maxUses) || 1, expiresDays: num(form.expiresDays), maxSites: num(form.maxSites), maxCrawlUrls: num(form.maxCrawlUrls) }));
+      setForm({ ...form, label: '' });
+      await load();
+    } catch (err) {
+      setError(err);
+    }
+  };
+  const STATUS: Record<string, [string, 'good' | 'warn' | 'bad' | 'default']> = { active: ['Activo', 'good'], used: ['Usado', 'default'], expired: ['Vencido', 'warn'], revoked: ['Retirado', 'bad'] };
+  if (!settings || !tickets) return error ? <ErrorBox error={error} /> : <Skeleton rows={4} />;
+  return (
+    <Card title="Registro y tickets">
+      <div className="text-xs space-y-4">
+        <p className="text-slate-500">Nadie puede crear una cuenta por su cuenta: solo con un ticket (código) que generes aquí. Cada cuenta nueva tiene su propio espacio, con los límites del ticket, y no ve tu cuenta, tus espacios ni esta administración.</p>
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-1.5"><input type="checkbox" aria-label="Registro con tickets activado" checked={settings.signupEnabled} onChange={e => saveSettings({ signupEnabled: e.target.checked })} /> Registro con tickets activado</label>
+          <label className="flex items-center gap-1.5">Espacios que puede tener cada cuenta <select aria-label="Espacios por cuenta" className={inputCls} value={settings.workspacesPerUser} onChange={e => saveSettings({ workspacesPerUser: Number(e.target.value) })}>{[1, 2, 3, 5, 10].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
+        </div>
+        <form onSubmit={create} className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+          <h4 className="font-semibold">Nuevo ticket</h4>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="space-y-1"><span className="block font-semibold">Para quién (nota)</span><input aria-label="Para quién es el ticket" className={`${inputCls} w-48`} value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} /></label>
+            <label className="space-y-1"><span className="block font-semibold">Usos</span><input aria-label="Usos del ticket" type="number" min={1} className={`${inputCls} w-16`} value={form.maxUses} onChange={e => setForm({ ...form, maxUses: e.target.value })} /></label>
+            <label className="space-y-1"><span className="block font-semibold">Vence en (días)</span><input aria-label="Días de vigencia" type="number" min={1} className={`${inputCls} w-20`} placeholder="nunca" value={form.expiresDays} onChange={e => setForm({ ...form, expiresDays: e.target.value })} /></label>
+            <label className="space-y-1"><span className="block font-semibold">Máx. sitios</span><input aria-label="Máximo de sitios del ticket" type="number" min={0} className={`${inputCls} w-20`} value={form.maxSites} onChange={e => setForm({ ...form, maxSites: e.target.value })} /></label>
+            <label className="space-y-1"><span className="block font-semibold">Máx. URLs por crawl</span><input aria-label="Máximo de URLs del ticket" type="number" min={100} className={`${inputCls} w-24`} value={form.maxCrawlUrls} onChange={e => setForm({ ...form, maxCrawlUrls: e.target.value })} /></label>
+            <Button type="submit">Generar ticket</Button>
+          </div>
+        </form>
+        {created && (
+          <div role="status" className="p-3 rounded-xl border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 space-y-1">
+            <p className="font-semibold">Ticket creado. Cópialo ahora: por seguridad no se vuelve a mostrar completo.</p>
+            <div className="flex items-center gap-2"><code aria-label="Código del ticket" className="font-mono text-sm">{created.code}</code><button aria-label="Copiar código" onClick={() => navigator.clipboard?.writeText(created.code)}><Copy className="w-4 h-4" /></button></div>
+            <div className="flex items-center gap-2"><code className="font-mono text-[11px] break-all">{created.url}</code><button aria-label="Copiar enlace de registro" onClick={() => navigator.clipboard?.writeText(created.url)}><Copy className="w-4 h-4" /></button></div>
+          </div>
+        )}
+        <ErrorBox error={error} />
+        <table className="w-full">
+          <thead><tr className="text-slate-500 text-left border-b border-slate-200 dark:border-slate-800"><th className="py-1">Ticket</th><th>Para</th><th>Estado</th><th className="text-right">Usos</th><th>Límites</th><th>Vence</th><th></th></tr></thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            {tickets.map(t => (
+              <tr key={t.id}>
+                <td className="py-1 font-mono">…{t.hint}</td><td>{t.label ?? '—'}</td><td><Badge tone={STATUS[t.status][1]}>{STATUS[t.status][0]}</Badge></td><td className="text-right tabular-nums">{t.uses}/{t.maxUses}</td>
+                <td className="text-slate-500">{t.maxSites ?? 'def.'} sitios · {t.maxCrawlUrls ? fmt(t.maxCrawlUrls) : 'def.'} URLs</td><td className="text-slate-500">{t.expiresAt ? fmtDate(t.expiresAt) : 'nunca'}</td>
+                <td>{t.status === 'active' && <Button variant="secondary" onClick={() => apiSend('DELETE', `/api/v1/admin/tickets/${t.id}`).then(load, setError)}>Retirar</Button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+/** Every account of the instance. */
+function AdminUsers() {
+  const [rows, setRows] = useState<any[] | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const load = useCallback(() => apiGet<any[]>('/api/v1/admin/users').then(setRows, setError), []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  if (!rows) return error ? <ErrorBox error={error} /> : <Skeleton rows={4} />;
+  return (
+    <Card title="Usuarios de la instancia">
+      <div className="text-xs space-y-3">
+        <p className="text-slate-500">Todas las cuentas, en qué espacios trabajan y cuándo entraron por última vez. Desactivar una cuenta cierra sus sesiones en todos sus espacios.</p>
+        <ErrorBox error={error} />
+        <table className="w-full">
+          <thead><tr className="text-slate-500 text-left border-b border-slate-200 dark:border-slate-800"><th className="py-1">Cuenta</th><th>Espacios</th><th>Último acceso</th><th>Creada</th><th></th></tr></thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            {rows.map(u => (
+              <tr key={u.id} className={u.disabled ? 'opacity-60' : ''}>
+                <td className="py-1.5"><strong>{u.name}</strong> <span className="font-mono text-slate-500">{u.username}</span>{u.isSuperAdmin && <Badge tone="good">administrador</Badge>}{u.disabled && <Badge tone="bad">desactivada</Badge>}<div className="text-slate-500">{u.email ?? 'sin correo'}</div></td>
+                <td>{u.workspaces.map((w: any) => `${w.name} (${w.roleLabel})`).join(', ') || '—'}</td>
+                <td className="text-slate-500">{u.lastLoginAt ? fmtDate(u.lastLoginAt) : 'nunca'}</td>
+                <td className="text-slate-500">{fmtDate(u.createdAt)}</td>
+                <td>{!u.isSuperAdmin && <Button variant="secondary" onClick={() => confirm(u.disabled ? `¿Reactivar a ${u.username}?` : `¿Desactivar a ${u.username}? Se cierran sus sesiones en todos sus espacios.`) && apiSend('PATCH', `/api/v1/admin/users/${u.id}`, { disabled: !u.disabled }).then(load, setError)}>{u.disabled ? 'Reactivar' : 'Desactivar'}</Button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+/** Administración: only for the instance administrator (the master account). */
+export function AdminView() {
+  const [tab, setTab] = useState<'signup' | 'users' | 'workspaces'>('signup');
+  return (
+    <div className="space-y-4">
+      <div role="tablist" aria-label="Administración" className="flex flex-wrap gap-1">
+        {([['signup', 'Registro y tickets'], ['users', 'Usuarios'], ['workspaces', 'Espacios de trabajo']] as const).map(([id, l]) => (
+          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${tab === id ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 dark:border-slate-700'}`}>{l}</button>
+        ))}
+      </div>
+      {tab === 'signup' && <AdminSignup />}
+      {tab === 'users' && <AdminUsers />}
+      {tab === 'workspaces' && <AdminWorkspaces />}
+    </div>
   );
 }

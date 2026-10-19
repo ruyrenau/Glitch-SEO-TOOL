@@ -428,8 +428,9 @@ const SECTIONS: Section[] = [
     what: 'Cada cuenta tiene sus propios espacios de trabajo, y cada espacio tiene sus sitios, sus datos y sus conexiones (Google, WordPress, claves de API). Puedes invitar colaboradores con un rol, y una misma persona puede estar en varios espacios (el tuyo y el de un cliente, por ejemplo).',
     why: 'Separa clientes o equipos sin que sus datos se mezclen, y deja registrado quién hizo cada cosa.',
     steps: [
-      'Crear cuenta: en la pantalla de inicio, "Crear cuenta". Recibes tu propio espacio, vacío (si el administrador dejó abierto el registro).',
-      'Cambiar de espacio: en la barra lateral, "Espacio de trabajo". Ahí mismo, "+ Nuevo espacio…" crea otro (por ejemplo, uno por cliente).',
+      'Crear cuenta: solo con un código (ticket) que genera el administrador de la instancia. Con el enlace del ticket el código ya viene escrito; si no, "Crear cuenta" en la pantalla de inicio y pégalo. Recibes tu propio espacio, vacío, con los límites del ticket.',
+      'Cambiar de espacio: si trabajas en más de uno, usa "Espacio de trabajo" en la barra lateral. "+ Nuevo espacio…" aparece si el administrador te permite tener más de uno.',
+      'Administración (solo la cuenta maestra): genera y retira tickets, activa o desactiva el registro, define cuántos espacios puede tener cada cuenta, ve todas las cuentas y espacios, cambia límites y suspende o desactiva.',
       'Invitar: Usuarios → "Invitar colaboradores", escribe el correo y elige el rol. La persona recibe un enlace válido 7 días; si el servidor no tiene correo configurado, copia el enlace y compártelo tú. Si ya tiene cuenta, entra con ella y el espacio aparece en su selector.',
       'Quitar a alguien: Usuarios → "Quitar del espacio". Su cuenta y sus otros espacios no cambian.',
       'Recuperar la contraseña: "¿Olvidaste tu contraseña?" en el inicio de sesión envía un enlace por correo (válido 1 hora). Puedes entrar con tu usuario o con tu correo.',

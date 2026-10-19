@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { assertAccountControl, register, requestPasswordReset, resetPasswordWithToken, invitationInfo, acceptInvitationNew, acceptInvitationExisting, updateOwnProfile, myWorkspaces, createWorkspaceFor, switchWorkspace, renameWorkspace, removeMember, listInvitations, createInvitation, revokeInvitation, authConfig, adminWorkspaces, adminUpdateWorkspace,
+import { assertAccountControl, canCreateWorkspace, checkSignupTicket, instanceSettings, saveInstanceSettings, listSignupTickets, createSignupTicket, revokeSignupTicket, adminUsers, adminSetUserDisabled, register, requestPasswordReset, resetPasswordWithToken, invitationInfo, acceptInvitationNew, acceptInvitationExisting, updateOwnProfile, myWorkspaces, createWorkspaceFor, switchWorkspace, renameWorkspace, removeMember, listInvitations, createInvitation, revokeInvitation, authConfig, adminWorkspaces, adminUpdateWorkspace,
   prisma,
   actorContext,
   login,
@@ -44,7 +44,7 @@ const RULES: Array<[RegExp, RegExp, Permission]> = [
   [/^(POST|PATCH)$/, /^\/api\/v1\/(workspaces|auth\/profile|workspace\/leave)$/, 'read'],
   [/^(PATCH|GET|POST|DELETE)$/, /^\/api\/v1\/(workspace|workspace\/members\/:userId|invitations(\/:invitationId)?)$/, 'users:manage'],
   // Instance administrator routes check isSuperAdmin themselves.
-  [/^(GET|PATCH)$/, /^\/api\/v1\/admin\/workspaces(\/:workspaceId)?$/, 'read'],
+  [/^(GET|POST|PUT|PATCH|DELETE)$/, /^\/api\/v1\/admin\//, 'read'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/(log-imports|sitemap|crawls)$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/crawls\/:id\/cancel$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/crawls\/:id\/explorer\/custom$/, 'read'], // read-only analysis of stored HTML
@@ -161,7 +161,7 @@ function clearFailures(ip: string, username: string) {
 
 // The client report link is public on purpose: the unguessable token is the credential.
 // The Google OAuth callback is authenticated by its signed state (see gscFinishOAuth), not by the session cookie.
-const PUBLIC = [/^\/health(\/|$)/, /^\/docs(\/|$)/, /^\/api\/v1\/auth\/(login|config|register|forgot|reset)$/, /^\/api\/v1\/public\/invitations\/[\w-]+(\/accept)?$/, /^\/api\/v1\/public\/reports\/[\w-]+$/, /^\/api\/v1\/gsc\/oauth\/callback$/];
+const PUBLIC = [/^\/health(\/|$)/, /^\/docs(\/|$)/, /^\/api\/v1\/auth\/(login|config|register|forgot|reset)$/, /^\/api\/v1\/auth\/tickets\/[\w-]+$/, /^\/api\/v1\/public\/invitations\/[\w-]+(\/accept)?$/, /^\/api\/v1\/public\/reports\/[\w-]+$/, /^\/api\/v1\/gsc\/oauth\/callback$/];
 const ALLOWED_WHILE_CHANGING_PASSWORD = /^\/api\/v1\/auth\/(me|password|logout)$/;
 
 export async function registerAuth(app: FastifyInstance) {
@@ -239,7 +239,7 @@ export async function registerAuth(app: FastifyInstance) {
     return reply.status(204).send();
   });
 
-  app.get('/api/v1/auth/me', async req => ({ user: req.auth!.user, workspaceId: req.auth!.workspaceId, workspaces: await myWorkspaces(req.auth!.user.id) }));
+  app.get('/api/v1/auth/me', async req => ({ user: req.auth!.user, workspaceId: req.auth!.workspaceId, workspaces: await myWorkspaces(req.auth!.user.id), canCreateWorkspace: await canCreateWorkspace(req.auth!.user.id) }));
 
   // ------------------------------------------------------------------ accounts (public)
   app.get('/api/v1/auth/config', async () => authConfig());
@@ -247,15 +247,19 @@ export async function registerAuth(app: FastifyInstance) {
     const origin = req.headers.origin;
     if (origin && !allowedOrigins.has(origin)) throw new HttpError(403, 'CSRF_ORIGIN', 'Request origin not allowed');
   };
+  // Failed attempts (bad ticket, invalid token, wrong data) are counted per IP and route, like failed logins.
   const slowDown = (req: FastifyRequest, key: string) => {
     const wait = throttled(req.ip, key);
     if (wait) throw new HttpError(429, 'TOO_MANY_ATTEMPTS', `Demasiados intentos. Espera ${Math.ceil(wait / 60)} min.`, { retryAfter: wait });
-    recordFailure(req.ip, key); // every attempt counts: these routes create accounts or send email
+    (req as FastifyRequest & { throttleKey?: string }).throttleKey = key;
   };
   const publicRoute = (fn: (req: FastifyRequest, reply: FastifyReply) => Promise<unknown>) => async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       return await fn(req, reply);
     } catch (e) {
+      const key = (req as FastifyRequest & { throttleKey?: string }).throttleKey;
+      const status = e instanceof HttpError ? e.status : (e as { statusCode?: number; status?: number }).statusCode ?? (e as { status?: number }).status ?? 500;
+      if (key && status >= 400 && status < 500 && status !== 429) recordFailure(req.ip, key);
       if (e instanceof HttpError) return sendError(reply, req, e);
       throw e;
     }
@@ -263,10 +267,14 @@ export async function registerAuth(app: FastifyInstance) {
   app.post('/api/v1/auth/register', publicRoute(async (req, reply) => {
     sameOrigin(req);
     slowDown(req, '#register');
-    const b = z.object({ username: z.string().min(3).max(40), name: z.string().min(1).max(100), email: z.string().email().max(200), password: z.string().min(1).max(200), workspaceName: z.string().max(80).optional() }).strict().parse(req.body);
+    const b = z.object({ ticket: z.string().min(4).max(40), username: z.string().min(3).max(40), name: z.string().min(1).max(100), email: z.string().email().max(200), password: z.string().min(1).max(200), workspaceName: z.string().max(80).optional() }).strict().parse(req.body);
     const r = await register(b, { ip: req.ip, userAgent: req.headers['user-agent'] });
     reply.setCookie(SESSION_COOKIE, r.token, cookieOpts);
     return reply.status(201).send({ user: r.user });
+  }));
+  app.get('/api/v1/auth/tickets/:code', publicRoute(async req => {
+    slowDown(req, '#ticket');
+    return checkSignupTicket(z.object({ code: z.string().min(4).max(40) }).parse(req.params).code);
   }));
   app.post('/api/v1/auth/forgot', publicRoute(async req => {
     sameOrigin(req);
@@ -319,6 +327,21 @@ export async function registerAuth(app: FastifyInstance) {
   const superAdmin = (req: FastifyRequest) => {
     if (!req.auth!.user.isSuperAdmin) throw new HttpError(403, 'SUPERADMIN_REQUIRED', 'Solo el administrador de la instancia puede ver esto.');
   };
+  const adminOnly = <T>(fn: (req: FastifyRequest) => Promise<T>) => async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      superAdmin(req);
+    } catch (e) {
+      return sendError(reply, req, e as HttpError);
+    }
+    return fn(req);
+  };
+  app.get('/api/v1/admin/settings', adminOnly(() => instanceSettings()));
+  app.put('/api/v1/admin/settings', adminOnly(req => saveInstanceSettings(z.object({ signupEnabled: z.boolean().optional(), workspacesPerUser: z.number().int().min(1).max(100).optional() }).strict().parse(req.body), req.auth!.user.id)));
+  app.get('/api/v1/admin/tickets', adminOnly(() => listSignupTickets()));
+  app.post('/api/v1/admin/tickets', adminOnly(req => createSignupTicket(z.object({ label: z.string().max(120).optional(), maxUses: z.number().int().min(1).max(1000).optional(), expiresDays: z.number().int().min(1).max(365).nullable().optional(), maxSites: z.number().int().min(0).max(100_000).nullable().optional(), maxCrawlUrls: z.number().int().min(100).max(10_000_000).nullable().optional() }).strict().parse(req.body), req.auth!.user.id)));
+  app.delete('/api/v1/admin/tickets/:ticketId', adminOnly(req => revokeSignupTicket(z.object({ ticketId: z.string().uuid() }).parse(req.params).ticketId, req.auth!.user.id)));
+  app.get('/api/v1/admin/users', adminOnly(() => adminUsers()));
+  app.patch('/api/v1/admin/users/:userId', adminOnly(req => adminSetUserDisabled(z.object({ userId: z.string().uuid() }).parse(req.params).userId, z.object({ disabled: z.boolean() }).strict().parse(req.body).disabled, req.auth!.user.id)));
   app.get('/api/v1/admin/workspaces', async (req, reply) => {
     try {
       superAdmin(req);

@@ -38,12 +38,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function LoginView({ onLoggedIn }: { onLoggedIn: (u: User) => void }) {
-  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
+export function LoginView({ onLoggedIn, initialTicket }: { onLoggedIn: (u: User) => void; initialTicket?: string }) {
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(initialTicket ? 'register' : 'login');
   const [cfg, setCfg] = useState<{ signup: boolean; email: boolean } | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [reg, setReg] = useState({ name: '', email: '', username: '', password: '', workspaceName: '' });
+  const [reg, setReg] = useState({ ticket: initialTicket ?? '', name: '', email: '', username: '', password: '', workspaceName: '' });
   const [identifier, setIdentifier] = useState('');
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -100,7 +100,8 @@ export function LoginView({ onLoggedIn }: { onLoggedIn: (u: User) => void }) {
       <Shell>
         <Card title="Crear cuenta">
           <form onSubmit={register} className="space-y-3">
-            <p className="text-xs text-slate-500">Tu cuenta tiene su propio espacio de trabajo, vacío: ahí agregas tus sitios e invitas a tus colaboradores.</p>
+            <p className="text-xs text-slate-500">El registro es solo con un código que te da el administrador. Tu cuenta tiene su propio espacio de trabajo, vacío: ahí agregas tus sitios e invitas a tus colaboradores.</p>
+            <label className="block text-xs font-semibold space-y-1"><span>Código de registro</span><input required autoCapitalize="characters" spellCheck={false} aria-label="Código de registro" placeholder="GSEO-XXXX-XXXX-XXXX" className={`${inputCls} font-mono`} value={reg.ticket} onChange={e => setReg({ ...reg, ticket: e.target.value })} /></label>
             <label className="block text-xs font-semibold space-y-1"><span>Nombre</span><input required autoComplete="name" aria-label="Tu nombre" className={inputCls} value={reg.name} onChange={e => setReg({ ...reg, name: e.target.value })} /></label>
             <label className="block text-xs font-semibold space-y-1"><span>Correo</span><input required type="email" autoComplete="email" aria-label="Tu correo" className={inputCls} value={reg.email} onChange={e => setReg({ ...reg, email: e.target.value })} /></label>
             <label className="block text-xs font-semibold space-y-1"><span>Usuario</span><input required autoComplete="username" autoCapitalize="none" spellCheck={false} aria-label="Usuario nuevo" className={inputCls} value={reg.username} onChange={e => setReg({ ...reg, username: e.target.value })} /></label>
@@ -149,7 +150,7 @@ export function LoginView({ onLoggedIn }: { onLoggedIn: (u: User) => void }) {
       </Card>
       <div className="text-[11px] text-center text-slate-500 space-y-1">
         {cfg?.email ? <p><button className="underline" onClick={() => go('forgot')}>¿Olvidaste tu contraseña?</button></p> : <p>¿Olvidaste tu contraseña? Pide a un Admin que la restablezca.</p>}
-        {cfg?.signup && <p>¿No tienes cuenta? <button className="underline font-semibold" onClick={() => go('register')}>Crear cuenta</button></p>}
+        {cfg?.signup && <p>¿Tienes un código de registro? <button className="underline font-semibold" onClick={() => go('register')}>Crear cuenta</button></p>}
       </div>
     </Shell>
   );

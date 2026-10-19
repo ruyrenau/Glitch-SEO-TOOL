@@ -344,13 +344,13 @@ function Dashboard() {
 /** Shows the login screen until there is a valid session, then the dashboard. */
 export default function App() {
   const [state, setState] = useState<'loading' | 'anon' | 'offline' | User>('loading');
-  const [ws, setWs] = useState<{ workspaces: WorkspaceSummary[]; workspaceId: string } | null>(null);
+  const [ws, setWs] = useState<{ workspaces: WorkspaceSummary[]; workspaceId: string; canCreateWorkspace: boolean } | null>(null);
   const [dark, setDark] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const r = await apiGet<{ user: User; workspaces: WorkspaceSummary[]; workspaceId: string }>('/api/v1/auth/me');
-      setWs({ workspaces: r.workspaces, workspaceId: r.workspaceId });
+      const r = await apiGet<{ user: User; workspaces: WorkspaceSummary[]; workspaceId: string; canCreateWorkspace: boolean }>('/api/v1/auth/me');
+      setWs({ workspaces: r.workspaces, workspaceId: r.workspaceId, canCreateWorkspace: r.canCreateWorkspace });
       setState(r.user);
     } catch (err) {
       setState(err instanceof ApiRequestError && err.status === 401 ? 'anon' : 'offline');
@@ -391,7 +391,7 @@ export default function App() {
   if (state.mustChangePassword) return <div className={dark ? 'dark' : ''}><ForcedPasswordView onDone={refresh} onLogout={logout} /></div>;
   const user = state;
   return (
-    <AuthProvider value={{ user, can: p => user.permissions.includes(p), logout, refresh, workspaces: ws?.workspaces, workspaceId: ws?.workspaceId }}>
+    <AuthProvider value={{ user, can: p => user.permissions.includes(p), logout, refresh, workspaces: ws?.workspaces, workspaceId: ws?.workspaceId, canCreateWorkspace: ws?.canCreateWorkspace }}>
       <Dashboard />
     </AuthProvider>
   );

@@ -11,6 +11,7 @@ interface AuthValue {
   refresh: () => Promise<void>;
   workspaces?: WorkspaceSummary[];
   workspaceId?: string;
+  canCreateWorkspace?: boolean;
 }
 
 export const AuthContext = createContext<AuthValue | null>(null);

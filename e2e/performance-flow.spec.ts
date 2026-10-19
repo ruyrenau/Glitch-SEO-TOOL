@@ -19,7 +19,9 @@ test('performance report: screenshot, grade, filterable issues, weight by type a
 
   // Only /about: untick the suggested home page.
   const home = page.getByRole('checkbox', { name: `${site.origin}/`, exact: true });
-  if (await home.count()) await home.uncheck();
+  // The suggestions load after the form: wait for the home page before unticking it.
+  await expect(home).toBeVisible();
+  await home.uncheck();
   await page.getByLabel('Otras URLs del sitio (una por línea)').fill(`${site.origin}/about`);
   const mobile = page.getByRole('checkbox', { name: 'Móvil' });
   if (await mobile.isChecked()) await mobile.uncheck();

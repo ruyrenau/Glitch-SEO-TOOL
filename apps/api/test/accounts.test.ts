@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { prisma, sentMail } from '@glitch/db';
-import { buildAuthedApp } from './helpers';
+import { buildAuthedApp, loginAs } from './helpers';
 
 let app: FastifyInstance;
 const anon = { cookie: '' };
@@ -12,12 +12,13 @@ const tokenFrom = (text: string, path: string) => new RegExp(`/${path}/([\\w-]+)
 
 beforeAll(async () => {
   process.env.SMTP_URL = 'test://';
-  process.env.SIGNUP_MAX_SITES = '1';
-  process.env.SIGNUP_MAX_CRAWL_URLS = '500';
   ({ app } = await buildAuthedApp());
+  // The test Owner is the instance administrator (the "master" account).
+  const me = (await app.inject('/api/v1/auth/me')).json();
+  await prisma.user.update({ where: { id: me.user.id }, data: { isSuperAdmin: true } });
 });
 afterAll(async () => {
-  for (const k of ['SMTP_URL', 'SIGNUP_MAX_SITES', 'SIGNUP_MAX_CRAWL_URLS', 'SIGNUP']) delete process.env[k];
+  for (const k of ['SMTP_URL']) delete process.env[k];
   await app.close();
   await prisma.$disconnect();
 });
@@ -26,18 +27,39 @@ describe('Cuentas y colaboradores', () => {
   let ana: string; // Ana's cookie
   let anaWs: string;
 
-  it('signs up a new account with its own empty workspace and limits', async () => {
+  let ticket: string;
+  it('only the administrator creates sign-up tickets', async () => {
+    const t = await app.inject({ method: 'POST', url: '/api/v1/admin/tickets', payload: { label: 'Para Ana', maxUses: 1, expiresDays: 7, maxSites: 1, maxCrawlUrls: 500 } });
+    expect(t.statusCode).toBe(200);
+    ticket = t.json().code;
+    expect(ticket).toMatch(/^GSEO-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    expect(t.json().url).toContain(`/signup/${ticket}`);
+    expect((await app.inject('/api/v1/admin/tickets')).json()[0]).toMatchObject({ label: 'Para Ana', status: 'active', uses: 0, hint: ticket.slice(-4) });
+    expect(JSON.stringify(await prisma.signupTicket.findMany())).not.toContain(ticket); // only the hash is stored
+  });
+
+  it('signs up only with a valid ticket, which is then spent; the account gets its own empty workspace', async () => {
     expect((await app.inject({ url: '/api/v1/auth/config', headers: anon })).json()).toEqual({ signup: true, email: true });
-    const r = await app.inject({ method: 'POST', url: '/api/v1/auth/register', headers: anon, payload: { username: 'ana', name: 'Ana López', email: 'Ana@Agencia.mx', password: PW, workspaceName: 'Agencia Ana' } });
+    const base = { username: 'ana', name: 'Ana López', email: 'Ana@Agencia.mx', password: PW, workspaceName: 'Agencia Ana' };
+    expect((await app.inject({ method: 'POST', url: '/api/v1/auth/register', headers: anon, payload: base })).statusCode).toBe(400); // no ticket
+    expect((await app.inject({ method: 'POST', url: '/api/v1/auth/register', headers: anon, payload: { ...base, ticket: 'GSEO-AAAA-BBBB-CCCC' } })).json().error.code).toBe('INVALID_TICKET');
+    expect((await app.inject({ url: `/api/v1/auth/tickets/${ticket}`, headers: anon })).json()).toEqual({ valid: true, reason: null });
+    const r = await app.inject({ method: 'POST', url: '/api/v1/auth/register', headers: anon, payload: { ...base, ticket: ticket.toLowerCase() } });
     expect(r.statusCode).toBe(201);
+    expect((await app.inject({ url: `/api/v1/auth/tickets/${ticket}`, headers: anon })).json()).toEqual({ valid: false, reason: 'El código ya se usó.' });
+    expect((await app.inject({ method: 'POST', url: '/api/v1/auth/register', headers: anon, payload: { ...base, username: 'otra', email: 'otra@x.mx', ticket } })).json().error.code).toBe('INVALID_TICKET');
     ana = cookieOf(r);
     const me = (await app.inject({ url: '/api/v1/auth/me', headers: as(ana) })).json();
     expect(me.user).toMatchObject({ username: 'ana', email: 'ana@agencia.mx', role: 'OWNER', isSuperAdmin: false });
     expect(me.workspaces).toEqual([expect.objectContaining({ name: 'Agencia Ana', role: 'OWNER', sites: 0, maxSites: 1, maxCrawlUrls: 500 })]);
+    expect(me.canCreateWorkspace).toBe(false); // regular accounts own one workspace unless the administrator allows more
+    expect((await app.inject({ method: 'POST', url: '/api/v1/workspaces', headers: as(ana), payload: { name: 'Otro' } })).json().error.code).toBe('WORKSPACE_LIMIT');
+    // She cannot see the administration.
+    for (const url of ['/api/v1/admin/tickets', '/api/v1/admin/users', '/api/v1/admin/settings', '/api/v1/admin/workspaces']) expect((await app.inject({ url, headers: as(ana) })).statusCode).toBe(403);
     anaWs = me.workspaceId;
     // Her workspace is empty: she does not see the other workspace's sites.
     expect((await app.inject({ url: '/api/v1/sites', headers: as(ana) })).json()).toEqual([]);
-    expect((await app.inject({ method: 'POST', url: '/api/v1/auth/register', headers: anon, payload: { username: 'ana2', name: 'X', email: 'ana@agencia.mx', password: PW } })).json().error.code).toBe('EMAIL_TAKEN');
+
   });
 
   it('enforces the workspace limits', async () => {
@@ -89,12 +111,13 @@ describe('Cuentas y colaboradores', () => {
   });
 
   it('a workspace admin cannot disable or reset the account of someone who also works elsewhere', async () => {
-    // Ana now belongs to her workspace and to the test Owner's: the test Owner cannot take over her account.
+    // Ana now belongs to her workspace and to this one: an Admin here (not the instance administrator) cannot take over her account.
+    const admin = await loginAs(app, 'ADMIN');
     const anaUser = await prisma.user.findUniqueOrThrow({ where: { username: 'ana' } });
-    expect((await app.inject({ method: 'PATCH', url: `/api/v1/users/${anaUser.id}`, payload: { disabled: true } })).json().error.code).toBe('SHARED_ACCOUNT');
-    expect((await app.inject({ method: 'POST', url: `/api/v1/users/${anaUser.id}/reset-password`, payload: { password: 'Robada-clave-2026' } })).json().error.code).toBe('SHARED_ACCOUNT');
+    expect((await app.inject({ method: 'PATCH', url: `/api/v1/users/${anaUser.id}`, headers: as(admin.cookie), payload: { disabled: true } })).json().error.code).toBe('SHARED_ACCOUNT');
+    expect((await app.inject({ method: 'POST', url: `/api/v1/users/${anaUser.id}/reset-password`, headers: as(admin.cookie), payload: { password: 'Robada-clave-2026' } })).json().error.code).toBe('SHARED_ACCOUNT');
     // Changing her role in this workspace is fine.
-    expect((await app.inject({ method: 'PATCH', url: `/api/v1/users/${anaUser.id}`, payload: { role: 'VIEWER' } })).json().role).toBe('VIEWER');
+    expect((await app.inject({ method: 'PATCH', url: `/api/v1/users/${anaUser.id}`, headers: as(admin.cookie), payload: { role: 'VIEWER' } })).json().role).toBe('VIEWER');
   });
 
   it('removes a member from the workspace without deleting the account', async () => {
@@ -116,9 +139,17 @@ describe('Cuentas y colaboradores', () => {
     expect((await app.inject({ method: 'POST', url: '/api/v1/auth/login', headers: anon, payload: { username: 'ana@agencia.mx', password: 'Nueva-clave-2026' } })).statusCode).toBe(200);
   });
 
-  it('the instance administrator sees every workspace and changes limits; others cannot', async () => {
+  it('the instance administrator sees every account and can disable one', async () => {
+    const users = (await app.inject('/api/v1/admin/users')).json();
+    const luis = users.find((u: { username: string }) => u.username === 'luis');
+    expect(luis).toMatchObject({ disabled: false, isSuperAdmin: false });
+    expect((await app.inject({ method: 'PATCH', url: `/api/v1/admin/users/${luis.id}`, payload: { disabled: true } })).json()).toEqual({ id: luis.id, disabled: true });
+    expect((await app.inject({ method: 'POST', url: '/api/v1/auth/login', headers: anon, payload: { username: 'luis', password: PW } })).statusCode).toBe(401);
     const me = (await app.inject('/api/v1/auth/me')).json();
-    await prisma.user.update({ where: { id: me.user.id }, data: { isSuperAdmin: true } });
+    expect((await app.inject({ method: 'PATCH', url: `/api/v1/admin/users/${me.user.id}`, payload: { disabled: true } })).json().error.code).toBe('CANNOT_CHANGE_SELF');
+  });
+
+  it('the instance administrator sees every workspace and changes limits; others cannot', async () => {
     const list = (await app.inject('/api/v1/admin/workspaces')).json();
     const agencia = list.find((w: { name: string }) => w.name === 'Agencia Ana');
     expect(agencia).toMatchObject({ sites: 1, maxSites: 1, owners: ['ana@agencia.mx'] });
@@ -129,9 +160,14 @@ describe('Cuentas y colaboradores', () => {
     expect((await app.inject({ url: '/api/v1/admin/workspaces', headers: as(cookieOf(login)) })).statusCode).toBe(403);
   });
 
-  it('closed sign-up refuses new accounts', async () => {
-    process.env.SIGNUP = 'closed';
-    expect((await app.inject({ method: 'POST', url: '/api/v1/auth/register', headers: anon, payload: { username: 'zeta', name: 'Z', email: 'z@z.mx', password: PW } })).json().error.code).toBe('SIGNUP_CLOSED');
-    delete process.env.SIGNUP;
+  it('the administrator can turn sign-up off: even valid tickets stop working', async () => {
+    const code = (await app.inject({ method: 'POST', url: '/api/v1/admin/tickets', payload: {} })).json().code;
+    expect((await app.inject({ method: 'PUT', url: '/api/v1/admin/settings', payload: { signupEnabled: false } })).json()).toMatchObject({ signupEnabled: false });
+    expect((await app.inject({ url: '/api/v1/auth/config', headers: anon })).json().signup).toBe(false);
+    expect((await app.inject({ method: 'POST', url: '/api/v1/auth/register', headers: anon, payload: { ticket: code, username: 'zeta', name: 'Z', email: 'z@z.mx', password: PW } })).json().error.code).toBe('SIGNUP_CLOSED');
+    await app.inject({ method: 'PUT', url: '/api/v1/admin/settings', payload: { signupEnabled: true } });
+    const list = (await app.inject('/api/v1/admin/tickets')).json();
+    await app.inject({ method: 'DELETE', url: `/api/v1/admin/tickets/${list[0].id}` });
+    expect((await app.inject({ method: 'POST', url: '/api/v1/auth/register', headers: anon, payload: { ticket: code, username: 'zeta', name: 'Z', email: 'z@z.mx', password: PW } })).json().error.code).toBe('INVALID_TICKET');
   });
 });

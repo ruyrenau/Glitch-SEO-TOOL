@@ -1139,3 +1139,26 @@ model PasswordReset {
   usedAt    DateTime?
   createdAt DateTime  @default(now())
 }
+
+/// Registration ticket created by the instance administrator: the only way to create a new account.
+model SignupTicket {
+  id           String    @id @default(uuid())
+  codeHash     String    @unique
+  hint         String    // last 4 characters, to recognize it in the list
+  label        String?   // who it is for
+  maxUses      Int       @default(1)
+  uses         Int       @default(0)
+  maxSites     Int?      // limits of the workspaces created with it (null = the defaults)
+  maxCrawlUrls Int?
+  expiresAt    DateTime?
+  revokedAt    DateTime?
+  createdById  String?
+  createdAt    DateTime  @default(now())
+}
+
+/// Instance-wide settings managed by the administrator (key/value).
+model InstanceSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
