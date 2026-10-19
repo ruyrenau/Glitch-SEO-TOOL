@@ -1192,7 +1192,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     const back = (params: Record<string, string>) => reply.redirect(`${webOrigin()}/?${new URLSearchParams({ nav, ...params })}`);
     if (q.error || !q.code || !q.state) return back({ gsc: 'error', message: q.error === 'access_denied' ? 'Cancelaste el permiso en Google.' : `Google respondió: ${q.error ?? 'sin código'}` });
     try {
-      nav = (await gscFinishOAuth({ code: q.code, state: q.state, workspaceId: req.auth!.workspaceId, userId: req.auth!.user.id })).back;
+      nav = (await gscFinishOAuth({ code: q.code, state: q.state })).back;
       return back({ gsc: 'connected' });
     } catch (e) {
       return back({ gsc: 'error', message: (e as Error).message });

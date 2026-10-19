@@ -45,7 +45,7 @@ const RULES: Array<[RegExp, RegExp, Permission]> = [
   [/^POST$/, /^\/api\/v1\/crawls\/:id\/explorer\/custom$/, 'read'], // read-only analysis of stored HTML
   [/^POST$/, /^\/api\/v1\/jobs\/:id\/(cancel|retry)$/, 'seo:operate'],
   // Connecting a Google account is a workspace setting; importing data is an operation.
-  [/^GET$/, /^\/api\/v1\/gsc\/oauth\/(start|callback)$/, 'site:manage'],
+  [/^GET$/, /^\/api\/v1\/gsc\/oauth\/start$/, 'site:manage'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/(gsc|ga4)\/import$/, 'seo:operate'],
   [/^PUT$/, /^\/api\/v1\/sites\/:id\/schedule$/, 'seo:operate'],
   [/^PUT$/, /^\/api\/v1\/sites\/:id\/monitor$/, 'seo:operate'],
@@ -141,7 +141,8 @@ function clearFailures(ip: string, username: string) {
 }
 
 // The client report link is public on purpose: the unguessable token is the credential.
-const PUBLIC = [/^\/health(\/|$)/, /^\/docs(\/|$)/, /^\/api\/v1\/auth\/login$/, /^\/api\/v1\/public\/reports\/[\w-]+$/];
+// The Google OAuth callback is authenticated by its signed state (see gscFinishOAuth), not by the session cookie.
+const PUBLIC = [/^\/health(\/|$)/, /^\/docs(\/|$)/, /^\/api\/v1\/auth\/login$/, /^\/api\/v1\/public\/reports\/[\w-]+$/, /^\/api\/v1\/gsc\/oauth\/callback$/];
 const ALLOWED_WHILE_CHANGING_PASSWORD = /^\/api\/v1\/auth\/(me|password|logout)$/;
 
 export async function registerAuth(app: FastifyInstance) {

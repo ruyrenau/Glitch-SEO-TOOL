@@ -14,7 +14,8 @@ async function connect(back?: string) {
   const start = await app.inject(`/api/v1/gsc/oauth/start${back ? `?back=${back}` : ''}`);
   const consent = await fetch(start.headers.location as string, { redirect: 'manual' });
   const callback = new URL(consent.headers.get('location')!);
-  return new URL((await app.inject(callback.pathname + callback.search)).headers.location as string);
+  // Browsers do not send the SameSite=Lax session cookie when Google redirects back after its consent form.
+  return new URL((await app.inject({ url: callback.pathname + callback.search, headers: { cookie: '' } })).headers.location as string);
 }
 const m = (sessions: number, engaged: number, keyEvents = 0, revenue = 0) => ({ sessions, users: Math.round(sessions * 0.8), engaged, engagementSec: engaged * 60, keyEvents, revenue });
 
@@ -62,6 +63,10 @@ describe('Google Analytics 4', () => {
   it('reconnects from the Analytics page, lists properties and assigns one to the site', async () => {
     const landed = await connect('ga4');
     expect(landed.searchParams.get('nav')).toBe('ga4');
+    expect(landed.searchParams.get('gsc')).toBe('connected');
+    // A tampered state is refused even though the route needs no cookie.
+    const forged = await app.inject({ url: '/api/v1/gsc/oauth/callback?code=x&state=abc.def', headers: { cookie: '' } });
+    expect(new URL(forged.headers.location as string).searchParams.get('gsc')).toBe('error');
     expect((await app.inject('/api/v1/ga4/status')).json()).toMatchObject({ analytics: true });
     expect((await app.inject('/api/v1/ga4/properties')).json()).toEqual([{ property: P, displayName: 'Tienda GA4', account: 'Cuenta de prueba' }]);
     expect((await app.inject({ method: 'PUT', url: `/api/v1/sites/${siteId}/ga4`, payload: { property: 'properties/999' } })).statusCode).toBe(400);

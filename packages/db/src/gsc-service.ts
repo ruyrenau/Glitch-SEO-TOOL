@@ -4,6 +4,7 @@ import { GscError, SearchConsoleClient, buildAuthUrl, exchangeCode, googleConfig
 import { prisma } from './client';
 import { recordAuditEvent } from './audit';
 import { WorkflowError } from './errors';
+import { can } from './auth-service';
 
 /**
  * Google Search Console: one Google account per workspace (OAuth, read-only), one property per site,
@@ -52,16 +53,23 @@ export function gscAuthUrl(workspaceId: string, userId: string, back: 'gsc' | 'g
   return buildAuthUrl(cfgOrThrow(), signState({ w: workspaceId, u: userId, b: back }));
 }
 
-export async function gscFinishOAuth(input: { code: string; state: string; workspaceId: string; userId: string }) {
+/**
+ * Google's redirect back usually follows a form POST on accounts.google.com, so browsers do not send our
+ * SameSite=Lax session cookie. The signed, short-lived state is the proof instead: it names the workspace and
+ * the user who started the connection, and that user must still be active and allowed to manage sites.
+ */
+export async function gscFinishOAuth(input: { code: string; state: string }) {
   const st = readState(input.state);
-  if (st.w !== input.workspaceId || st.u !== input.userId) throw new WorkflowError('GSC_BAD_STATE', 'La conexión se inició con otra sesión. Vuelve a intentarlo.', 400);
+  const member = await prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId: st.w, userId: st.u } }, include: { user: { select: { disabled: true } } } });
+  if (!member || member.user.disabled || !can(member.role, 'site:manage')) throw new WorkflowError('GSC_BAD_STATE', 'Tu usuario ya no puede conectar cuentas de Google en este workspace.', 403);
+  const owner = { workspaceId: st.w, userId: st.u };
   const tok = await exchangeCode(cfgOrThrow(), input.code).catch(wrap);
   await prisma.googleAccount.upsert({
-    where: { workspaceId: input.workspaceId },
-    create: { workspaceId: input.workspaceId, email: tok.email, refreshTokenEnc: encryptSecret(tok.refreshToken), scope: tok.scope, connectedById: input.userId },
-    update: { email: tok.email, refreshTokenEnc: encryptSecret(tok.refreshToken), scope: tok.scope, connectedById: input.userId }
+    where: { workspaceId: owner.workspaceId },
+    create: { workspaceId: owner.workspaceId, email: tok.email, refreshTokenEnc: encryptSecret(tok.refreshToken), scope: tok.scope, connectedById: owner.userId },
+    update: { email: tok.email, refreshTokenEnc: encryptSecret(tok.refreshToken), scope: tok.scope, connectedById: owner.userId }
   });
-  await recordAuditEvent({ workspaceId: input.workspaceId, userId: input.userId, action: 'gsc.connected', entity: 'GoogleAccount', entityId: input.workspaceId, details: { email: tok.email } });
+  await recordAuditEvent({ workspaceId: owner.workspaceId, userId: owner.userId, action: 'gsc.connected', entity: 'GoogleAccount', entityId: owner.workspaceId, details: { email: tok.email } });
   return { email: tok.email, back: st.b === 'ga4' ? 'ga4' : 'gsc' };
 }
 
