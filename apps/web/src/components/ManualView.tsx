@@ -625,7 +625,7 @@ const SECTIONS: Section[] = [
     title: 'Configuración (claves de API)',
     status: 'ready',
     what: 'Donde un administrador guarda las claves de API de Anthropic, OpenAI, Google AI Studio y SerpAPI.',
-    why: 'Las usa Visibilidad en IA (el análisis con Claude necesita la de Anthropic; las demás quedan listas para automatizar las consultas). Se guardan cifradas y solo se muestran sus últimos 4 caracteres.',
+    why: 'Anthropic: el análisis de Visibilidad en IA y el borrador con IA de la Consolidación. SerpAPI: el seguimiento de SERP e IA (Autoridad y SERP). OpenAI y Google quedan listas para automatizar las consultas a ChatGPT y Gemini. Se guardan cifradas y solo se muestran sus últimos 4 caracteres.',
     steps: ['Obtén la clave en la página del proveedor, pégala y pulsa "Guardar". Para cambiarla, pega una nueva; para quitarla, pulsa "Quitar".']
   }
 ];
@@ -653,13 +653,15 @@ export function ManualView({ go }: { go: GoFn }) {
           <div className="space-y-2 text-sm">
             <h2 className="font-bold text-base">Cómo usar G.SEO</h2>
             <p className="text-slate-600 dark:text-slate-400">
-              G.SEO reúne en un solo lugar el SEO técnico (crawl tipo Screaming Frog, logs, velocidad, schema), los datos reales de Google (Search Console y Google Analytics), el análisis de
-              contenido, la preparación y la visibilidad en buscadores con IA (AEO y GEO), la edición en WordPress y los reportes para clientes. Todo se organiza por sitio:
+              G.SEO reúne en un solo lugar el SEO técnico (crawl tipo Screaming Frog, logs, velocidad, arquitectura y enlazado interno, redirecciones, schema y entidades),
+              los datos reales de Google (Search Console y Google Analytics), backlinks y seguimiento de resultados de Google, el análisis y la consolidación de contenido,
+              la preparación y la visibilidad en buscadores con IA (AEO y GEO), la edición en WordPress y los reportes para clientes. Todo se organiza por sitio:
               elige uno en "Sitio activo" y trabaja sección por sección. Si es tu primera vez, empieza por el Inicio guiado.
             </p>
             <p className="text-slate-600 dark:text-slate-400">
-              <strong>Flujo recomendado:</strong> Inicio guiado (sitio + primer crawl) → conecta Search Console y Google Analytics → trabaja Issues y el Explorador → revisa Análisis de contenido y Listo para IA →
-              corrige en WordPress desde Cambios SEO → activa Monitoreo con avisos → mide tu Visibilidad en IA cada semana → comparte un Reporte con el cliente.
+              <strong>Flujo recomendado:</strong> Inicio guiado (sitio + primer crawl) → conecta Search Console y Google Analytics → trabaja Issues y el Explorador → revisa Arquitectura (enlazado y 301)
+              → Análisis de contenido y Listo para IA → completa Entidades y E-E-A-T → sube tus backlinks y sigue tus keywords en Autoridad y SERP → corrige en WordPress desde Cambios SEO
+              → activa Monitoreo con avisos → mide tu Visibilidad en IA cada semana → comparte un Reporte con el cliente.
             </p>
           </div>
         </div>
