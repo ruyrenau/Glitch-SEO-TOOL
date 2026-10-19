@@ -88,6 +88,7 @@ import {
   aiReadinessReport,
   latestAgentAudit,
   listExperiments,
+  siteDashboard,
   latestContentGap,
   gapKeywordSuggestions,
   startContentGap,
@@ -321,6 +322,13 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     const ov = await getSiteOverview(id);
     if (!ov) throw new ApiError(404, 'SITE_NOT_FOUND', `Site ${id} not found`);
     return jsonSafe(ov);
+  });
+
+  /** Overview desk: the headline result of every module. */
+  app.get('/api/v1/sites/:id/dashboard', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return siteDashboard(id);
   });
 
   // ------------------------------------------------------------------ log imports

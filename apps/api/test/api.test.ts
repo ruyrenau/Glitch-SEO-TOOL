@@ -112,7 +112,6 @@ describe('API v1 (integration, real SQLite)', () => {
 
   it('never serves invented Search Console data', async () => {
     expect((await app.inject('/api/v1/search-console/metrics')).statusCode).toBe(404); // the old demo endpoint is gone
-    const site = (await app.inject('/api/v1/sites')).json()[0];
-    expect((await app.inject(`/api/v1/sites/${site.id}/gsc/report`)).json()).toMatchObject({ import: null });
+    expect((await app.inject(`/api/v1/sites/${siteId}/gsc/report`)).json()).toMatchObject({ import: null });
   });
 });

@@ -19,7 +19,9 @@ import {
   ShieldCheck,
   MousePointerClick,
   Target,
-  FlaskConical
+  FlaskConical,
+  ChevronDown,
+  ChevronsUpDown
 } from 'lucide-react';
 import { API_URL, ApiRequestError, UNAUTHORIZED_EVENT, apiGet, apiSend } from '@/lib/api';
 import { AuthProvider, useAuth } from '@/lib/auth';
@@ -63,37 +65,47 @@ import { ContentView } from '@/components/ContentView';
 
 type NavId = 'wizard' | 'overview' | 'monitor' | 'sites' | 'logs' | 'crawler' | 'explorer' | 'architecture' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'entities' | 'programmatic' | 'wordpress' | 'seochanges' | 'gsc' | 'ga4' | 'authority' | 'geo' | 'aiready' | 'agents' | 'experiments' | 'gaps' | 'contentaudit' | 'reports' | 'automations' | 'audit' | 'manual' | 'users' | 'settings' | 'account' | 'admin';
 
-const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ className?: string }>; ready: boolean; perm?: Permission }> = [
-  { id: 'wizard', label: 'Inicio guiado', icon: Rocket, ready: true },
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard, ready: true },
-  { id: 'monitor', label: 'Monitoreo', icon: Activity, ready: true },
-  { id: 'sites', label: 'Sitios', icon: Globe, ready: true },
-  { id: 'logs', label: 'Logs y sitemap', icon: FileText, ready: true },
-  { id: 'crawler', label: 'Crawl y auditoría', icon: ShieldAlert, ready: true },
-  { id: 'explorer', label: 'Explorador SEO', icon: ScanSearch, ready: true },
-  { id: 'architecture', label: 'Arquitectura', icon: Network, ready: true },
-  { id: 'seochanges', label: 'Cambios SEO', icon: PencilLine, ready: true },
-  { id: 'issues', label: 'Issues técnicos', icon: AlertTriangle, ready: true },
-  { id: 'alerts', label: 'Alertas', icon: Bell, ready: true },
-  { id: 'vitals', label: 'Core Web Vitals', icon: Gauge, ready: true },
-  { id: 'schema', label: 'Schema.org', icon: Code2, ready: true },
-  { id: 'entities', label: 'Entidades y E-E-A-T', icon: BadgeCheck, ready: true },
-  { id: 'programmatic', label: 'Contenido programático', icon: Layers, ready: true },
-  { id: 'wordpress', label: 'WordPress', icon: Send, ready: true },
-  { id: 'gsc', label: 'Search Console', icon: Search, ready: true },
-  { id: 'ga4', label: 'Google Analytics', icon: BarChart3, ready: true },
-  { id: 'authority', label: 'Autoridad y SERP', icon: Trophy, ready: true },
-  { id: 'gaps', label: 'Brechas de contenido', icon: Target, ready: true },
-  { id: 'experiments', label: 'Experimentos SEO', icon: FlaskConical, ready: true },
-  { id: 'geo', label: 'Visibilidad en IA', icon: Sparkles, ready: true },
-  { id: 'contentaudit', label: 'Análisis de contenido', icon: FileSearch, ready: true },
-  { id: 'aiready', label: 'Listo para IA', icon: Bot, ready: true },
-  { id: 'agents', label: 'Agentes de IA', icon: MousePointerClick, ready: true },
-  { id: 'reports', label: 'Reportes', icon: FileBarChart, ready: true },
-  { id: 'automations', label: 'Jobs y automatizaciones', icon: Cpu, ready: true },
-  { id: 'audit', label: 'Audit log', icon: History, ready: true },
-  { id: 'users', label: 'Usuarios', icon: Users, ready: true, perm: 'users:manage' },
-  { id: 'settings', label: 'Configuración', icon: Settings, ready: true, perm: 'users:manage' }
+type NavGroup = 'top' | 'data' | 'tech' | 'content' | 'ai' | 'compete' | 'system';
+/** Menu sections, in order. "top" items have no heading and are always visible. */
+const GROUPS: Array<{ id: Exclude<NavGroup, 'top'>; label: string }> = [
+  { id: 'data', label: 'Datos y conexiones' },
+  { id: 'tech', label: 'SEO técnico' },
+  { id: 'content', label: 'Contenido' },
+  { id: 'ai', label: 'IA (AEO y GEO)' },
+  { id: 'compete', label: 'Competencia y resultados' },
+  { id: 'system', label: 'Sistema' }
+];
+const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ className?: string }>; ready: boolean; perm?: Permission; group: NavGroup }> = [
+  { id: 'wizard', label: 'Inicio guiado', icon: Rocket, ready: true, group: 'top' },
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard, ready: true, group: 'top' },
+  { id: 'monitor', label: 'Monitoreo', icon: Activity, ready: true, group: 'top' },
+  { id: 'sites', label: 'Sitios', icon: Globe, ready: true, group: 'data' },
+  { id: 'gsc', label: 'Search Console', icon: Search, ready: true, group: 'data' },
+  { id: 'ga4', label: 'Google Analytics', icon: BarChart3, ready: true, group: 'data' },
+  { id: 'logs', label: 'Logs y sitemap', icon: FileText, ready: true, group: 'data' },
+  { id: 'wordpress', label: 'WordPress', icon: Send, ready: true, group: 'data' },
+  { id: 'crawler', label: 'Crawl y auditoría', icon: ShieldAlert, ready: true, group: 'tech' },
+  { id: 'explorer', label: 'Explorador SEO', icon: ScanSearch, ready: true, group: 'tech' },
+  { id: 'issues', label: 'Issues técnicos', icon: AlertTriangle, ready: true, group: 'tech' },
+  { id: 'alerts', label: 'Alertas', icon: Bell, ready: true, group: 'tech' },
+  { id: 'architecture', label: 'Arquitectura', icon: Network, ready: true, group: 'tech' },
+  { id: 'vitals', label: 'Core Web Vitals', icon: Gauge, ready: true, group: 'tech' },
+  { id: 'schema', label: 'Schema.org', icon: Code2, ready: true, group: 'tech' },
+  { id: 'contentaudit', label: 'Análisis de contenido', icon: FileSearch, ready: true, group: 'content' },
+  { id: 'gaps', label: 'Brechas de contenido', icon: Target, ready: true, group: 'content' },
+  { id: 'seochanges', label: 'Cambios SEO', icon: PencilLine, ready: true, group: 'content' },
+  { id: 'programmatic', label: 'Contenido programático', icon: Layers, ready: true, group: 'content' },
+  { id: 'entities', label: 'Entidades y E-E-A-T', icon: BadgeCheck, ready: true, group: 'content' },
+  { id: 'geo', label: 'Visibilidad en IA', icon: Sparkles, ready: true, group: 'ai' },
+  { id: 'aiready', label: 'Listo para IA', icon: Bot, ready: true, group: 'ai' },
+  { id: 'agents', label: 'Agentes de IA', icon: MousePointerClick, ready: true, group: 'ai' },
+  { id: 'authority', label: 'Autoridad y SERP', icon: Trophy, ready: true, group: 'compete' },
+  { id: 'experiments', label: 'Experimentos SEO', icon: FlaskConical, ready: true, group: 'compete' },
+  { id: 'reports', label: 'Reportes', icon: FileBarChart, ready: true, group: 'compete' },
+  { id: 'automations', label: 'Jobs y automatizaciones', icon: Cpu, ready: true, group: 'system' },
+  { id: 'audit', label: 'Audit log', icon: History, ready: true, group: 'system' },
+  { id: 'users', label: 'Usuarios', icon: Users, ready: true, perm: 'users:manage', group: 'system' },
+  { id: 'settings', label: 'Configuración', icon: Settings, ready: true, perm: 'users:manage', group: 'system' }
 ];
 
 const ROADMAP: Partial<Record<NavId, { status: string; items: string[] }>> = {
@@ -180,15 +192,38 @@ function Dashboard() {
       return !d;
     });
   };
+  // Menu sections: all closed at first; the choice is remembered in this browser.
+  const [openGroups, setOpenGroups] = useState<NavGroup[]>([]);
+  useEffect(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem('glitch-nav-open') ?? '[]');
+      if (Array.isArray(v)) setOpenGroups(v);
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
+  const saveGroups = (v: NavGroup[]) => {
+    try {
+      localStorage.setItem('glitch-nav-open', JSON.stringify(v));
+    } catch {
+      /* ignore */
+    }
+    return v;
+  };
+  const toggleGroup = (g: NavGroup) => setOpenGroups(o => saveGroups(o.includes(g) ? o.filter(x => x !== g) : [...o, g]));
+  const allOpen = GROUPS.every(g => openGroups.includes(g.id));
+  const toggleAll = () => setOpenGroups(saveGroups(allOpen ? [] : GROUPS.map(g => g.id)));
   const [explorerPreset, setExplorerPreset] = useState<{ tab: string; filter?: string; n: number } | null>(null);
   const go: GoFn = (id, explorer) => {
+    const g = NAV.find(n => n.id === id)?.group ?? (id === 'admin' ? 'system' : null);
+    if (g && g !== 'top') setOpenGroups(o => (o.includes(g) ? o : saveGroups([...o, g])));
     if (id === 'explorer') setExplorerPreset(explorer ? { ...explorer, n: Date.now() } : null);
     setNav(id as NavId);
     setMenuOpen(false);
   };
 
   const current = nav === 'manual' ? { label: 'Manual de uso' } : nav === 'account' ? { label: 'Mi cuenta' } : nav === 'admin' ? { label: 'Administración' } : NAV.find(n => n.id === nav)!;
-  const visibleNav = [...NAV.filter(n => !n.perm || can(n.perm)), ...(user.isSuperAdmin ? [{ id: 'admin' as NavId, label: 'Administración', icon: ShieldCheck, ready: true }] : [])];
+  const visibleNav = [...NAV.filter(n => !n.perm || can(n.perm)), ...(user.isSuperAdmin ? [{ id: 'admin' as NavId, label: 'Administración', icon: ShieldCheck, ready: true, group: 'system' as NavGroup }] : [])];
   const needsSite = ['overview', 'monitor', 'architecture', 'entities', 'authority', 'agents', 'experiments', 'gaps', 'ga4', 'geo', 'aiready', 'contentaudit', 'reports', 'logs', 'crawler', 'explorer', 'seochanges', 'gsc', 'issues', 'alerts', 'programmatic', 'wordpress', 'vitals'].includes(nav);
 
   return (
@@ -228,25 +263,64 @@ function Dashboard() {
           </div>
 
           <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-            {visibleNav.map(item => {
-              const Icon = item.icon;
-              const active = nav === item.id;
+            {(() => {
+              const iconOnly = collapsed && !menuOpen;
+              const item = (n: (typeof visibleNav)[number]) => {
+                const Icon = n.icon;
+                const active = nav === n.id;
+                return (
+                  <button
+                    key={n.id}
+                    onClick={() => go(n.id)}
+                    aria-current={active ? 'page' : undefined}
+                    title={n.label}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                      active ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span className="nav-text truncate flex-1 text-left">{n.label}</span>
+                    {!n.ready && <span className={`nav-text text-[9px] font-bold ${active ? 'text-white/80' : 'text-amber-600'}`}>PRONTO</span>}
+                  </button>
+                );
+              };
+              // Icon-only sidebar: every item, sections separated by a line.
+              if (iconOnly)
+                return [visibleNav.filter(n => n.group === 'top'), ...GROUPS.map(g => visibleNav.filter(n => n.group === g.id))]
+                  .filter(l => l.length)
+                  .map((l, i) => <div key={i} className={i ? 'pt-1 mt-1 border-t border-slate-200 dark:border-slate-800 space-y-1' : 'space-y-1'}>{l.map(item)}</div>);
               return (
-                <button
-                  key={item.id}
-                  onClick={() => go(item.id)}
-                  aria-current={active ? 'page' : undefined}
-                  title={item.label}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                    active ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60'
-                  }`}
-                >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  <span className="nav-text truncate flex-1 text-left">{item.label}</span>
-                  {!item.ready && <span className={`nav-text text-[9px] font-bold ${active ? 'text-white/80' : 'text-amber-600'}`}>PRONTO</span>}
-                </button>
+                <>
+                  {visibleNav.filter(n => n.group === 'top').map(item)}
+                  <div className="flex justify-end pt-2">
+                    <button onClick={toggleAll} className="nav-text text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1" aria-label={allOpen ? 'Contraer todas las secciones del menú' : 'Expandir todas las secciones del menú'}>
+                      <ChevronsUpDown className="w-3 h-3" aria-hidden /> {allOpen ? 'Contraer todo' : 'Expandir todo'}
+                    </button>
+                  </div>
+                  {GROUPS.map(g => {
+                    const items = visibleNav.filter(n => n.group === g.id);
+                    if (!items.length) return null;
+                    const open = openGroups.includes(g.id);
+                    const hasActive = items.some(n => n.id === nav);
+                    return (
+                      <div key={g.id}>
+                        <button
+                          onClick={() => toggleGroup(g.id)}
+                          aria-expanded={open}
+                          aria-controls={`nav-${g.id}`}
+                          className="w-full flex items-center gap-2 px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
+                        >
+                          <span className="flex-1 text-left">{g.label}</span>
+                          {!open && hasActive && <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" aria-label="Contiene la sección abierta" />}
+                          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? '' : '-rotate-90'}`} aria-hidden />
+                        </button>
+                        {open && <div id={`nav-${g.id}`} className="space-y-1">{items.map(item)}</div>}
+                      </div>
+                    );
+                  })}
+                </>
               );
-            })}
+            })()}
           </nav>
 
           <div className={`px-3 pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2 ${collapsed && !menuOpen ? 'flex-col' : ''}`}>

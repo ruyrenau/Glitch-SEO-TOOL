@@ -30,3 +30,4 @@ export * from './account-service';
 export * from './agent-service';
 export * from './experiment-service';
 export * from './gap-service';
+export * from './dashboard-service';

@@ -46,10 +46,12 @@ const SECTIONS: Section[] = [
     icon: LayoutDashboard,
     title: 'Overview',
     status: 'ready',
-    what: 'Resumen del sitio activo: tráfico del último log, actividad de Googlebot y de bots de IA, URLs del sitemap, alertas abiertas, issues abiertos y actividad reciente.',
-    why: 'Es el punto de partida del día: te dice en un vistazo si algo se rompió y qué falta configurar.',
+    what: 'El tablero de todo: arriba, clics de Google, sesiones, issues críticos y alertas; abajo, una tarjeta por módulo con su resultado clave (Search Console, Analytics, crawl, Core Web Vitals, SERP y backlinks, brechas, visibilidad en IA, Listo para IA, agentes, entidades, experimentos, WordPress, logs y monitoreo).',
+    why: 'Es el punto de partida del día: te dice en un vistazo cómo va el sitio, si algo se rompió y qué módulos te falta usar.',
     steps: [
       'Elige el sitio en "Sitio activo" (barra lateral).',
+      'El menú está ordenado por secciones (Datos y conexiones, SEO técnico, Contenido, IA, Competencia y resultados, Sistema). Abre o cierra cada una con su título, o todas con "Expandir todo". Se recuerda en tu navegador.',
+      'En cada tarjeta, "Ver detalle" te lleva al módulo; si nunca lo usaste, "Empezar" te lleva a configurarlo. Las cifras con % comparan los últimos 28 días con los 28 anteriores.',
       'Si aparece la tarjeta "Alertas abiertas", atiéndela primero: son regresiones detectadas entre crawls.',
       'Usa "Siguientes pasos" para ir a lo que falta: importar logs, cargar el sitemap o ejecutar un crawl.'
     ],

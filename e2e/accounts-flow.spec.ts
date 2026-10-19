@@ -43,6 +43,7 @@ test('Cuentas: the master account creates a ticket; the new account signs up wit
   await p2.getByRole('button', { name: 'Crear cuenta' }).click();
   await expect(p2.getByRole('button', { name: 'Cerrar sesión' })).toBeVisible();
   // Low level: its own empty workspace, no administration, no workspace switcher.
+  await p2.getByRole('button', { name: 'Expandir todas las secciones del menú' }).click();
   await expect(p2.getByLabel('Sitio activo')).toContainText('Sin sitios');
   await expect(p2.getByRole('button', { name: 'Administración', exact: true })).toHaveCount(0);
   await expect(p2.locator('#workspace-select')).toHaveCount(0);
