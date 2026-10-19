@@ -12,7 +12,7 @@ test('guided setup: add a URL, crawl it, see findings and jump to a section', as
   test.setTimeout(120_000);
   await login(page);
   await page.getByRole('button', { name: 'Inicio guiado' }).click();
-  await expect(page.getByText('En tres pasos tendrás tu primera auditoría SEO.')).toBeVisible();
+  await expect(page.getByText('En tres pasos tendrás tu primera auditoría SEO y de IA.')).toBeVisible();
 
   // Step 1: a new site from its URL.
   // With sites already present, step 1 starts on the active site.
@@ -37,6 +37,14 @@ test('guided setup: add a URL, crawl it, see findings and jump to a section', as
   await expect(page.getByText('páginas que no existen (4xx)')).toBeVisible();
   await expect(page.getByText('páginas con error del servidor (5xx)')).toBeVisible();
   await expect(page.getByText('títulos duplicados')).toBeVisible();
+
+  // Content and AI readiness of the same crawl, and what to connect next.
+  await expect(page.getByText(/Puntaje medio "Listo para IA" de \d+ páginas/)).toBeVisible();
+  const next = page.getByRole('list', { name: 'Siguientes pasos' });
+  await expect(next).toContainText('Conecta Search Console');
+  await expect(next).toContainText('Crea tu primer reporte para el cliente');
+  await expect(next.getByLabel('Pendiente').first()).toBeVisible();
+  await expect(page.getByRole('region', { name: 'IA (AEO y GEO)' })).toContainText('Listo para IA');
 
   // A finding opens the explorer on its exact tab and filter.
   await page.getByRole('listitem').filter({ hasText: 'títulos duplicados' }).getByRole('button', { name: 'Ver estas URLs' }).click();

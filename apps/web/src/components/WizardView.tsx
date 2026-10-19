@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  Activity, AlertTriangle, ArrowRight, Bell, BookOpen, CheckCircle2, Circle, FileText, Gauge, Globe, Layers, Loader2, PencilLine, Play, ScanSearch, Search, Send, ShieldAlert, Sparkles
+  Activity, AlertTriangle, ArrowRight, Bell, BookOpen, Bot, CheckCircle2, Circle, Code2, FileBarChart, FileSearch, FileText, Gauge, Globe, Layers, Loader2, PencilLine, Play, ScanSearch, Search, Send, Settings, ShieldAlert, Sparkles
 } from 'lucide-react';
 import { apiGet, apiSend, fmt, waitForJob } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -29,20 +29,55 @@ const FINDINGS: Array<{ tab: string; filter: string; label: string; why: string;
   { tab: 'internal', filter: 'non-indexable', label: 'páginas no indexables', why: 'No pueden aparecer en Google (noindex, canonical a otra URL, error o bloqueo). Revisa que sea a propósito.', tone: 'warn' }
 ];
 
-const SECTIONS: Array<{ nav: string; icon: React.ComponentType<{ className?: string }>; title: string; what: string; when: string; needs?: string }> = [
-  { nav: 'explorer', icon: ScanSearch, title: 'Explorador SEO', what: 'Todas las URLs del crawl en pestañas, como Screaming Frog: títulos, metas, H1, imágenes, canonicals, recursos, enlaces externos, estructura y búsqueda personalizada.', when: 'Para revisar página por página y exportar listas a CSV.' },
-  { nav: 'issues', icon: AlertTriangle, title: 'Issues técnicos', what: 'Los problemas del crawl ordenados por gravedad, con las URLs afectadas y qué hacer para arreglarlos.', when: 'Para tener una lista de trabajo priorizada.' },
-  { nav: 'seochanges', icon: PencilLine, title: 'Cambios SEO', what: 'Corrige títulos, meta descriptions, slugs y alt de imágenes directo en WordPress, con aprobación y opción de revertir.', when: 'Cuando el explorador encontró algo que quieres arreglar.', needs: 'Conectar WordPress' },
-  { nav: 'monitor', icon: Activity, title: 'Monitoreo', what: 'Activa crawl, Search Console y Core Web Vitals automáticos y ve en una pantalla cómo evoluciona el sitio, con un análisis de lo que cambió.', when: 'Para no revisar todo a mano cada semana.' },
-  { nav: 'gsc', icon: Search, title: 'Search Console', what: 'Clics, impresiones y posición de cada página y consulta en Google, cruzados con el crawl: oportunidades, CTR bajo, canibalización y páginas que Google muestra pero no deberían indexarse.', when: 'Para decidir qué arreglar primero según el tráfico real.', needs: 'Conectar tu cuenta de Google' },
-  { nav: 'alerts', icon: Bell, title: 'Alertas', what: 'Compara cada crawl con el anterior y avisa si algo se rompió: noindex nuevo, páginas caídas, canonical cambiado.', when: 'Después de cada deploy o con un crawl programado.' },
-  { nav: 'vitals', icon: Gauge, title: 'Core Web Vitals', what: 'Mide la velocidad de una página con Lighthouse (LCP, CLS, INP) y explica qué la hace lenta.', when: 'Para páginas importantes que tardan en cargar.' },
-  { nav: 'logs', icon: FileText, title: 'Logs y sitemap', what: 'Sube los logs del servidor para ver qué páginas visita Googlebot y los bots de IA, y cuáles del sitemap nunca visita.', when: 'Para entender cómo te rastrea Google de verdad.', needs: 'Archivo de logs de Nginx o Apache' },
-  { nav: 'wordpress', icon: Send, title: 'WordPress', what: 'Conecta el sitio con una contraseña de aplicación para enviar borradores y editar campos SEO.', when: 'Una sola vez por sitio.', needs: 'Usuario de WordPress con permiso de edición' },
-  { nav: 'programmatic', icon: Layers, title: 'Contenido programático', what: 'Genera muchas páginas desde un CSV y una plantilla, con control de calidad y aprobación antes de enviarlas como borrador.', when: 'Para páginas por ciudad, producto o servicio.' },
-  { nav: 'crawler', icon: ShieldAlert, title: 'Crawl y auditoría', what: 'Lanza crawls con más opciones (hasta 100,000 URLs, JavaScript, exclusiones) y prográmalos para que corran solos.', when: 'Para crawls grandes o periódicos.' },
-  { nav: 'manual', icon: BookOpen, title: 'Manual de uso', what: 'Qué hace cada sección, cómo se usa y sus límites.', when: 'Cuando tengas dudas.' }
+type SectionCard = { nav: string; icon: React.ComponentType<{ className?: string }>; title: string; what: string; when: string; needs?: string };
+const GROUPS: Array<{ title: string; cards: SectionCard[] }> = [
+  {
+    title: 'SEO técnico',
+    cards: [
+      { nav: 'explorer', icon: ScanSearch, title: 'Explorador SEO', what: 'Todas las URLs del crawl en pestañas, como Screaming Frog: títulos, metas, H1, imágenes, canonicals, recursos, enlaces externos, estructura y búsqueda personalizada.', when: 'Para revisar página por página y exportar listas a CSV.' },
+      { nav: 'issues', icon: AlertTriangle, title: 'Issues técnicos', what: 'Los problemas del crawl ordenados por gravedad, con las URLs afectadas y qué hacer para arreglarlos.', when: 'Para tener una lista de trabajo priorizada.' },
+      { nav: 'crawler', icon: ShieldAlert, title: 'Crawl y auditoría', what: 'Crawls con más opciones (hasta 100,000 URLs, JavaScript, exclusiones, modo lista) y programados para que corran solos.', when: 'Para crawls grandes o periódicos.' },
+      { nav: 'alerts', icon: Bell, title: 'Alertas', what: 'Compara cada crawl con el anterior y avisa si algo se rompió: noindex nuevo, páginas caídas, canonical cambiado.', when: 'Después de cada deploy o con un crawl programado.' },
+      { nav: 'vitals', icon: Gauge, title: 'Core Web Vitals', what: 'Reporte de velocidad tipo GTmetrix: nota, captura, LCP, CLS e INP, problemas principales, peso por tipo de archivo y cascada.', when: 'Para páginas importantes que tardan en cargar.' },
+      { nav: 'logs', icon: FileText, title: 'Logs y sitemap', what: 'Sube los logs del servidor para ver qué páginas visita Googlebot y los bots de IA, y cuáles del sitemap nunca visita.', when: 'Para entender cómo te rastrea Google de verdad.', needs: 'Archivo de logs de Nginx o Apache' },
+      { nav: 'schema', icon: Code2, title: 'Schema.org', what: 'Genera datos estructurados para cualquier tipo de negocio o página, los rellena desde una URL, los valida y los crea en masa desde un CSV.', when: 'Para que Google y las IAs entiendan qué es cada página.' }
+    ]
+  },
+  {
+    title: 'Contenido',
+    cards: [
+      { nav: 'contentaudit', icon: FileSearch, title: 'Análisis de contenido', what: 'Páginas duplicadas, casi duplicadas o con poco texto; páginas que pierden clics mes a mes; y tus búsquedas agrupadas por tema con la página que debe posicionar cada una.', when: 'Para decidir qué fusionar, qué refrescar y qué página crear.', needs: 'Un crawl y, para declive y temas, Search Console' },
+      { nav: 'seochanges', icon: PencilLine, title: 'Cambios SEO', what: 'Corrige títulos, meta descriptions, slugs y alt de imágenes directo en WordPress, con aprobación y opción de revertir.', when: 'Cuando el explorador encontró algo que quieres arreglar.', needs: 'Conectar WordPress' },
+      { nav: 'programmatic', icon: Layers, title: 'Contenido programático', what: 'Genera muchas páginas desde un CSV y una plantilla, con control de calidad y aprobación antes de enviarlas como borrador.', when: 'Para páginas por ciudad, producto o servicio.' },
+      { nav: 'wordpress', icon: Send, title: 'WordPress', what: 'Conecta el sitio con una contraseña de aplicación para enviar borradores y editar campos SEO.', when: 'Una sola vez por sitio.', needs: 'Usuario de WordPress con permiso de edición' }
+    ]
+  },
+  {
+    title: 'Google',
+    cards: [
+      { nav: 'gsc', icon: Search, title: 'Search Console', what: 'Clics, impresiones y posición de cada página y consulta, cruzados con el crawl: oportunidades, CTR bajo, canibalización con recomendaciones y páginas que Google muestra pero no deberían indexarse.', when: 'Para decidir qué arreglar primero según el tráfico real.', needs: 'Conectar tu cuenta de Google' }
+    ]
+  },
+  {
+    title: 'IA (AEO y GEO)',
+    cards: [
+      { nav: 'aiready', icon: Bot, title: 'Listo para IA', what: 'Califica de 0 a 100 qué tan fácil es para ChatGPT, Gemini, Perplexity y AI Overviews citar cada página, y revisa qué bots de IA deja entrar tu robots.txt.', when: 'Para preparar tus páginas para las respuestas de IA.', needs: 'Un crawl' },
+      { nav: 'geo', icon: Sparkles, title: 'Visibilidad en IA', what: 'Registra semana a semana si las IAs mencionan tu marca (Directo) o citan tu sitio (Citación) en tus preguntas clave, con puntos, tendencia y un análisis de Claude.', when: 'Para medir si te recomiendan y si vas subiendo.' }
+    ]
+  },
+  {
+    title: 'Seguimiento y clientes',
+    cards: [
+      { nav: 'monitor', icon: Activity, title: 'Monitoreo', what: 'Crawl, Search Console y Core Web Vitals automáticos, cómo evoluciona el sitio y qué cambió. Puede avisarte de lo importante por Slack, Teams, Discord o webhook.', when: 'Para no revisar todo a mano cada semana.' },
+      { nav: 'reports', icon: FileBarChart, title: 'Reportes', what: 'Un reporte para el cliente con Search Console, salud técnica, velocidad, evolución y visibilidad en IA, por enlace sin login o en PDF.', when: 'Para mostrar el avance al cliente.' },
+      { nav: 'settings', icon: Settings, title: 'Configuración', what: 'Claves de API (Anthropic, OpenAI, Google, SerpAPI) que usan las funciones de IA. Solo para administradores.', when: 'Una sola vez.' },
+      { nav: 'manual', icon: BookOpen, title: 'Manual de uso', what: 'Qué hace cada sección, cómo se usa y sus límites.', when: 'Cuando tengas dudas.' }
+    ]
+  }
 ];
+
+interface Extra { ai: { average: number; pages: number; blocked: string[] } | null; dup: { exact: number; near: number; thin: number } | null }
+interface Setup { gsc: boolean | null; monitor: boolean | null; wordpress: boolean | null; ai: boolean | null; reports: boolean | null }
 
 function Step({ n, title, state, children }: { n: number; title: string; state: 'done' | 'active' | 'todo'; children?: React.ReactNode }) {
   return (
@@ -72,6 +107,8 @@ export function WizardView({ sites, siteId, select, reload, go }: { sites: Site[
   const [run, setRun] = useState<CrawlRun | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [siteReady, setSiteReady] = useState(!!current && sites.length > 0);
+  const [extra, setExtra] = useState<Extra>({ ai: null, dup: null });
+  const [setup, setSetup] = useState<Setup | null>(null);
 
   // Latest finished crawl of the chosen site (to jump straight to step 3).
   useEffect(() => {
@@ -86,6 +123,33 @@ export function WizardView({ sites, siteId, select, reload, go }: { sites: Site[
     if (!run) return;
     apiGet<Summary>(`/api/v1/crawls/${run.id}/explorer/summary`).then(setSummary).catch(setError);
   }, [run]);
+  // Beyond the explorer: AI readiness and duplicate content of the same crawl (best effort).
+  useEffect(() => {
+    setExtra({ ai: null, dup: null });
+    if (!run || !current) return;
+    apiGet<{ summary: { average: number; pages: number; blockedSearch: string[] } | null }>(`/api/v1/sites/${current.id}/ai-readiness?crawlRunId=${run.id}`)
+      .then(r => r.summary && setExtra(e => ({ ...e, ai: { average: r.summary!.average, pages: r.summary!.pages, blocked: r.summary!.blockedSearch } })))
+      .catch(() => undefined);
+    apiGet<{ totals: { exactGroups: number; nearGroups: number; thin: number } | null }>(`/api/v1/sites/${current.id}/content/duplicates?crawlRunId=${run.id}`)
+      .then(r => r.totals && setExtra(e => ({ ...e, dup: { exact: r.totals!.exactGroups, near: r.totals!.nearGroups, thin: r.totals!.thin } })))
+      .catch(() => undefined);
+  }, [run, current]);
+  // What is already set up for this site (for "Siguientes pasos").
+  useEffect(() => {
+    setSetup(null);
+    if (!current || !siteReady) return;
+    const id = current.id;
+    type Mon = { gsc: { enabled: boolean; connected: boolean; property: string | null }; crawl: { enabled: boolean }; vitals: { enabled: boolean } };
+    const ok = <T,>(p: Promise<T>, f: (v: T) => boolean) => p.then(f, () => null);
+    const mon = apiGet<Mon>(`/api/v1/sites/${id}/monitor`);
+    Promise.all([
+      ok(mon, m => m.gsc.connected && !!m.gsc.property),
+      ok(mon, m => m.crawl.enabled || m.gsc.enabled || m.vitals.enabled),
+      ok(apiGet<{ connection: unknown }>(`/api/v1/sites/${id}/wordpress`), w => !!w.connection),
+      ok(apiGet<unknown[]>(`/api/v1/sites/${id}/ai-visibility/prompts`), l => l.length > 0),
+      ok(apiGet<unknown[]>(`/api/v1/sites/${id}/reports`), l => l.length > 0)
+    ]).then(([gsc, monitor, wordpress, ai, reports]) => setSetup({ gsc, monitor, wordpress, ai, reports }));
+  }, [current, siteReady]);
 
   const normalized = (() => {
     const raw = url.trim();
@@ -139,6 +203,13 @@ export function WizardView({ sites, siteId, select, reload, go }: { sites: Site[
   const step1: 'done' | 'active' = siteReady && current ? 'done' : 'active';
   const step2: 'done' | 'active' | 'todo' = step1 !== 'done' ? 'todo' : run ? 'done' : 'active';
   const step3: 'active' | 'todo' = run ? 'active' : 'todo';
+  const NEXT: Array<{ key: keyof Setup; nav: string; title: string; why: string; done: string }> = [
+    { key: 'gsc', nav: 'gsc', title: 'Conecta Search Console', why: 'Con clics e impresiones reales se ordena todo por tráfico, se detecta canibalización y contenido en declive, y se agrupan tus búsquedas por tema.', done: 'Search Console conectado.' },
+    { key: 'monitor', nav: 'monitor', title: 'Activa el Monitoreo y los avisos', why: 'Crawl, Search Console y velocidad automáticos, con un mensaje a Slack, Teams o Discord cuando algo cae.', done: 'Monitoreo activo.' },
+    { key: 'wordpress', nav: 'wordpress', title: 'Conecta WordPress', why: 'Para corregir títulos, descripciones y alt desde la herramienta, con aprobación y opción de revertir.', done: 'WordPress conectado.' },
+    { key: 'ai', nav: 'geo', title: 'Empieza a medir tu visibilidad en IA', why: 'Agrega tus preguntas clave y registra cada semana si ChatGPT, Gemini o Claude te mencionan o citan.', done: 'Ya mides tu visibilidad en IA.' },
+    { key: 'reports', nav: 'reports', title: 'Crea tu primer reporte para el cliente', why: 'Un enlace sin login o un PDF con lo más importante.', done: 'Ya creaste un reporte.' }
+  ];
 
   return (
     <div className="space-y-5 max-w-5xl">
@@ -146,9 +217,9 @@ export function WizardView({ sites, siteId, select, reload, go }: { sites: Site[
         <div className="flex gap-4 items-start">
           <div className="w-11 h-11 shrink-0 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center"><Sparkles className="w-5 h-5" aria-hidden /></div>
           <div className="space-y-1.5 text-sm">
-            <p className="font-bold text-base">Bienvenido. En tres pasos tendrás tu primera auditoría SEO.</p>
+            <p className="font-bold text-base">Bienvenido. En tres pasos tendrás tu primera auditoría SEO y de IA.</p>
             <p className="text-slate-600 dark:text-slate-400 text-xs">
-              1) Le dices a la herramienta qué sitio revisar. 2) La herramienta lo recorre como lo haría Google, página por página. 3) Te muestra qué encontró y a qué sección ir para cada cosa.
+              1) Le dices a la herramienta qué sitio revisar. 2) La herramienta lo recorre como lo haría Google, página por página. 3) Te muestra qué encontró (SEO técnico, contenido y preparación para IA) y a qué sección ir. 4) Te sugiere qué conectar después.
               No se modifica nada en tu sitio: solo se lee, como un visitante.
             </p>
           </div>
@@ -287,25 +358,79 @@ export function WizardView({ sites, siteId, select, reload, go }: { sites: Site[
                 ))}
               </ul>
             )}
+            {(extra.ai || extra.dup) && (
+              <>
+                <h4 className="font-semibold text-sm pt-2">Contenido e IA</h4>
+                <ul className="space-y-2">
+                  {extra.ai && (
+                    <li className="flex flex-wrap items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                      <Badge tone={extra.ai.average >= 60 ? 'good' : extra.ai.average >= 40 ? 'warn' : 'bad'}>{extra.ai.average}/100</Badge>
+                      <div className="flex-1 min-w-[14rem]">
+                        <div className="font-semibold">Puntaje medio "Listo para IA" de {fmt(extra.ai.pages)} páginas</div>
+                        <div className="text-slate-500">{extra.ai.blocked.length ? `Tu robots.txt bloquea a ${extra.ai.blocked.join(', ')}: esos buscadores con IA no pueden citarte.` : 'Qué tan fácil es para ChatGPT, Gemini y AI Overviews sacar una respuesta de tus páginas y citarlas.'}</div>
+                      </div>
+                      <Button variant="secondary" onClick={() => go('aiready')}>Ver qué falta <ArrowRight className="w-3.5 h-3.5" aria-hidden /></Button>
+                    </li>
+                  )}
+                  {extra.dup && extra.dup.exact + extra.dup.near + extra.dup.thin > 0 && (
+                    <li className="flex flex-wrap items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                      <Badge tone="warn">{fmt(extra.dup.exact + extra.dup.near + extra.dup.thin)}</Badge>
+                      <div className="flex-1 min-w-[14rem]">
+                        <div className="font-semibold">{fmt(extra.dup.exact)} grupos duplicados, {fmt(extra.dup.near)} casi duplicados y {fmt(extra.dup.thin)} páginas con poco texto</div>
+                        <div className="text-slate-500">El contenido repetido o pobre compite consigo mismo y se cita menos.</div>
+                      </div>
+                      <Button variant="secondary" onClick={() => go('contentaudit')}>Ver páginas <ArrowRight className="w-3.5 h-3.5" aria-hidden /></Button>
+                    </li>
+                  )}
+                </ul>
+              </>
+            )}
           </>
+        )}
+      </Step>
+
+      <Step n={4} title="Siguientes pasos" state={step3 === 'active' ? 'active' : 'todo'}>
+        {step3 === 'todo' ? null : (
+          <ul className="space-y-2" aria-label="Siguientes pasos">
+            {NEXT.map(n => {
+              const done = setup?.[n.key] === true;
+              return (
+                <li key={n.key} className="flex flex-wrap items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                  {done ? <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" aria-label="Hecho" /> : <Circle className="w-5 h-5 text-slate-300 shrink-0" aria-label="Pendiente" />}
+                  <div className="flex-1 min-w-[14rem]">
+                    <div className="font-semibold">{n.title}</div>
+                    <div className="text-slate-500">{done ? n.done : n.why}</div>
+                  </div>
+                  <Button variant="secondary" onClick={() => go(n.nav)}>{done ? 'Abrir' : 'Ir'} <ArrowRight className="w-3.5 h-3.5" aria-hidden /></Button>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </Step>
 
       <Card title="Todo lo que puedes hacer">
         <p className="text-xs text-slate-500 mb-3">Cada tarjeta explica para qué sirve la sección y cuándo usarla. El botón te lleva directo.</p>
-        <div className="grid sm:grid-cols-2 gap-3">
-          {SECTIONS.map(s => {
-            const Icon = s.icon;
-            return (
-              <div key={s.nav} className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col gap-2 text-xs">
-                <div className="flex items-center gap-2 font-bold text-sm"><Icon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" aria-hidden /> {s.title}</div>
-                <p className="text-slate-600 dark:text-slate-300">{s.what}</p>
-                <p className="text-slate-500"><strong>Cuándo:</strong> {s.when}</p>
-                {s.needs && <p className="text-slate-500 flex items-center gap-1"><Circle className="w-2.5 h-2.5" aria-hidden /> Necesitas: {s.needs}</p>}
-                <div className="mt-auto pt-1"><Button variant="secondary" onClick={() => go(s.nav)}>Ir a {s.title} <ArrowRight className="w-3.5 h-3.5" aria-hidden /></Button></div>
+        <div className="space-y-5">
+          {GROUPS.map(g => (
+            <section key={g.title} aria-label={g.title}>
+              <h4 className="font-semibold text-xs uppercase tracking-wide text-slate-500 mb-2">{g.title}</h4>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {g.cards.map(s => {
+                  const Icon = s.icon;
+                  return (
+                    <div key={s.nav} className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col gap-2 text-xs">
+                      <div className="flex items-center gap-2 font-bold text-sm"><Icon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" aria-hidden /> {s.title}</div>
+                      <p className="text-slate-600 dark:text-slate-300">{s.what}</p>
+                      <p className="text-slate-500"><strong>Cuándo:</strong> {s.when}</p>
+                      {s.needs && <p className="text-slate-500 flex items-center gap-1"><Circle className="w-2.5 h-2.5" aria-hidden /> Necesitas: {s.needs}</p>}
+                      <div className="mt-auto pt-1"><Button variant="secondary" onClick={() => go(s.nav)}>Ir a {s.title} <ArrowRight className="w-3.5 h-3.5" aria-hidden /></Button></div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </section>
+          ))}
         </div>
       </Card>
       <p className="text-[11px] text-slate-500 flex items-center gap-1.5"><Globe className="w-3.5 h-3.5" aria-hidden /> Puedes volver a este inicio guiado cuando quieras desde el menú.</p>

@@ -28,13 +28,15 @@ const SECTIONS: Section[] = [
     icon: Rocket,
     title: 'Inicio guiado',
     status: 'ready',
-    what: 'Un asistente de tres pasos: escribes la URL del sitio, la herramienta lo recorre y te muestra en palabras simples qué encontró, con botones a cada sección.',
+    what: 'Un asistente de cuatro pasos: escribes la URL del sitio, la herramienta lo recorre, te muestra en palabras simples qué encontró (SEO técnico, contenido y preparación para IA) y te sugiere qué conectar después.',
     why: 'Es la forma más rápida de empezar sin conocer la herramienta.',
     steps: [
       'Escribe la URL de la página principal (o elige un sitio que ya agregaste) y pulsa "Guardar y continuar".',
       'Elige cuántas páginas revisar (500 para empezar) y pulsa "Empezar el crawl". Va a unas 2 páginas por segundo.',
       'Lee "Lo primero que revisaría": cada hallazgo explica por qué importa y te lleva al Explorador.',
-      'Abajo, cada tarjeta explica una sección y cuándo usarla.'
+      'En "Contenido e IA" verás el puntaje medio "Listo para IA", si tu robots.txt bloquea buscadores con IA, y cuántas páginas están duplicadas o tienen poco texto.',
+      'En "Siguientes pasos" marca con ✓ lo que ya está listo: Search Console, Monitoreo y avisos, WordPress, Visibilidad en IA y tu primer reporte.',
+      'Abajo, las tarjetas explican cada sección agrupadas por tema: SEO técnico, Contenido, Google, IA, y Seguimiento y clientes.'
     ],
     tips: ['Si no tienes sitios, la app abre aquí automáticamente.']
   },
@@ -224,7 +226,8 @@ const SECTIONS: Section[] = [
       'Pon GSC_CLIENT_ID y GSC_CLIENT_SECRET en el archivo .env y reinicia la app.',
       'En Search Console pulsa "Conectar con Google", elige tu cuenta y acepta.',
       'Elige la propiedad que corresponde al sitio activo y pulsa "Importar ahora".',
-      'Revisa Oportunidades, CTR bajo, Canibalización y el Cruce con el crawl. En el Explorador hay una pestaña "Search Console" con las métricas por URL.'
+      'Revisa Oportunidades, CTR bajo, Canibalización y el Cruce con el crawl. En el Explorador hay una pestaña "Search Console" con las métricas por URL.',
+      'Cada importación guarda también los clics de cada página mes a mes (hasta 16 meses). Con eso, Análisis de contenido muestra el contenido en declive y los temas de keywords.'
     ],
     read: [
       ['Impresiones', 'Veces que una página apareció en los resultados de Google, aunque nadie hiciera clic.'],
@@ -233,7 +236,7 @@ const SECTIONS: Section[] = [
       ['CTR bajo', 'Páginas en buena posición que casi nadie elige: mejora el título y la meta description.'],
       ['Canibalización', 'Varias páginas tuyas compiten por la misma búsqueda (se juntan variantes con y sin acentos). Gravedad alta: dos páginas se reparten la demanda cerca una de otra. Para cada caso propone la página principal y qué hacer con las demás (fusionar y redirigir, diferenciar o revisar su canonical). "Pares de páginas" muestra las que compiten en varias búsquedas.']
     ],
-    tips: ['Los datos se actualizan solos cada mañana.', 'El token de Google se guarda cifrado. Desconectar revoca el permiso en Google.'],
+    tips: ['Con la importación diaria activada en Monitoreo, los datos se actualizan solos cada mañana.', 'El token de Google se guarda cifrado. Desconectar revoca el permiso en Google.', 'Los datos de Search Console también alimentan Listo para IA (prioridad por impresiones), Análisis de contenido y los Reportes.'],
     limits: [
       'Google publica los datos con unos 2 días de retraso y guarda 16 meses.',
       'Se importan hasta 100,000 filas por tipo; en sitios muy grandes las consultas con menos impresiones quedan fuera.',
@@ -525,10 +528,14 @@ const SECTIONS: Section[] = [
     title: 'Configuración (claves de API)',
     status: 'ready',
     what: 'Donde un administrador guarda las claves de API de Anthropic, OpenAI, Google AI Studio y SerpAPI.',
-    why: 'Las usa Visibilidad en IA. Se guardan cifradas y solo se muestran sus últimos 4 caracteres.',
+    why: 'Las usa Visibilidad en IA (el análisis con Claude necesita la de Anthropic; las demás quedan listas para automatizar las consultas). Se guardan cifradas y solo se muestran sus últimos 4 caracteres.',
     steps: ['Obtén la clave en la página del proveedor, pégala y pulsa "Guardar". Para cambiarla, pega una nueva; para quitarla, pulsa "Quitar".']
   }
 ];
+
+/** Same order as the side menu. */
+const ORDER = ['wizard', 'overview', 'monitor', 'sites', 'logs', 'crawler', 'explorer', 'seochanges', 'issues', 'alerts', 'vitals', 'schema', 'programmatic', 'wordpress', 'gsc', 'geo', 'contentaudit', 'aiready', 'reports', 'automations', 'audit', 'users', 'settings'];
+SECTIONS.sort((a, b) => (ORDER.indexOf(a.id) + 1 || 99) - (ORDER.indexOf(b.id) + 1 || 99));
 
 const STATUS_BADGE = {
   ready: <Badge tone="good">Disponible</Badge>,
@@ -549,12 +556,13 @@ export function ManualView({ go }: { go: GoFn }) {
           <div className="space-y-2 text-sm">
             <h2 className="font-bold text-base">Cómo usar G.SEO</h2>
             <p className="text-slate-600 dark:text-slate-400">
-              G.SEO reúne en un solo lugar lo que los buscadores y los bots de IA hacen en tu sitio (logs), lo que encuentra un rastreo técnico (crawl) y la creación de páginas
-              programáticas con control de calidad. Todo se organiza por sitio: elige uno en "Sitio activo" y trabaja sección por sección.
+              G.SEO reúne en un solo lugar el SEO técnico (crawl tipo Screaming Frog, logs, velocidad, schema), los datos reales de Google (Search Console), el análisis de
+              contenido, la preparación y la visibilidad en buscadores con IA (AEO y GEO), la edición en WordPress y los reportes para clientes. Todo se organiza por sitio:
+              elige uno en "Sitio activo" y trabaja sección por sección. Si es tu primera vez, empieza por el Inicio guiado.
             </p>
             <p className="text-slate-600 dark:text-slate-400">
-              <strong>Flujo recomendado:</strong> inicia sesión → registra el sitio → importa un log y carga el sitemap → ejecuta un crawl → trabaja los issues → vuelve a rastrear después de cada deploy para
-              recibir alertas → genera contenido desde un CSV, apruébalo y envíalo a WordPress como borrador.
+              <strong>Flujo recomendado:</strong> Inicio guiado (sitio + primer crawl) → conecta Search Console → trabaja Issues y el Explorador → revisa Análisis de contenido y Listo para IA →
+              corrige en WordPress desde Cambios SEO → activa Monitoreo con avisos → mide tu Visibilidad en IA cada semana → comparte un Reporte con el cliente.
             </p>
           </div>
         </div>
@@ -670,7 +678,12 @@ export function ManualView({ go }: { go: GoFn }) {
             ['Dice "No se pudo contactar la API"', 'La API no está corriendo. Desde la carpeta del proyecto ejecuta "pnpm start:local": levanta Redis, la API, el worker y el dashboard juntos.'],
             ['Un crawl o una importación se queda "En cola"', 'El worker no está corriendo. Revisa Jobs y automatizaciones; con "pnpm start:local" arranca solo.'],
             ['Olvidé mi contraseña', 'Pide a un Owner o Admin que la restablezca desde Usuarios. Si eres el único Owner, desde la terminal: GLITCH_USER_PASSWORD=... pnpm cli users:reset-password --username tu-usuario.'],
-            ['¿Qué significan los datos marcados DEMO?', 'Son datos sintéticos para probar la herramienta. Pasan por los mismos procesos que los datos reales.']
+            ['¿Qué significan los datos marcados DEMO?', 'Son datos sintéticos para probar la herramienta. Pasan por los mismos procesos que los datos reales.'],
+            ['¿Cómo le comparto los resultados a un cliente?', 'En Reportes elige las secciones y crea el reporte. Copia el enlace (no necesita usuario) o descarga el PDF. "Retirar" desactiva el enlace al momento.'],
+            ['¿Cómo recibo avisos en Slack, Teams o Discord?', 'En Monitoreo, tarjeta "Avisos", pega la URL del webhook de tu canal, guarda y pulsa "Enviar prueba". Después de cada ejecución automática te llega lo importante, una sola vez.'],
+            ['"En declive" dice que falta el historial mensual', 'Vuelve a importar Search Console: la importación descarga los clics por mes (hasta 16 meses). Hacen falta al menos 4 meses completos.'],
+            ['"Listo para IA" o "Duplicados" no muestran páginas', 'Usan el HTML guardado del crawl. Haz un crawl nuevo: de los crawls viejos solo se guardan los 3 más recientes con HTML.'],
+            ['¿Qué diferencia hay entre Listo para IA y Visibilidad en IA?', 'Listo para IA revisa tus páginas (si están preparadas para que una IA las cite). Visibilidad en IA mide el resultado: si de verdad te mencionan o citan.']
           ].map(([q, a]) => (
             <div key={q}>
               <dt className="font-semibold">{q}</dt>
