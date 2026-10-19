@@ -24,7 +24,7 @@ Lista viva de lo que falta. Al terminar algo, se marca con [x] y se anota el com
 - [ ] Sección de GA4 en los Reportes para clientes.
 
 ## Hecho recientemente
-- [x] Simulador de RAG ("Vista de bot de IA" en el Explorador) y generador/validador de llms.txt y llms-full.txt (en Listo para IA)
+- [x] Simulador de RAG ("Vista de bot de IA" en el Explorador) y generador/validador de llms.txt y llms-full.txt (en Listo para IA) (110ede7)
 - [x] Avisos de Monitoreo a Slack/Teams/Discord/webhook y Reportes para clientes (c09d423)
 - [x] Listo para IA y canibalización completa (b317bfb)
 - [x] Análisis de contenido: duplicados, poco texto, en declive, temas de keywords (7f11a64)
