@@ -15,12 +15,14 @@ import {
   BarChart3,
   Network,
   BadgeCheck,
-  Trophy
+  Trophy,
+  ShieldCheck
 } from 'lucide-react';
 import { API_URL, ApiRequestError, UNAUTHORIZED_EVENT, apiGet, apiSend } from '@/lib/api';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import type { User, Permission, GoFn } from '@/lib/types';
 import { LoginView, ForcedPasswordView } from '@/components/AuthViews';
+import { AdminView, WorkspaceSwitcher, type WorkspaceSummary } from '@/components/WorkspaceViews';
 import { UsersView, AccountView } from '@/components/UsersView';
 import { JobsView } from '@/components/JobsView';
 import { PerformanceView } from '@/components/PerformanceView';
@@ -53,7 +55,7 @@ import { SchemaGeneratorView } from '@/components/SchemaGeneratorView';
 import { WordPressView } from '@/components/WordPressView';
 import { ContentView } from '@/components/ContentView';
 
-type NavId = 'wizard' | 'overview' | 'monitor' | 'sites' | 'logs' | 'crawler' | 'explorer' | 'architecture' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'entities' | 'programmatic' | 'wordpress' | 'seochanges' | 'gsc' | 'ga4' | 'authority' | 'geo' | 'aiready' | 'contentaudit' | 'reports' | 'automations' | 'audit' | 'manual' | 'users' | 'settings' | 'account';
+type NavId = 'wizard' | 'overview' | 'monitor' | 'sites' | 'logs' | 'crawler' | 'explorer' | 'architecture' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'entities' | 'programmatic' | 'wordpress' | 'seochanges' | 'gsc' | 'ga4' | 'authority' | 'geo' | 'aiready' | 'contentaudit' | 'reports' | 'automations' | 'audit' | 'manual' | 'users' | 'settings' | 'account' | 'admin';
 
 const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ className?: string }>; ready: boolean; perm?: Permission }> = [
   { id: 'wizard', label: 'Inicio guiado', icon: Rocket, ready: true },
@@ -176,8 +178,8 @@ function Dashboard() {
     setMenuOpen(false);
   };
 
-  const current = nav === 'manual' ? { label: 'Manual de uso' } : nav === 'account' ? { label: 'Mi cuenta' } : NAV.find(n => n.id === nav)!;
-  const visibleNav = NAV.filter(n => !n.perm || can(n.perm));
+  const current = nav === 'manual' ? { label: 'Manual de uso' } : nav === 'account' ? { label: 'Mi cuenta' } : nav === 'admin' ? { label: 'Administración' } : NAV.find(n => n.id === nav)!;
+  const visibleNav = [...NAV.filter(n => !n.perm || can(n.perm)), ...(user.isSuperAdmin ? [{ id: 'admin' as NavId, label: 'Administración', icon: ShieldCheck, ready: true }] : [])];
   const needsSite = ['overview', 'monitor', 'architecture', 'entities', 'authority', 'ga4', 'geo', 'aiready', 'contentaudit', 'reports', 'logs', 'crawler', 'explorer', 'seochanges', 'gsc', 'issues', 'alerts', 'programmatic', 'wordpress', 'vitals'].includes(nav);
 
   return (
@@ -201,6 +203,7 @@ function Dashboard() {
           </div>
 
           <div className="nav-text p-3 border-b border-slate-200 dark:border-slate-800">
+            <WorkspaceSwitcher />
             <label htmlFor="site-select" className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Sitio activo</label>
             <select
               id="site-select"
@@ -318,6 +321,7 @@ function Dashboard() {
                 {nav === 'seochanges' && <SeoChangesView key={siteId} siteId={siteId} />}
                 {nav === 'geo' && <AiVisibilityView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'settings' && can('users:manage') && <SettingsView />}
+                {nav === 'admin' && user.isSuperAdmin && <AdminView />}
                 {nav === 'monitor' && <MonitorView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'gsc' && <GscView key={siteId} siteId={siteId} go={go} notice={gscNotice} />}
                 {nav === 'architecture' && <ArchitectureView key={siteId} siteId={siteId} go={go} />}
@@ -340,11 +344,13 @@ function Dashboard() {
 /** Shows the login screen until there is a valid session, then the dashboard. */
 export default function App() {
   const [state, setState] = useState<'loading' | 'anon' | 'offline' | User>('loading');
+  const [ws, setWs] = useState<{ workspaces: WorkspaceSummary[]; workspaceId: string } | null>(null);
   const [dark, setDark] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const r = await apiGet<{ user: User }>('/api/v1/auth/me');
+      const r = await apiGet<{ user: User; workspaces: WorkspaceSummary[]; workspaceId: string }>('/api/v1/auth/me');
+      setWs({ workspaces: r.workspaces, workspaceId: r.workspaceId });
       setState(r.user);
     } catch (err) {
       setState(err instanceof ApiRequestError && err.status === 401 ? 'anon' : 'offline');
@@ -381,11 +387,11 @@ export default function App() {
         </main>
       </div>
     );
-  if (state === 'anon') return <div className={dark ? 'dark' : ''}><LoginView onLoggedIn={u => setState(u)} /></div>;
+  if (state === 'anon') return <div className={dark ? 'dark' : ''}><LoginView onLoggedIn={() => refresh()} /></div>;
   if (state.mustChangePassword) return <div className={dark ? 'dark' : ''}><ForcedPasswordView onDone={refresh} onLogout={logout} /></div>;
   const user = state;
   return (
-    <AuthProvider value={{ user, can: p => user.permissions.includes(p), logout, refresh }}>
+    <AuthProvider value={{ user, can: p => user.permissions.includes(p), logout, refresh, workspaces: ws?.workspaces, workspaceId: ws?.workspaceId }}>
       <Dashboard />
     </AuthProvider>
   );

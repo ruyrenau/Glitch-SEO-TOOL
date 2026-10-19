@@ -88,8 +88,8 @@ export async function createUser(input: CreateUserInput, actorUserId?: string | 
   return publicUser(user, input.role);
 }
 
-export function publicUser(u: { id: string; username: string; name: string; email: string | null; mustChangePassword: boolean; disabled?: boolean; lastLoginAt?: Date | null }, role: Role) {
-  return { id: u.id, username: u.username, name: u.name, email: u.email, role, roleLabel: ROLE_LABEL[role], mustChangePassword: u.mustChangePassword, disabled: !!u.disabled, lastLoginAt: u.lastLoginAt ?? null, permissions: permissionsOf(role) };
+export function publicUser(u: { id: string; username: string; name: string; email: string | null; mustChangePassword: boolean; disabled?: boolean; lastLoginAt?: Date | null; isSuperAdmin?: boolean }, role: Role) {
+  return { id: u.id, username: u.username, name: u.name, email: u.email, role, roleLabel: ROLE_LABEL[role], mustChangePassword: u.mustChangePassword, disabled: !!u.disabled, lastLoginAt: u.lastLoginAt ?? null, permissions: permissionsOf(role), isSuperAdmin: !!u.isSuperAdmin };
 }
 
 export async function listUsers(workspaceId: string) {
@@ -101,10 +101,21 @@ async function ownerCount(workspaceId: string) {
   return prisma.workspaceMember.count({ where: { workspaceId, role: 'OWNER', user: { disabled: false } } });
 }
 
-export async function updateUser(workspaceId: string, userId: string, change: { role?: Role; disabled?: boolean }, actor: { id: string; role: Role }) {
+/**
+ * Disabling an account or resetting its password affects the whole account, so a workspace admin can only do it
+ * for people who belong to their workspace alone; the instance administrator can always.
+ */
+export async function assertAccountControl(workspaceId: string, userId: string, actorIsSuperAdmin: boolean) {
+  if (actorIsSuperAdmin) return;
+  const elsewhere = await prisma.workspaceMember.count({ where: { userId, NOT: { workspaceId } } });
+  if (elsewhere) throw new WorkflowError('SHARED_ACCOUNT', 'Esta persona también trabaja en otros espacios: su cuenta es suya. Puedes quitarla de este espacio o cambiar su rol.', 403);
+}
+
+export async function updateUser(workspaceId: string, userId: string, change: { role?: Role; disabled?: boolean }, actor: { id: string; role: Role; isSuperAdmin?: boolean }) {
   const m = await prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId } }, include: { user: true } });
   if (!m) throw new WorkflowError('USER_NOT_FOUND', 'Usuario no encontrado en este workspace.', 404);
   if (userId === actor.id && (change.disabled || (change.role && change.role !== m.role))) throw new WorkflowError('CANNOT_CHANGE_SELF', 'No puedes cambiar tu propio rol ni desactivarte.', 400);
+  if (change.disabled !== undefined) await assertAccountControl(workspaceId, userId, !!actor.isSuperAdmin);
   // Only owners can create or modify owners.
   if ((m.role === 'OWNER' || change.role === 'OWNER') && actor.role !== 'OWNER') throw new WorkflowError('OWNER_REQUIRED', 'Solo un Owner puede modificar a otro Owner.', 403);
   if (m.role === 'OWNER' && (change.disabled || (change.role && change.role !== 'OWNER')) && (await ownerCount(workspaceId)) <= 1) throw new WorkflowError('LAST_OWNER', 'El workspace necesita al menos un Owner activo.', 400);
@@ -139,37 +150,47 @@ export interface SessionContext {
   role: Role;
 }
 
-/** Verifies credentials. Returns null on any failure (unknown user, wrong password, disabled). */
-export async function login(usernameRaw: string, password: string, meta: { ip?: string; userAgent?: string } = {}) {
-  const username = usernameRaw.trim().toLowerCase();
-  const user = await prisma.user.findUnique({ where: { username }, include: { memberships: { orderBy: { createdAt: 'asc' }, take: 1 } } });
-  const ok = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
-  const member = user?.memberships[0];
-  if (!user || !ok || user.disabled || !member) {
-    await recordAuditEvent({ workspaceId: member?.workspaceId ?? null, userId: user?.id ?? null, action: 'auth.login_failed', entity: 'User', entityId: user?.id ?? username, details: { username, reason: !user ? 'unknown_user' : user.disabled ? 'disabled' : !member ? 'no_workspace' : 'bad_password' } });
-    return null;
-  }
+/** Creates a session for a user in one of their workspaces (after login, sign-up or accepting an invitation). */
+export async function startSession(userId: string, workspaceId: string, meta: { ip?: string; userAgent?: string } = {}) {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  const member = await prisma.workspaceMember.findUniqueOrThrow({ where: { workspaceId_userId: { workspaceId, userId } } });
   const token = crypto.randomBytes(32).toString('base64url');
   const session = await prisma.session.create({
     data: {
       tokenHash: sha256(token),
-      userId: user.id,
+      userId,
+      workspaceId,
       expiresAt: new Date(Date.now() + SESSION_TTL_MS),
       ipHash: meta.ip ? sha256(`${process.env.SALT_SECRET ?? 'dev'}:${meta.ip}`).slice(0, 16) : null,
       userAgent: meta.userAgent?.slice(0, 200) ?? null
     }
   });
-  await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
-  await recordAuditEvent({ workspaceId: member.workspaceId, userId: user.id, action: 'auth.login', entity: 'Session', entityId: session.id });
-  return { token, user: publicUser(user, member.role), workspaceId: member.workspaceId };
+  await prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } });
+  await recordAuditEvent({ workspaceId, userId, action: 'auth.login', entity: 'Session', entityId: session.id });
+  return { token, user: publicUser(user, member.role), workspaceId };
+}
+
+/** Verifies credentials. Returns null on any failure (unknown user, wrong password, disabled, no active workspace). */
+export async function login(usernameRaw: string, password: string, meta: { ip?: string; userAgent?: string } = {}) {
+  const id = usernameRaw.trim().toLowerCase();
+  // Username or email.
+  const user = await prisma.user.findFirst({ where: { OR: [{ username: id }, { email: id }] }, include: { memberships: { where: { workspace: { disabled: false } }, orderBy: { createdAt: 'asc' }, take: 1 } } });
+  const ok = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
+  const member = user?.memberships[0];
+  if (!user || !ok || user.disabled || !member) {
+    await recordAuditEvent({ workspaceId: member?.workspaceId ?? null, userId: user?.id ?? null, action: 'auth.login_failed', entity: 'User', entityId: user?.id ?? id, details: { username: id, reason: !user ? 'unknown_user' : user.disabled ? 'disabled' : !member ? 'no_workspace' : 'bad_password' } });
+    return null;
+  }
+  return startSession(user.id, member.workspaceId, meta);
 }
 
 /** Resolves a session cookie. Expired or disabled sessions are deleted. Extends the expiry when it is used. */
 export async function getSession(token: string | undefined): Promise<SessionContext | null> {
   if (!token || token.length > 100) return null;
-  const s = await prisma.session.findUnique({ where: { tokenHash: sha256(token) }, include: { user: { include: { memberships: { orderBy: { createdAt: 'asc' }, take: 1 } } } } });
+  const s = await prisma.session.findUnique({ where: { tokenHash: sha256(token) }, include: { user: { include: { memberships: { where: { workspace: { disabled: false } }, orderBy: { createdAt: 'asc' } } } } } });
   if (!s) return null;
-  const member = s.user.memberships[0];
+  // The workspace chosen in this session, or the first one the user still belongs to.
+  const member = s.user.memberships.find(m => m.workspaceId === s.workspaceId) ?? s.user.memberships[0];
   if (s.expiresAt.getTime() < Date.now() || s.user.disabled || !member) {
     await prisma.session.delete({ where: { id: s.id } }).catch(() => undefined);
     return null;

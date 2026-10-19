@@ -52,6 +52,8 @@ model User {
   avatarUrl          String?
   mustChangePassword Boolean           @default(false)
   disabled           Boolean           @default(false)
+  /// Instance administrator: sees every workspace and sets their limits.
+  isSuperAdmin       Boolean           @default(false)
   lastLoginAt        DateTime?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
@@ -59,6 +61,7 @@ model User {
   auditEvents        AuditEvent[]
   approvals          Approval[]
   sessions           Session[]
+  passwordResets     PasswordReset[]
 }
 
 /// Server-side session. The cookie holds a random token; only its SHA-256 is stored.
@@ -67,6 +70,8 @@ model Session {
   tokenHash  String   @unique
   userId     String
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Workspace the user is working in (switchable); null = their first one.
+  workspaceId String?
   expiresAt  DateTime
   lastSeenAt DateTime @default(now())
   ipHash     String?
@@ -80,6 +85,10 @@ model Workspace {
   id          String            @id @default(uuid())
   name        String
   slug        String            @unique
+  /// Limits (null = no limit). Self-registered workspaces get the defaults from the environment.
+  maxSites     Int?
+  maxCrawlUrls Int?
+  disabled     Boolean          @default(false)
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
   members     WorkspaceMember[]
@@ -88,6 +97,7 @@ model Workspace {
   googleAccount GoogleAccount?
   aiKeys        AiProviderKey[]
   schemaTemplates SchemaTemplate[]
+  invitations     Invitation[]
 }
 
 model WorkspaceMember {
@@ -1099,4 +1109,33 @@ model GscQueryDay {
 
   @@unique([siteId, date, query])
   @@index([siteId, query])
+}
+
+/// Invitation to join a workspace with a role. The link holds a random token; only its SHA-256 is stored.
+model Invitation {
+  id          String    @id @default(uuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  email       String
+  role        Role
+  tokenHash   String    @unique
+  invitedById String?
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  acceptedBy  String?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId])
+}
+
+/// One-time password reset link sent by email (only the SHA-256 of the token is stored).
+model PasswordReset {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 }

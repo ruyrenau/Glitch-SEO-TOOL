@@ -15,22 +15,24 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@glitch/log-parser": "workspace:*",
-    "@prisma/client": "^6.4.1",
-    "bcryptjs": "^3.0.2",
-    "@glitch/crawler": "workspace:*",
-    "@glitch/core": "workspace:*",
-    "@glitch/testing": "workspace:*",
     "@glitch/connectors": "workspace:*",
     "@glitch/content-engine": "workspace:*",
+    "@glitch/core": "workspace:*",
+    "@glitch/crawler": "workspace:*",
+    "@glitch/log-parser": "workspace:*",
+    "@glitch/schema-engine": "workspace:*",
+    "@glitch/testing": "workspace:*",
+    "@prisma/client": "^6.4.1",
+    "bcryptjs": "^3.0.2",
     "cheerio": "^1.0.0",
-    "@glitch/schema-engine": "workspace:*"
+    "nodemailer": "6.9.16"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.13.10",
+    "@types/nodemailer": "6.4.17",
     "prisma": "^6.4.1",
     "tsx": "^4.19.3",
-    "typescript": "^5.8.2",
-    "@types/node": "^22.13.10",
-    "@types/bcryptjs": "^2.4.6"
+    "typescript": "^5.8.2"
   }
 }

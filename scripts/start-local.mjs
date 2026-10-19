@@ -14,7 +14,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Settings from .env (Google keys, secrets…); variables already set in the shell win.
 const fromFile = fs.existsSync(path.join(ROOT, '.env')) ? parseEnv(fs.readFileSync(path.join(ROOT, '.env'), 'utf8')) : {};
 // Only what the app needs from the file: DATABASE_URL and PORT keep their current local defaults.
-const KEYS = ['GSC_CLIENT_ID', 'GSC_CLIENT_SECRET', 'GSC_REDIRECT_URI', 'API_PUBLIC_URL', 'WEB_ORIGIN', 'CREDENTIALS_KEY', 'PSI_API_KEY', 'ALERT_WEBHOOK_URL', 'CHROME_PATH'];
+const KEYS = ['GSC_CLIENT_ID', 'GSC_CLIENT_SECRET', 'GSC_REDIRECT_URI', 'API_PUBLIC_URL', 'WEB_ORIGIN', 'CREDENTIALS_KEY', 'PSI_API_KEY', 'ALERT_WEBHOOK_URL', 'CHROME_PATH', 'SMTP_URL', 'MAIL_FROM', 'SIGNUP', 'SIGNUP_MAX_SITES', 'SIGNUP_MAX_CRAWL_URLS', 'MAX_WORKSPACES_PER_USER'];
 const env = { ...Object.fromEntries(KEYS.filter(k => fromFile[k] && !process.env[k]).map(k => [k, fromFile[k]])), ...process.env, CRAWL_ALLOW_PRIVATE_HOSTS: process.env.CRAWL_ALLOW_PRIVATE_HOSTS ?? '127.0.0.1' };
 const COLORS = { redis: 31, api: 36, worker: 33, web: 35 };
 const children = [];

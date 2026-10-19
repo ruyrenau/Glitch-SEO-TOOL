@@ -2,12 +2,15 @@
 
 import React, { createContext, useContext } from 'react';
 import type { Permission, User } from './types';
+import type { WorkspaceSummary } from '@/components/WorkspaceViews';
 
 interface AuthValue {
   user: User;
   can: (p: Permission) => boolean;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  workspaces?: WorkspaceSummary[];
+  workspaceId?: string;
 }
 
 export const AuthContext = createContext<AuthValue | null>(null);

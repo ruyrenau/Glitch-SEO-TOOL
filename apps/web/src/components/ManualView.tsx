@@ -423,29 +423,32 @@ const SECTIONS: Section[] = [
     id: 'users',
     nav: 'users',
     icon: Users,
-    title: 'Acceso, usuarios y roles',
+    title: 'Cuentas, espacios de trabajo y colaboradores',
     status: 'ready',
-    what: 'Cada persona entra con su usuario y contraseña. Lo que puede hacer depende de su rol. Owner y Admin ven la sección "Usuarios" para invitar personas, cambiar roles, desactivar cuentas y restablecer contraseñas.',
-    why: 'Evita que cualquiera con la URL cambie datos, y deja registrado quién hizo cada cosa (aprobaciones, crawls, envíos a WordPress).',
+    what: 'Cada cuenta tiene sus propios espacios de trabajo, y cada espacio tiene sus sitios, sus datos y sus conexiones (Google, WordPress, claves de API). Puedes invitar colaboradores con un rol, y una misma persona puede estar en varios espacios (el tuyo y el de un cliente, por ejemplo).',
+    why: 'Separa clientes o equipos sin que sus datos se mezclen, y deja registrado quién hizo cada cosa.',
     steps: [
-      'Para cambiar tu contraseña, pulsa tu nombre abajo a la izquierda (Mi cuenta).',
-      'Para invitar a alguien: Usuarios → Invitar usuario. Elige un rol y una contraseña temporal; la persona deberá cambiarla al entrar por primera vez.',
-      'Comparte la contraseña temporal por un canal seguro, nunca en un documento público.',
-      'Si alguien deja el equipo, desactívalo: sus sesiones se cierran en ese momento.'
+      'Crear cuenta: en la pantalla de inicio, "Crear cuenta". Recibes tu propio espacio, vacío (si el administrador dejó abierto el registro).',
+      'Cambiar de espacio: en la barra lateral, "Espacio de trabajo". Ahí mismo, "+ Nuevo espacio…" crea otro (por ejemplo, uno por cliente).',
+      'Invitar: Usuarios → "Invitar colaboradores", escribe el correo y elige el rol. La persona recibe un enlace válido 7 días; si el servidor no tiene correo configurado, copia el enlace y compártelo tú. Si ya tiene cuenta, entra con ella y el espacio aparece en su selector.',
+      'Quitar a alguien: Usuarios → "Quitar del espacio". Su cuenta y sus otros espacios no cambian.',
+      'Recuperar la contraseña: "¿Olvidaste tu contraseña?" en el inicio de sesión envía un enlace por correo (válido 1 hora). Puedes entrar con tu usuario o con tu correo.',
+      'Mi cuenta: cambia tu nombre, tu correo y tu contraseña, mira tus espacios y sal de uno.'
     ],
     read: [
-      ['Owner', 'Todo, incluida la gestión de otros Owners. Siempre debe quedar al menos uno activo.'],
-      ['Admin', 'Sitios, credenciales de WordPress, borrados y usuarios (excepto Owners).'],
+      ['Owner', 'Todo, incluida la gestión de otros Owners. Cada espacio necesita al menos uno.'],
+      ['Admin', 'Sitios, credenciales de WordPress, borrados e invitaciones (excepto Owners).'],
       ['SEO Manager', 'Logs, sitemaps, crawls, issues, alertas, contenido y envíos a WordPress.'],
       ['Editor', 'Datasets, plantillas, generación, revisión y envío de borradores.'],
-      ['Viewer', 'Solo lectura.']
+      ['Viewer', 'Solo lectura.'],
+      ['Límites del espacio', 'Las cuentas nuevas tienen un máximo de sitios y de URLs por crawl; lo ves en Usuarios → "Este espacio de trabajo". El administrador de la instancia puede cambiarlos.']
     ],
     tips: [
-      'Las aprobaciones de contenido se registran con tu nombre de usuario; ya no hace falta escribirlo.',
-      'Tras 5 intentos fallidos el acceso se bloquea 15 minutos para ese usuario.',
+      'Desactivar una cuenta o restablecer su contraseña solo es posible si la persona trabaja únicamente en tu espacio: si también está en otros, su cuenta es suya y solo puedes quitarla de tu espacio.',
+      'Tras 5 intentos fallidos el acceso se bloquea 15 minutos.',
       'La sesión dura 12 horas sin actividad.'
     ],
-    limits: ['No hay recuperación de contraseña por email todavía: un Admin debe restablecerla.']
+    limits: ['El envío de correos (invitaciones y recuperación) necesita configurar SMTP_URL y MAIL_FROM en el servidor.']
   },
   {
     id: 'audit',
@@ -776,7 +779,8 @@ export function ManualView({ go }: { go: GoFn }) {
             ['¿Se publica algo en WordPress automáticamente?', 'No. Solo se crean o actualizan borradores, y solo de páginas que una persona aprobó.'],
             ['Dice "No se pudo contactar la API"', 'La API no está corriendo. Desde la carpeta del proyecto ejecuta "pnpm start:local": levanta Redis, la API, el worker y el dashboard juntos.'],
             ['Un crawl o una importación se queda "En cola"', 'El worker no está corriendo. Revisa Jobs y automatizaciones; con "pnpm start:local" arranca solo.'],
-            ['Olvidé mi contraseña', 'Pide a un Owner o Admin que la restablezca desde Usuarios. Si eres el único Owner, desde la terminal: GLITCH_USER_PASSWORD=... pnpm cli users:reset-password --username tu-usuario.'],
+            ['Olvidé mi contraseña', 'Usa "¿Olvidaste tu contraseña?" en la pantalla de inicio (necesita correo configurado en el servidor). Si no hay correo, pide a un Owner o Admin que la restablezca desde Usuarios; si eres el único Owner, desde la terminal: GLITCH_USER_PASSWORD=... pnpm cli users:reset-password --username tu-usuario.'],
+            ['¿Cómo trabajo con un cliente sin mezclar datos?', 'Crea un espacio de trabajo para él ("+ Nuevo espacio…" en la barra lateral) e invita a su equipo con el rol que corresponda. Sus sitios, conexiones y reportes quedan separados de los tuyos.'],
             ['¿Qué significan los datos marcados DEMO?', 'Son datos sintéticos para probar la herramienta. Pasan por los mismos procesos que los datos reales.'],
             ['¿Cómo le comparto los resultados a un cliente?', 'En Reportes elige las secciones y crea el reporte. Copia el enlace (no necesita usuario) o descarga el PDF. "Retirar" desactiva el enlace al momento.'],
             ['¿Cómo recibo avisos en Slack, Teams o Discord?', 'En Monitoreo, tarjeta "Avisos", pega la URL del webhook de tu canal, guarda y pulsa "Enviar prueba". Después de cada ejecución automática te llega lo importante, una sola vez.'],

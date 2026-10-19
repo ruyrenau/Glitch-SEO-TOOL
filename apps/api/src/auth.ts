@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import {
+import { assertAccountControl, register, requestPasswordReset, resetPasswordWithToken, invitationInfo, acceptInvitationNew, acceptInvitationExisting, updateOwnProfile, myWorkspaces, createWorkspaceFor, switchWorkspace, renameWorkspace, removeMember, listInvitations, createInvitation, revokeInvitation, authConfig, adminWorkspaces, adminUpdateWorkspace,
   prisma,
   actorContext,
   login,
@@ -39,7 +39,12 @@ const RULES: Array<[RegExp, RegExp, Permission]> = [
   [/^POST$/, /^\/api\/v1\/(schemas\/validate|generated-pages\/preview|schema\/validate|schema\/prefill)$/, 'read'],
   [/^(POST|PUT|DELETE)$/, /^\/api\/v1\/schema-templates(\/:id)?$/, 'content:edit'],
   // Every signed-in user can end their own session and change their own password.
-  [/^POST$/, /^\/api\/v1\/auth\/(logout|password)$/, 'read'],
+  [/^POST$/, /^\/api\/v1\/auth\/(logout|password|workspace|invitations\/:token\/accept)$/, 'read'],
+  // Every signed-in person can create their own workspace, edit their profile and leave a workspace.
+  [/^(POST|PATCH)$/, /^\/api\/v1\/(workspaces|auth\/profile|workspace\/leave)$/, 'read'],
+  [/^(PATCH|GET|POST|DELETE)$/, /^\/api\/v1\/(workspace|workspace\/members\/:userId|invitations(\/:invitationId)?)$/, 'users:manage'],
+  // Instance administrator routes check isSuperAdmin themselves.
+  [/^(GET|PATCH)$/, /^\/api\/v1\/admin\/workspaces(\/:workspaceId)?$/, 'read'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/(log-imports|sitemap|crawls)$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/crawls\/:id\/cancel$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/crawls\/:id\/explorer\/custom$/, 'read'], // read-only analysis of stored HTML
@@ -93,7 +98,7 @@ export function permissionFor(method: string, route: string): Permission {
 // ---------------------------------------------------------------------------
 // Workspace ownership of the resource named by :id in the route.
 // ---------------------------------------------------------------------------
-async function workspaceOfResource(route: string, id: string): Promise<string | null | undefined> {
+async function workspaceOfResource(route: string, id: string, current: string): Promise<string | null | undefined> {
   const viaSite = (s: { site: { workspaceId: string } | null } | null) => (s ? s.site?.workspaceId ?? null : undefined);
   if (/^\/api\/v1\/sites\/:id/.test(route)) return (await prisma.site.findUnique({ where: { id }, select: { workspaceId: true } }))?.workspaceId;
   if (/^\/api\/v1\/crawls\/:id/.test(route)) return viaSite(await prisma.crawlRun.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
@@ -118,8 +123,9 @@ async function workspaceOfResource(route: string, id: string): Promise<string | 
   if (/^\/api\/v1\/seo-edits\/:id/.test(route)) return viaSite(await prisma.seoChangeProposal.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
   if (/^\/api\/v1\/jobs\/:id/.test(route)) return (await prisma.job.findUnique({ where: { id }, select: { workspaceId: true } }))?.workspaceId;
   if (/^\/api\/v1\/users\/:id/.test(route)) {
-    const m = await prisma.workspaceMember.findFirst({ where: { userId: id }, select: { workspaceId: true } });
-    return m?.workspaceId;
+    // People can belong to several workspaces: what matters is whether they are in the current one.
+    const m = await prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId: current, userId: id } }, select: { workspaceId: true } });
+    return m ? m.workspaceId : (await prisma.user.findUnique({ where: { id }, select: { id: true } })) ? 'other' : undefined;
   }
   return null; // route has no workspace-scoped :id
 }
@@ -155,7 +161,7 @@ function clearFailures(ip: string, username: string) {
 
 // The client report link is public on purpose: the unguessable token is the credential.
 // The Google OAuth callback is authenticated by its signed state (see gscFinishOAuth), not by the session cookie.
-const PUBLIC = [/^\/health(\/|$)/, /^\/docs(\/|$)/, /^\/api\/v1\/auth\/login$/, /^\/api\/v1\/public\/reports\/[\w-]+$/, /^\/api\/v1\/gsc\/oauth\/callback$/];
+const PUBLIC = [/^\/health(\/|$)/, /^\/docs(\/|$)/, /^\/api\/v1\/auth\/(login|config|register|forgot|reset)$/, /^\/api\/v1\/public\/invitations\/[\w-]+(\/accept)?$/, /^\/api\/v1\/public\/reports\/[\w-]+$/, /^\/api\/v1\/gsc\/oauth\/callback$/];
 const ALLOWED_WHILE_CHANGING_PASSWORD = /^\/api\/v1\/auth\/(me|password|logout)$/;
 
 export async function registerAuth(app: FastifyInstance) {
@@ -190,7 +196,7 @@ export async function registerAuth(app: FastifyInstance) {
 
       const id = (req.params as { id?: string } | undefined)?.id;
       if (id && /^[0-9a-f-]{36}$/i.test(id)) {
-        const ws = await workspaceOfResource(route, id);
+        const ws = await workspaceOfResource(route, id, ctx.workspaceId);
         // Resources of another workspace look exactly like missing ones.
         if (ws !== null && ws !== undefined && ws !== ctx.workspaceId) throw new HttpError(404, 'NOT_FOUND', 'Not found');
       }
@@ -233,7 +239,105 @@ export async function registerAuth(app: FastifyInstance) {
     return reply.status(204).send();
   });
 
-  app.get('/api/v1/auth/me', async req => ({ user: req.auth!.user, workspaceId: req.auth!.workspaceId }));
+  app.get('/api/v1/auth/me', async req => ({ user: req.auth!.user, workspaceId: req.auth!.workspaceId, workspaces: await myWorkspaces(req.auth!.user.id) }));
+
+  // ------------------------------------------------------------------ accounts (public)
+  app.get('/api/v1/auth/config', async () => authConfig());
+  const sameOrigin = (req: FastifyRequest) => {
+    const origin = req.headers.origin;
+    if (origin && !allowedOrigins.has(origin)) throw new HttpError(403, 'CSRF_ORIGIN', 'Request origin not allowed');
+  };
+  const slowDown = (req: FastifyRequest, key: string) => {
+    const wait = throttled(req.ip, key);
+    if (wait) throw new HttpError(429, 'TOO_MANY_ATTEMPTS', `Demasiados intentos. Espera ${Math.ceil(wait / 60)} min.`, { retryAfter: wait });
+    recordFailure(req.ip, key); // every attempt counts: these routes create accounts or send email
+  };
+  const publicRoute = (fn: (req: FastifyRequest, reply: FastifyReply) => Promise<unknown>) => async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      return await fn(req, reply);
+    } catch (e) {
+      if (e instanceof HttpError) return sendError(reply, req, e);
+      throw e;
+    }
+  };
+  app.post('/api/v1/auth/register', publicRoute(async (req, reply) => {
+    sameOrigin(req);
+    slowDown(req, '#register');
+    const b = z.object({ username: z.string().min(3).max(40), name: z.string().min(1).max(100), email: z.string().email().max(200), password: z.string().min(1).max(200), workspaceName: z.string().max(80).optional() }).strict().parse(req.body);
+    const r = await register(b, { ip: req.ip, userAgent: req.headers['user-agent'] });
+    reply.setCookie(SESSION_COOKIE, r.token, cookieOpts);
+    return reply.status(201).send({ user: r.user });
+  }));
+  app.post('/api/v1/auth/forgot', publicRoute(async req => {
+    sameOrigin(req);
+    slowDown(req, '#forgot');
+    const b = z.object({ identifier: z.string().min(1).max(200) }).strict().parse(req.body);
+    return requestPasswordReset(b.identifier);
+  }));
+  app.post('/api/v1/auth/reset', publicRoute(async req => {
+    sameOrigin(req);
+    slowDown(req, '#reset');
+    const b = z.object({ token: z.string().min(20).max(100), password: z.string().min(1).max(200) }).strict().parse(req.body);
+    return resetPasswordWithToken(b.token, b.password);
+  }));
+  app.get('/api/v1/public/invitations/:token', async req => invitationInfo(z.object({ token: z.string().min(20).max(100) }).parse(req.params).token));
+  app.post('/api/v1/public/invitations/:token/accept', publicRoute(async (req, reply) => {
+    sameOrigin(req);
+    slowDown(req, '#invite');
+    const { token } = z.object({ token: z.string().min(20).max(100) }).parse(req.params);
+    const b = z.object({ username: z.string().min(3).max(40), name: z.string().min(1).max(100), password: z.string().min(1).max(200) }).strict().parse(req.body);
+    const r = await acceptInvitationNew(token, b, { ip: req.ip, userAgent: req.headers['user-agent'] });
+    reply.setCookie(SESSION_COOKIE, r.token, cookieOpts);
+    return { user: r.user };
+  }));
+
+  // ------------------------------------------------------------------ accounts (signed in)
+  app.post('/api/v1/auth/invitations/:token/accept', async req => {
+    const { token } = z.object({ token: z.string().min(20).max(100) }).parse(req.params);
+    return acceptInvitationExisting(token, req.auth!.user.id, req.auth!.sessionId);
+  });
+  app.patch('/api/v1/auth/profile', async req => updateOwnProfile(req.auth!.user.id, z.object({ name: z.string().min(1).max(100).optional(), email: z.string().email().max(200).nullable().optional() }).strict().parse(req.body)));
+  app.get('/api/v1/workspaces', async req => myWorkspaces(req.auth!.user.id));
+  app.post('/api/v1/workspaces', async (req, reply) => {
+    const b = z.object({ name: z.string().min(1).max(80) }).strict().parse(req.body);
+    const ws = await createWorkspaceFor(req.auth!.user.id, b.name);
+    await switchWorkspace(req.auth!.sessionId, req.auth!.user.id, ws.id);
+    return reply.status(201).send({ id: ws.id, name: ws.name });
+  });
+  app.post('/api/v1/auth/workspace', async req => switchWorkspace(req.auth!.sessionId, req.auth!.user.id, z.object({ workspaceId: z.string().uuid() }).strict().parse(req.body).workspaceId));
+  app.patch('/api/v1/workspace', async req => renameWorkspace(req.auth!.workspaceId, z.object({ name: z.string().min(1).max(80) }).strict().parse(req.body).name, req.auth!.user.id));
+  app.post('/api/v1/workspace/leave', async req => removeMember(req.auth!.workspaceId, req.auth!.user.id, { id: req.auth!.user.id, role: req.auth!.role }));
+  app.delete('/api/v1/workspace/members/:userId', async req => removeMember(req.auth!.workspaceId, z.object({ userId: z.string().uuid() }).parse(req.params).userId, { id: req.auth!.user.id, role: req.auth!.role }));
+  app.get('/api/v1/invitations', async req => listInvitations(req.auth!.workspaceId));
+  app.post('/api/v1/invitations', async (req, reply) => {
+    const b = z.object({ email: z.string().email().max(200), role: roleEnum }).strict().parse(req.body);
+    return reply.status(201).send(await createInvitation(req.auth!.workspaceId, b, { id: req.auth!.user.id, role: req.auth!.role, name: req.auth!.user.name }));
+  });
+  app.delete('/api/v1/invitations/:invitationId', async req => revokeInvitation(req.auth!.workspaceId, z.object({ invitationId: z.string().uuid() }).parse(req.params).invitationId, req.auth!.user.id));
+
+  // ------------------------------------------------------------------ instance administrator
+  const superAdmin = (req: FastifyRequest) => {
+    if (!req.auth!.user.isSuperAdmin) throw new HttpError(403, 'SUPERADMIN_REQUIRED', 'Solo el administrador de la instancia puede ver esto.');
+  };
+  app.get('/api/v1/admin/workspaces', async (req, reply) => {
+    try {
+      superAdmin(req);
+    } catch (e) {
+      return sendError(reply, req, e as HttpError);
+    }
+    return adminWorkspaces();
+  });
+  app.patch('/api/v1/admin/workspaces/:workspaceId', async (req, reply) => {
+    try {
+      superAdmin(req);
+    } catch (e) {
+      return sendError(reply, req, e as HttpError);
+    }
+    const { workspaceId } = z.object({ workspaceId: z.string().uuid() }).parse(req.params);
+    const b = z.object({ maxSites: z.number().int().min(0).max(100_000).nullable().optional(), maxCrawlUrls: z.number().int().min(100).max(10_000_000).nullable().optional(), disabled: z.boolean().optional() }).strict().parse(req.body);
+    if (b.disabled && workspaceId === req.auth!.workspaceId) return sendError(reply, req, new HttpError(400, 'CANNOT_DISABLE_OWN', 'No puedes suspender el espacio en el que estás trabajando.'));
+    return adminUpdateWorkspace(workspaceId, b, req.auth!.user.id);
+  });
 
   app.post('/api/v1/auth/password', async req => {
     const b = z.object({ currentPassword: z.string().min(1).max(200), newPassword: z.string().min(1).max(200) }).strict().parse(req.body);
@@ -258,13 +362,15 @@ export async function registerAuth(app: FastifyInstance) {
   app.patch('/api/v1/users/:id', async req => {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const b = z.object({ role: roleEnum.optional(), disabled: z.boolean().optional() }).strict().parse(req.body);
-    return updateUser(req.auth!.workspaceId, id, b, { id: req.auth!.user.id, role: req.auth!.role });
+    return updateUser(req.auth!.workspaceId, id, b, { id: req.auth!.user.id, role: req.auth!.role, isSuperAdmin: req.auth!.user.isSuperAdmin });
   });
 
   app.post('/api/v1/users/:id/reset-password', async req => {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const b = z.object({ password: z.string().min(1).max(200) }).strict().parse(req.body);
     const target = await prisma.workspaceMember.findFirst({ where: { userId: id, workspaceId: req.auth!.workspaceId } });
+    if (!target) throw new WorkflowError('USER_NOT_FOUND', 'Usuario no encontrado en este espacio.', 404);
+    await assertAccountControl(req.auth!.workspaceId, id, !!req.auth!.user.isSuperAdmin);
     if (target?.role === 'OWNER' && req.auth!.role !== 'OWNER') throw new WorkflowError('OWNER_REQUIRED', 'Solo un Owner puede restablecer la contraseña de un Owner', 403);
     await resetPassword(id, b.password, req.auth!.user.id);
     return { ok: true, mustChangePassword: true };

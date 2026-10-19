@@ -18,6 +18,11 @@ Lista viva de lo que falta. Al terminar algo, se marca con [x] y se anota el com
 - [ ] **Optimizador de "Information Gain"**: comparar la página con las fuentes que citan Perplexity o AI Overviews y decir qué dato único, tabla o estadística agregar.
   - Necesita: clave de Perplexity (agregarla en Configuración) para obtener sus citas, SerpAPI para AI Overviews y Anthropic para que Claude compare los textos. Solo sugiere; no escribe ni publica nada. Cada análisis cuesta centavos de dólar y se lanza con un botón.
 
+## Plataforma
+- [ ] **Alojar G.SEO en un VPS** (Docker, Nginx, HTTPS, PostgreSQL, respaldos; verificación de la app de Google para usuarios externos).
+- [ ] **Plugin de WordPress "G.SEO Connector"**: etapa 1 (metas, canonical, robots, OG, sitemaps, redirecciones, llms.txt, bot blocker, importador de Yoast/Rank Math), etapa 2 (panel en el editor con análisis y sugerencias con IA), etapa 3 (migas de pan, bloques FAQ/HowTo, contenido pilar, edición masiva).
+- [ ] Enviar a Slack/Teams las explicaciones de SERP (hoy solo en pantalla y en "En declive").
+
 ## Google Analytics (GA4), fase 2
 - [ ] Columnas de GA4 en el Explorador.
 - [ ] Ordenar "En declive" y "Listo para IA" por conversiones.
@@ -25,6 +30,7 @@ Lista viva de lo que falta. Al terminar algo, se marca con [x] y se anota el com
 - [ ] Sección de GA4 en los Reportes para clientes.
 
 ## Hecho recientemente
+- [x] Cuentas y colaboradores: registro con espacio propio y límites, varios espacios por persona, invitaciones por correo con rol, quitar miembros, recuperar contraseña por correo, panel de administración de la instancia
 - [x] Autoridad y SERP: inspector de backlinks desde CSV (vivos, perdidos, rel, 404 a rescatar → 301, sospechosos, disavow) y seguimiento semanal de SERP e IA con SerpAPI (bloques, AI Overview, explicación de caídas) (622cdfd)
 - [x] Entidades y E-E-A-T (organización, autores, Wikidata about/mentions, grafo JSON-LD conectado publicable en WordPress, auditoría) y Consolidación asistida (borrador con Claude o manual, WordPress + 301, revertir) (5803483)
 - [x] Arquitectura: Link Score, huérfanas y profundidad; sugerencias de enlaces insertables en WordPress; mapa de 301 (.htaccess, Nginx, CSV, plugin Redirection); auditoría de renderizado lado a lado (3160adc)

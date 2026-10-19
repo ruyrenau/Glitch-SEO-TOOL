@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import type { Role, User } from '@/lib/types';
 import { Badge, Button, Card, ErrorBox, Skeleton, inputCls } from './ui';
 import { ChangePasswordForm } from './AuthViews';
+import { InvitationsCard, ProfileCard } from './WorkspaceViews';
 
 const ROLES: Array<{ id: Role; label: string; what: string }> = [
   { id: 'OWNER', label: 'Owner', what: 'Todo, incluida la gestión de otros Owners.' },
@@ -27,6 +28,7 @@ export function AccountView() {
           <div><dt className="text-slate-500">Rol</dt><dd><Badge>{user.roleLabel}</Badge></dd></div>
         </dl>
       </Card>
+      <ProfileCard />
       <Card title="Cambiar contraseña">
         <div className="max-w-sm">
           <ChangePasswordForm onDone={refresh} />
@@ -84,7 +86,8 @@ export function UsersView() {
 
   return (
     <div className="space-y-6">
-      <Card title="Usuarios del workspace">
+      <InvitationsCard />
+      <Card title="Personas en este espacio">
         <ErrorBox error={error} />
         {msg && <p role="status" className="text-xs text-emerald-700 dark:text-emerald-400 mb-3">{msg}</p>}
         {!users ? (
@@ -123,6 +126,11 @@ export function UsersView() {
                         {!locked && (
                           <Button variant="secondary" onClick={() => act(() => apiSend('PATCH', `/api/v1/users/${u.id}`, { disabled: !u.disabled }), u.disabled ? `${u.username} reactivado.` : `${u.username} desactivado y sus sesiones cerradas.`)}>
                             {u.disabled ? 'Reactivar' : 'Desactivar'}
+                          </Button>
+                        )}
+                        {u.id !== me.id && (
+                          <Button variant="secondary" onClick={() => confirm(`¿Quitar a ${u.username} de este espacio? Su cuenta y sus otros espacios no cambian.`) && act(() => apiSend('DELETE', `/api/v1/workspace/members/${u.id}`), `${u.username} ya no está en este espacio.`)}>
+                            Quitar del espacio
                           </Button>
                         )}
                       </td>

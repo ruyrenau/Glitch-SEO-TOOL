@@ -25,3 +25,5 @@ export * from './entity-service';
 export * from './consolidation-service';
 export * from './backlink-service';
 export * from './serp-service';
+export * from './mailer';
+export * from './account-service';

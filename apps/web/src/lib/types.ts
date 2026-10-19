@@ -258,6 +258,7 @@ export interface User {
   disabled: boolean;
   lastLoginAt: string | null;
   permissions: Permission[];
+  isSuperAdmin?: boolean;
 }
 
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'RETRYING';

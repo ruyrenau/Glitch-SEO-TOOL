@@ -86,6 +86,8 @@ import {
   gscReport,
   cannibalizationReport,
   aiReadinessReport,
+  workspaceLimits,
+  ensureSuperAdmin,
   importBacklinks,
   listBacklinkImports,
   backlinkReport,
@@ -255,6 +257,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   };
 
   await registerAuth(app);
+  await ensureSuperAdmin().catch(() => undefined);
 
   // ------------------------------------------------------------------ health
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
@@ -276,6 +279,8 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
 
   app.post('/api/v1/sites', async (req, reply) => {
     const body = createSiteBody.parse(req.body);
+    const lim = await workspaceLimits(req.auth!.workspaceId);
+    if (lim.maxSites !== null && lim.sites >= lim.maxSites) throw new ApiError(400, 'SITE_LIMIT', `Este espacio admite hasta ${lim.maxSites} sitios. Archiva uno o pide al administrador que suba el límite.`);
     const site = await createSite({ ...body, workspaceId: req.auth!.workspaceId });
     return reply.status(201).send(jsonSafe(site));
   });
@@ -434,6 +439,11 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     return { ...rest, ...(maxPageSizeKb ? { maxBodyBytes: maxPageSizeKb * 1024 } : {}) };
   };
 
+  const assertCrawlLimit = async (workspaceId: string, maxUrls: number | undefined) => {
+    const lim = await workspaceLimits(workspaceId);
+    if (lim.maxCrawlUrls !== null && (maxUrls ?? 0) > lim.maxCrawlUrls) throw new ApiError(400, 'CRAWL_LIMIT', `Este espacio permite crawls de hasta ${lim.maxCrawlUrls.toLocaleString('es-MX')} URLs.`);
+  };
+
   const validatePatterns = (b: { include: string[]; exclude: string[]; renderJs?: boolean }) => {
     if (b.renderJs && !findBrowser()) throw new ApiError(400, 'BROWSER_NOT_FOUND', 'Para ejecutar JavaScript se necesita Chrome, Chromium o Edge instalado en el servidor (o la variable CHROME_PATH).');
     for (const r of b.include.concat(b.exclude)) {
@@ -450,6 +460,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     const body = crawlBody.parse(req.body ?? {});
     const site = await requireSite(id);
     validatePatterns(body);
+    await assertCrawlLimit(site.workspaceId, body.maxUrls);
     const active = await prisma.job.findFirst({ where: { siteId: id, type: 'crawl', status: { in: [...ACTIVE] } } });
     if (active) throw new ApiError(409, 'CRAWL_RUNNING', 'A crawl is already queued or running for this site', { jobId: active.id });
     const job = await enqueue('crawl', { siteId: id, options: crawlOptions(body, site.canonicalUrl) }, { siteId: id, workspaceId: site.workspaceId });
