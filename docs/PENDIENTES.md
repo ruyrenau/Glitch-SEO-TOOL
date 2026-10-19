@@ -25,6 +25,7 @@ Lista viva de lo que falta. Al terminar algo, se marca con [x] y se anota el com
 - [ ] Sección de GA4 en los Reportes para clientes.
 
 ## Hecho recientemente
+- [x] Autoridad y SERP: inspector de backlinks desde CSV (vivos, perdidos, rel, 404 a rescatar → 301, sospechosos, disavow) y seguimiento semanal de SERP e IA con SerpAPI (bloques, AI Overview, explicación de caídas)
 - [x] Entidades y E-E-A-T (organización, autores, Wikidata about/mentions, grafo JSON-LD conectado publicable en WordPress, auditoría) y Consolidación asistida (borrador con Claude o manual, WordPress + 301, revertir) (5803483)
 - [x] Arquitectura: Link Score, huérfanas y profundidad; sugerencias de enlaces insertables en WordPress; mapa de 301 (.htaccess, Nginx, CSV, plugin Redirection); auditoría de renderizado lado a lado (3160adc)
 - [x] Simulador de RAG ("Vista de bot de IA" en el Explorador) y generador/validador de llms.txt y llms-full.txt (en Listo para IA) (110ede7)

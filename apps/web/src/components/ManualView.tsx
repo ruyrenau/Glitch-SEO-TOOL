@@ -3,7 +3,7 @@ import type { GoFn } from '@/lib/types';
 
 import React from 'react';
 import {
-  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart, Bot, FileSearch, BarChart3, Network, BadgeCheck
+  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart, Bot, FileSearch, BarChart3, Network, BadgeCheck, Trophy
 } from 'lucide-react';
 import { Badge, Button, Card } from './ui';
 
@@ -508,6 +508,29 @@ const SECTIONS: Section[] = [
     limits: ['GA4 aplica umbrales de privacidad: en páginas con poco tráfico algunos valores pueden faltar o salir en cero.', 'Los datos del día anterior pueden cambiar durante 24 a 48 horas.', 'La importación es manual por ahora; la automática llegará con Monitoreo.']
   },
   {
+    id: 'authority',
+    nav: 'authority',
+    icon: Trophy,
+    title: 'Autoridad y SERP',
+    status: 'ready',
+    what: 'Dos herramientas que miran fuera de tu sitio sin pagar bases de datos de terceros: un inspector de backlinks (subes un CSV y G.SEO revisa cada página que te enlaza) y un seguimiento semanal de la página de resultados de Google de tus keywords (bloques, AI Overviews, posiciones).',
+    why: 'Recuperar la autoridad de enlaces que caen en páginas rotas, saber qué enlaces se perdieron, y explicar caídas de clics que no son caídas de ranking ("Google puso un AI Overview y un bloque de Reddit arriba de ti").',
+    steps: [
+      'Backlinks: exporta tus enlaces (Search Console → Enlaces → Exportar enlaces más recientes, o Ahrefs, Semrush, Moz, Majestic) y súbelos con "Subir CSV de backlinks". La revisión corre en segundo plano, a un ritmo de una página por segundo por sitio.',
+      'Revisa "Autoridad para rescatar": son tus URLs rotas que aún reciben enlaces; ya aparecen primero en Arquitectura → Redirecciones 301.',
+      'En "Perdidos" ves los enlaces que ya no existen y en "Sospechosos" los que tienen señales de spam; puedes generar un archivo disavow con los dominios que marques.',
+      'SERP e IA: guarda la clave de SerpAPI en Configuración, agrega keywords (o "Sugerir desde Temas"), elige país e idioma, activa "Revisar cada semana" y pulsa "Revisar ahora" para la primera foto.',
+      'Con Search Console conectado, cada keyword compara sus clics de las últimas 4 semanas con las 4 anteriores y explica la caída si apareció un bloque nuevo. La explicación también aparece en Análisis de contenido → En declive.'
+    ],
+    read: [
+      ['follow / nofollow / sponsored / ugc', 'Cómo marcó el otro sitio el enlace. Los follow transmiten autoridad; los demás son señales más débiles.'],
+      ['Sospechosos', 'Reglas simples: extensiones de dominio de spam, temas como casino o farmacia, páginas con cientos de enlaces salientes. Google ignora casi todo el spam por su cuenta; el disavow es solo para casos claros.'],
+      ['AI Overview te cita', 'El resumen de IA de Google incluye tu sitio entre sus fuentes.'],
+      ['Bloque nuevo', 'Un bloque (AI Overview, foros, videos…) que no estaba hace unas 4 semanas.']
+    ],
+    limits: ['El inspector solo revisa los enlaces del CSV: no descubre enlaces nuevos por sí mismo.', 'Algunos sitios bloquean bots o piden JavaScript; esos enlaces quedan como "bloqueado" o "la página ya no existe".', 'SerpAPI cobra por búsqueda (100 gratis al mes): cada keyword usa una por semana. La foto es de escritorio, primeros 10 resultados.']
+  },
+  {
     id: 'geo',
     nav: 'geo',
     icon: Sparkles,
@@ -608,7 +631,7 @@ const SECTIONS: Section[] = [
 ];
 
 /** Same order as the side menu. */
-const ORDER = ['wizard', 'overview', 'monitor', 'sites', 'logs', 'crawler', 'explorer', 'architecture', 'seochanges', 'issues', 'alerts', 'vitals', 'schema', 'entities', 'programmatic', 'wordpress', 'gsc', 'ga4', 'geo', 'contentaudit', 'aiready', 'reports', 'automations', 'audit', 'users', 'settings'];
+const ORDER = ['wizard', 'overview', 'monitor', 'sites', 'logs', 'crawler', 'explorer', 'architecture', 'seochanges', 'issues', 'alerts', 'vitals', 'schema', 'entities', 'programmatic', 'wordpress', 'gsc', 'ga4', 'authority', 'geo', 'contentaudit', 'aiready', 'reports', 'automations', 'audit', 'users', 'settings'];
 SECTIONS.sort((a, b) => (ORDER.indexOf(a.id) + 1 || 99) - (ORDER.indexOf(b.id) + 1 || 99));
 
 const STATUS_BADGE = {

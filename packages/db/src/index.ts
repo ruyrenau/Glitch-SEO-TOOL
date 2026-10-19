@@ -23,3 +23,5 @@ export * from './ai-view-service';
 export * from './architecture-service';
 export * from './entity-service';
 export * from './consolidation-service';
+export * from './backlink-service';
+export * from './serp-service';

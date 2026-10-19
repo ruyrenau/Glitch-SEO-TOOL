@@ -86,6 +86,14 @@ import {
   gscReport,
   cannibalizationReport,
   aiReadinessReport,
+  importBacklinks,
+  listBacklinkImports,
+  backlinkReport,
+  serpReport,
+  saveSerpConfig,
+  addSerpKeywords,
+  suggestSerpKeywords,
+  removeSerpKeyword,
   ENTITY_PAGE_TYPES,
   getEntityOrg,
   saveEntityOrg,
@@ -776,6 +784,62 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     await requireSite(id);
     const b = z.object({ url: z.string().url(), targetUrl: z.string().url(), anchor: z.string().min(2).max(120), note: z.string().max(500).optional() }).strict().parse(req.body);
     return reply.status(201).send(await proposeInternalLink(id, b));
+  });
+
+  // Backlinks: upload a CSV of external links, check each linking page in the background.
+  app.get('/api/v1/sites/:id/backlinks', async req => {
+    const { id } = idParam.parse(req.params);
+    const q = z.object({ importId: z.string().uuid().optional() }).parse(req.query);
+    await requireSite(id);
+    return { imports: await listBacklinkImports(id), report: await backlinkReport(id, q) };
+  });
+  app.post('/api/v1/sites/:id/backlinks', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const q = z.object({ fileName: z.string().min(1).max(200) }).parse(req.query);
+    if (typeof req.body !== 'string') throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Envía el archivo como text/csv.');
+    const site = await requireSite(id);
+    const active = await prisma.job.findFirst({ where: { siteId: id, type: 'backlink-check', status: { in: [...ACTIVE] } } });
+    if (active) throw new ApiError(409, 'BACKLINK_CHECK_RUNNING', 'Ya hay una revisión de backlinks en curso para este sitio.', { jobId: active.id });
+    const imp = await importBacklinks(id, q.fileName, req.body);
+    const job = await enqueue('backlink-check', { importId: imp.id }, { siteId: id, workspaceId: site.workspaceId });
+    return reply.status(202).send({ importId: imp.id, rows: imp.rows, format: imp.format, jobId: job.id });
+  });
+
+  // SERP & AI snapshot tracker (SerpAPI).
+  app.get('/api/v1/sites/:id/serp', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return serpReport(id);
+  });
+  app.put('/api/v1/sites/:id/serp/config', async req => {
+    const { id } = idParam.parse(req.params);
+    const b = z.object({ enabled: z.boolean(), gl: z.string().regex(/^[a-zA-Z]{2}$/), hl: z.string().regex(/^[a-zA-Z]{2}(-[a-zA-Z]{2})?$/) }).strict().parse(req.body);
+    await requireSite(id);
+    return saveSerpConfig(id, b, req.auth!.user.id);
+  });
+  app.post('/api/v1/sites/:id/serp/keywords', async req => {
+    const { id } = idParam.parse(req.params);
+    const b = z.object({ keywords: z.array(z.string().max(120)).min(1).max(100) }).strict().parse(req.body);
+    await requireSite(id);
+    return addSerpKeywords(id, b.keywords);
+  });
+  app.get('/api/v1/sites/:id/serp/suggestions', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return suggestSerpKeywords(id);
+  });
+  app.delete('/api/v1/sites/:id/serp/keywords/:keywordId', async req => {
+    const p = z.object({ id: z.string().uuid(), keywordId: z.string().uuid() }).parse(req.params);
+    await requireSite(p.id);
+    return removeSerpKeyword(p.id, p.keywordId);
+  });
+  app.post('/api/v1/sites/:id/serp/run', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const site = await requireSite(id);
+    const active = await prisma.job.findFirst({ where: { siteId: id, type: 'serp-check', status: { in: [...ACTIVE] } } });
+    if (active) throw new ApiError(409, 'SERP_CHECK_RUNNING', 'Ya hay una revisión de SERP en curso.', { jobId: active.id });
+    const job = await enqueue('serp-check', { siteId: id }, { siteId: id, workspaceId: site.workspaceId });
+    return reply.status(202).send({ jobId: job.id });
   });
 
   // Entidades y E-E-A-T: Organization + authors + per-page entities → one connected JSON-LD graph.

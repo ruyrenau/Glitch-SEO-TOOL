@@ -216,7 +216,7 @@ function Redirects({ siteId }: { siteId: string }) {
   const TONE: Record<string, 'good' | 'warn' | 'bad'> = { alta: 'good', media: 'warn', baja: 'bad' };
   return (
     <div className="space-y-3 text-xs">
-      <p className="text-slate-500">URLs rotas (404/410) que encontró el crawl{d.totals.fromLogs ? ', que Googlebot o los bots de IA visitan en los logs' : ''} o que Google muestra en Search Console, con la página activa más parecida (palabras de la URL, título y, si un crawl anterior la tenía, su contenido). Revisa cada destino, marca las que quieras y expórtalas.</p>
+      <p className="text-slate-500">URLs rotas (404/410) que encontró el crawl{d.totals.fromLogs ? ', que Googlebot o los bots de IA visitan en los logs' : ''} o que Google muestra en Search Console, y las que reciben backlinks de otros sitios (primero, porque es autoridad que se pierde), con la página activa más parecida (palabras de la URL, título y, si un crawl anterior la tenía, su contenido). Revisa cada destino, marca las que quieras y expórtalas.</p>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <Kpi label="URLs rotas" value={fmt(d.totals.rules)} tone={d.totals.rules ? 'warn' : 'good'} />
         <Kpi label="Confianza alta" value={fmt(d.totals.high)} tone="good" />
@@ -244,7 +244,7 @@ function Redirects({ siteId }: { siteId: string }) {
                     <td className="font-mono text-[11px] break-all">{r.from}{r.oldTitle && <div className="font-sans text-slate-500">Antes: {r.oldTitle}</div>}</td>
                     <td className="min-w-[16rem]"><input aria-label={`Destino de ${r.from}`} className={`${inputCls} w-full font-mono text-[11px]`} value={r.to} onChange={e => setRules(rs => rs.map((x, j) => (j === i ? { ...x, to: e.target.value } : x)))} /><div className="text-slate-500">{r.reason}</div></td>
                     <td><Badge tone={TONE[r.confidence]}>{r.confidence} · {r.score}</Badge></td>
-                    <td className="text-slate-500">{r.sources.join(' + ')}{r.inlinks ? ` · ${r.inlinks} enlaces` : ''}{r.botHits ? ` · ${fmt(r.botHits)} visitas de bots` : ''}{r.impressions ? ` · ${fmt(r.impressions)} impr.` : ''}</td>
+                    <td className="text-slate-500">{r.sources.join(' + ')}{r.backlinks ? ` · ${r.backlinks} backlinks` : ''}{r.inlinks ? ` · ${r.inlinks} enlaces` : ''}{r.botHits ? ` · ${fmt(r.botHits)} visitas de bots` : ''}{r.impressions ? ` · ${fmt(r.impressions)} impr.` : ''}</td>
                   </tr>
                 ))}
               </tbody>

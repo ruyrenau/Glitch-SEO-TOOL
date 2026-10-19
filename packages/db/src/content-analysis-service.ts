@@ -156,6 +156,18 @@ export async function decliningContentReport(siteId: string, opts: { minClicks?:
   const crawl = await prisma.crawlRun.findFirst({ where: { siteId, status: 'completed', mode: 'site' }, orderBy: { startedAt: 'desc' } });
   const crawled = crawl ? new Map((await prisma.crawledPage.findMany({ where: { crawlRunId: crawl.id }, select: { url: true, title: true, statusCode: true, isIndexable: true, indexabilityReason: true } })).map(p => [gscKey(p.url), p])) : new Map();
 
+  // SERP tracker: result blocks that appeared for the keywords a page ranks with (last snapshot vs ~4 weeks before).
+  const serpByPage = new Map<string, string[]>();
+  const LABEL: Record<string, string> = { ai_overview: 'AI Overview', featured_snippet: 'fragmento destacado', people_also_ask: 'People Also Ask', forums: 'foros/Reddit', videos: 'videos', local_pack: 'mapa local', shopping: 'compras', top_stories: 'noticias', ads: 'anuncios' };
+  for (const k of await prisma.serpKeyword.findMany({ where: { siteId }, include: { snapshots: { orderBy: { date: 'desc' }, take: 12 } } })) {
+    const [last, ...rest] = k.snapshots;
+    if (!last?.url) continue;
+    const ref = rest.find(s => new Date(last.date).getTime() - new Date(s.date).getTime() >= 21 * 86400_000) ?? rest.at(-1);
+    if (!ref) continue;
+    const added = (last.features as string[]).filter(f => !(ref.features as string[]).includes(f) && LABEL[f]);
+    if (added.length) serpByPage.set(gscKey(last.url), [...(serpByPage.get(gscKey(last.url)) ?? []), `En Google, para «${k.keyword}», aparecieron ${added.map(f => LABEL[f]).join(', ')} desde el ${ref.date}${last.aiCitesUs === false && added.includes('ai_overview') ? ' (el AI Overview no te cita)' : ''}: puede explicar la caída aunque la posición se mantenga.`]);
+  }
+
   const pages = [];
   for (const [key, m] of byPage) {
     const before = sum(m, prev3, 'clicks');
@@ -180,7 +192,8 @@ export async function decliningContentReport(siteId: string, opts: { minClicks?:
     if (posB !== null && posA !== null && posA - posB >= 2) reasons.push(`Perdió posiciones (de ${round(posB)} a ${round(posA)}): la competencia mejoró o el contenido envejeció. Actualiza datos, amplía lo que falte y refuerza los enlaces internos.`);
     if (impB && (impB - impA) / impB >= 0.2 && !(posB !== null && posA !== null && posA - posB >= 2)) reasons.push(`Bajaron las impresiones ${Math.round(((impB - impA) / impB) * 100)} % con posición parecida: hay menos búsquedas del tema o dejó de aparecer en algunas consultas.`);
     if (ctrB && (ctrB - ctrA) / ctrB >= 0.2 && impA >= impB * 0.8) reasons.push(`Misma visibilidad, menos clics (CTR de ${round(ctrB * 100)} % a ${round(ctrA * 100)} %): revisa título y description, y si ahora hay AI Overviews o resultados enriquecidos en esa búsqueda.`);
-    if (!reasons.length) reasons.push('Bajó sin una causa clara en los datos: compara su contenido con las páginas que hoy están arriba en Google.');
+    reasons.push(...(serpByPage.get(key) ?? []));
+    if (!reasons.length) reasons.push('Bajó sin una causa clara en los datos: compara su contenido con las páginas que hoy están arriba en Google (o sigue sus keywords en Autoridad y SERP).');
     const seasonal = yoyBefore !== null && yoyBefore > 0 && after >= yoyBefore * 0.9;
     pages.push({
       page: [...m.values()][0].page,

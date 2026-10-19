@@ -12,3 +12,4 @@ export * from './content-fingerprint';
 export * from './rag';
 export * from './llms-txt';
 export * from './link-graph';
+export * from './backlinks';

@@ -156,6 +156,9 @@ model Site {
   entityAuthors  EntityAuthor[]
   entityPages    EntityPage[]
   consolidations Consolidation[]
+  backlinkImports BacklinkImport[]
+  serpKeywords   SerpKeyword[]
+  gscQueryDays   GscQueryDay[]
 }
 
 model LogImport {
@@ -722,6 +725,11 @@ model SiteMonitor {
   webhookEnc       String?
   webhookHint      String?
   updatedAt        DateTime @updatedAt
+  /// SERP & AI snapshot tracker (SerpAPI), weekly when on
+  serpEnabled    Boolean   @default(false)
+  serpGl         String    @default("mx")
+  serpHl         String    @default("es")
+  serpLastRunAt  DateTime?
 }
 
 /// Changes already notified, so the same one is not sent again every run.
@@ -1004,4 +1012,91 @@ model Consolidation {
   appliedAt      DateTime?
 
   @@index([siteId, status])
+}
+
+/// A CSV of external links (Search Console, Ahrefs, Semrush, Moz…) and the result of checking each one.
+model BacklinkImport {
+  id          String     @id @default(uuid())
+  siteId      String
+  site        Site       @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  fileName    String
+  format      String     // gsc | ahrefs | semrush | moz | majestic | generic
+  rows        Int        @default(0)
+  checked     Int        @default(0)
+  status      String     @default("queued") // queued, running, completed, failed
+  error       String?
+  createdAt   DateTime   @default(now())
+  completedAt DateTime?
+  links       Backlink[]
+
+  @@index([siteId, createdAt])
+}
+
+model Backlink {
+  id            String         @id @default(uuid())
+  importId      String
+  import        BacklinkImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  sourceUrl     String
+  sourceDomain  String
+  targetUrl     String?        // from the CSV (when it has one) or the link found on the page
+  csvAnchor     String?
+  status        String         @default("pending") // pending, live, lost, source-error, blocked
+  sourceStatus  Int?
+  rel           String?        // follow | nofollow | sponsored | ugc (combined with commas)
+  anchor        String?
+  pageOutlinks  Int?
+  targetStatus  Int?
+  targetFinal   String?
+  targetHops    Int?
+  toxicScore    Int            @default(0)
+  toxicReasons  Json           @default("[]")
+  checkedAt     DateTime?
+
+  @@index([importId, status])
+  @@index([importId, sourceDomain])
+}
+
+/// Keywords whose Google results page is checked (SerpAPI) to see features, AI Overviews and who ranks.
+model SerpKeyword {
+  id        String         @id @default(uuid())
+  siteId    String
+  site      Site           @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  keyword   String
+  active    Boolean        @default(true)
+  createdAt DateTime       @default(now())
+  snapshots SerpSnapshot[]
+
+  @@unique([siteId, keyword])
+}
+
+model SerpSnapshot {
+  id            String      @id @default(uuid())
+  keywordId     String
+  keyword       SerpKeyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  date          String      // YYYY-MM-DD
+  position      Int?        // best organic position of the site (null = not in the top results)
+  url           String?
+  features      Json        // ["ai_overview", "people_also_ask", "featured_snippet", "forums", "videos", …]
+  aiCitesUs     Boolean?    // AI Overview present: does it cite the site?
+  aiSources     Json        @default("[]")
+  aboveUs       Json        @default("[]") // what appears above the site's result
+  topDomains    Json        @default("[]")
+  createdAt     DateTime    @default(now())
+
+  @@index([keywordId, date])
+}
+
+/// Daily Search Console clicks of the tracked keywords (to explain drops with SERP changes).
+model GscQueryDay {
+  id          String @id @default(uuid())
+  siteId      String
+  site        Site   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  date        String
+  query       String
+  clicks      Int
+  impressions Int
+  position    Float
+
+  @@unique([siteId, date, query])
+  @@index([siteId, query])
 }

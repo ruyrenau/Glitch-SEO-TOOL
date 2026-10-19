@@ -114,6 +114,8 @@ export interface GscQuery {
   /** Stop after this many rows (the API pages 25,000 at a time). */
   maxRows?: number;
   type?: 'web' | 'image' | 'video' | 'news' | 'discover' | 'googleNews';
+  /** All must match (one dimensionFilterGroup). */
+  filters?: Array<{ dimension: 'query' | 'page' | 'country' | 'device'; operator: 'equals' | 'contains' | 'includingRegex'; expression: string }>;
 }
 
 /** Read-only Search Console client for one Google account (refresh token). */
@@ -166,7 +168,7 @@ export class SearchConsoleClient {
     for (let startRow = 0; startRow < max; startRow += 25_000) {
       const r = await this.call<{ rows?: GscRow[] }>(`/sites/${encodeURIComponent(property)}/searchAnalytics/query`, {
         method: 'POST',
-        body: { startDate: q.startDate, endDate: q.endDate, dimensions: q.dimensions, type: q.type ?? 'web', rowLimit: Math.min(25_000, max - startRow), startRow, dataState: 'final' }
+        body: { startDate: q.startDate, endDate: q.endDate, dimensions: q.dimensions, type: q.type ?? 'web', rowLimit: Math.min(25_000, max - startRow), startRow, dataState: 'final', ...(q.filters?.length ? { dimensionFilterGroups: [{ filters: q.filters }] } : {}) }
       });
       const rows = r.rows ?? [];
       out.push(...rows);

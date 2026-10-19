@@ -10,7 +10,7 @@ export const AI_PROVIDERS = {
   anthropic: { label: 'Anthropic (Claude)', usedFor: 'Análisis con IA; más adelante, consultas automáticas a Claude', keyPrefix: 'sk-ant-' },
   openai: { label: 'OpenAI (ChatGPT)', usedFor: 'Más adelante: consultas automáticas a ChatGPT', keyPrefix: 'sk-' },
   google: { label: 'Google AI Studio (Gemini)', usedFor: 'Más adelante: consultas automáticas a Gemini', keyPrefix: 'AIza' },
-  serpapi: { label: 'SerpAPI (Google AI Overviews)', usedFor: 'Más adelante: respuestas de IA de Google', keyPrefix: '' }
+  serpapi: { label: 'SerpAPI (resultados de Google)', usedFor: 'Seguimiento de SERP e IA (Autoridad y SERP): bloques de Google, AI Overviews y posiciones', keyPrefix: '' }
 } as const;
 export type AiProvider = keyof typeof AI_PROVIDERS;
 

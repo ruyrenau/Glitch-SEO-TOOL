@@ -56,6 +56,9 @@ const RULES: Array<[RegExp, RegExp, Permission]> = [
   [/^POST$/, /^\/api\/v1\/sites\/:id\/performance$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/seo-edits(\/link)?$/, 'content:edit'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/architecture\/redirects\/wordpress$/, 'wordpress:send'],
+  // Backlinks and SERP tracking are operations (they make requests to other sites / spend SerpAPI credit).
+  [/^POST$/, /^\/api\/v1\/sites\/:id\/(backlinks|serp\/run|serp\/keywords)$/, 'seo:operate'],
+  [/^(PUT|DELETE)$/, /^\/api\/v1\/sites\/:id\/serp\/(config|keywords\/:keywordId)$/, 'seo:operate'],
   // Entity profile: editors keep authors and page entities; the Organization is a site setting.
   [/^(PUT)$/, /^\/api\/v1\/sites\/:id\/entities\/org$/, 'site:manage'],
   [/^(POST|PUT|DELETE)$/, /^\/api\/v1\/sites\/:id\/entities\/(authors(\/:authorId)?|pages)$/, 'content:edit'],

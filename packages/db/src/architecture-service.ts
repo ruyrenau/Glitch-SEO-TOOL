@@ -7,6 +7,7 @@ import { prisma } from './client';
 import { recordAuditEvent } from './audit';
 import { WorkflowError } from './errors';
 import { gscKey, latestGscImport } from './gsc-service';
+import { backlinkBrokenTargets } from './backlink-service';
 
 const allowHosts = () => (process.env.CRAWL_ALLOW_PRIVATE_HOSTS ?? '').split(',').map(s => s.trim()).filter(Boolean);
 const round = (n: number, d = 1) => Math.round(n * 10 ** d) / 10 ** d;
@@ -197,10 +198,11 @@ export async function redirectSuggestions(siteId: string, opts: { crawlRunId?: s
   })?.url ?? `${origin}/`;
 
   // Broken URLs: crawl 4xx, Googlebot / AI bots hitting 404 in the logs, Search Console pages that are 4xx.
-  const broken = new Map<string, { url: string; sources: string[]; inlinks: number; botHits: number; impressions: number | null }>();
-  const add = (url: string, source: string, extra: Partial<{ inlinks: number; botHits: number; impressions: number | null }> = {}) => {
+  const broken = new Map<string, { url: string; sources: string[]; inlinks: number; botHits: number; impressions: number | null; backlinks: number }>();
+  const add = (url: string, source: string, extra: Partial<{ inlinks: number; botHits: number; impressions: number | null; backlinks: number }> = {}) => {
     const k = gscKey(url);
-    const e = broken.get(k) ?? { url, sources: [], inlinks: 0, botHits: 0, impressions: null };
+    const e = broken.get(k) ?? { url, sources: [], inlinks: 0, botHits: 0, impressions: null, backlinks: 0 };
+    e.backlinks += extra.backlinks ?? 0;
     if (!e.sources.includes(source)) e.sources.push(source);
     e.inlinks += extra.inlinks ?? 0;
     e.botHits += extra.botHits ?? 0;
@@ -221,6 +223,9 @@ export async function redirectSuggestions(siteId: string, opts: { crawlRunId?: s
       if (st === 404 || st === 410) add(g.page, 'Search Console', { impressions: g.impressions });
     }
   }
+
+  // External sites that still link to a 404/410 of ours (Backlinks): authority to rescue first.
+  for (const t of await backlinkBrokenTargets(siteId)) add(t.url, 'backlinks', { backlinks: t.links });
 
   // What the page was before (an earlier crawl where it answered 200): its title and text help the match.
   const earlier = await prisma.crawlRun.findMany({ where: { siteId, status: 'completed', startedAt: { lt: run.startedAt } }, orderBy: { startedAt: 'desc' }, take: 5, select: { id: true } });
@@ -254,9 +259,9 @@ export async function redirectSuggestions(siteId: string, opts: { crawlRunId?: s
       } catch {
         /* keep */
       }
-      return { from, fromUrl: b.url, to: m.target, confidence: m.confidence, score: m.score, reason: m.reason, oldTitle: o?.title ?? null, sources: b.sources, inlinks: b.inlinks, botHits: b.botHits, impressions: b.impressions };
+      return { from, fromUrl: b.url, to: m.target, confidence: m.confidence, score: m.score, reason: m.reason, oldTitle: o?.title ?? null, sources: b.sources, inlinks: b.inlinks, botHits: b.botHits, impressions: b.impressions, backlinks: b.backlinks };
     })
-    .sort((a, b) => (b.impressions ?? 0) - (a.impressions ?? 0) || b.botHits - a.botHits || b.inlinks - a.inlinks);
+    .sort((a, b) => b.backlinks - a.backlinks || (b.impressions ?? 0) - (a.impressions ?? 0) || b.botHits - a.botHits || b.inlinks - a.inlinks);
   return {
     crawl: { id: run.id, startedAt: run.startedAt },
     origin,

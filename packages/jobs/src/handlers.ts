@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { Prisma, prisma, importLogFile, runCrawl, deleteLogImport, purgeExpiredSessions, purgeOldCrawlDetail, runGscImport, runGa4Import, sitesForDailyGsc, getMonitorConfig, pickVitalsUrls, notifyMonitorChanges } from '@glitch/db';
+import { Prisma, prisma, importLogFile, runCrawl, deleteLogImport, purgeExpiredSessions, purgeOldCrawlDetail, runGscImport, runGa4Import, runBacklinkCheck, runSerpCheck, sitesDueForSerp, sitesForDailyGsc, getMonitorConfig, pickVitalsUrls, notifyMonitorChanges } from '@glitch/db';
 import { enqueue } from './producer';
 import { measure, PerformanceError } from '@glitch/performance';
 
@@ -179,6 +179,25 @@ export async function ga4ImportHandler(p: { siteId: string; days?: number }, ctx
   return { ga4ImportId: imp.id, rows: imp.pageRows, startDate: imp.startDate, endDate: imp.endDate };
 }
 
+export async function backlinkCheckHandler(p: { importId: string }, ctx: JobContext) {
+  const r = await runBacklinkCheck(p.importId, { log: m => ctx.log(m), progress: ctx.progress, signal: ctx.signal });
+  return { importId: r.id, checked: r.checked, rows: r.rows };
+}
+
+export async function serpCheckHandler(p: { siteId: string }, ctx: JobContext) {
+  const r = await runSerpCheck(p.siteId, { log: m => ctx.log(m), signal: ctx.signal });
+  await notifyAfter(p.siteId, ctx);
+  return r;
+}
+
+/** Daily: queues the weekly SERP check of every site that has it on and is due. */
+export async function serpDailyHandler(_p: Record<string, unknown>, ctx: JobContext) {
+  const sites = await sitesDueForSerp();
+  for (const s of sites) await enqueue('serp-check', { siteId: s.id }, { siteId: s.id, workspaceId: s.workspaceId, trigger: 'schedule' });
+  ctx.log(`${sites.length} sitios en cola`);
+  return { queued: sites.length };
+}
+
 /** Daily refresh: queues an import for every site with a Search Console property. */
 export async function gscDailyHandler(_p: Record<string, unknown>, ctx: JobContext) {
   const sites = await sitesForDailyGsc();
@@ -205,6 +224,9 @@ export const HANDLERS = {
   performance: performanceHandler,
   'gsc-import': gscImportHandler,
   'ga4-import': ga4ImportHandler,
+  'backlink-check': backlinkCheckHandler,
+  'serp-check': serpCheckHandler,
+  'serp-daily': serpDailyHandler,
   'gsc-daily': gscDailyHandler,
   'monitor-vitals': monitorVitalsHandler
 } as const;
