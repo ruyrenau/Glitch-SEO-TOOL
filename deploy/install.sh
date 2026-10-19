@@ -36,9 +36,10 @@ BASE=$HOMEDIR/gseo
 APP=$BASE/app
 DATA=$BASE/data
 ENVF=$BASE/gseo.env
-as_user() { sudo -u "$CPUSER" -H bash -c "$1"; }
+UPATH=/usr/local/bin:/usr/bin:/bin
+as_user() { sudo -u "$CPUSER" -H env PATH="$UPATH" bash -c "$1"; }
 # Build-time commands read the settings but must not run with NODE_ENV=production (dev tools are needed to compile).
-as_user_env() { sudo -u "$CPUSER" -H bash -c "set -a; . '$ENVF'; set +a; unset NODE_ENV; cd '$APP'; $1"; }
+as_user_env() { sudo -u "$CPUSER" -H env PATH="$UPATH" bash -c "set -a; . '$ENVF'; set +a; unset NODE_ENV; cd '$APP'; $1"; }
 
 say "1/7 Paquetes del sistema: Node.js 22, Chromium, SQLite, fuentes"
 dnf -y module reset nodejs >/dev/null 2>&1 || true
@@ -96,7 +97,7 @@ GSC_CLIENT_SECRET=
 PSI_API_KEY=
 # Email for invitations and password reset: smtps://user:password@mail.server:465
 SMTP_URL=
-MAIL_FROM=G.SEO <no-reply@$DOMAIN>
+MAIL_FROM="G.SEO <no-reply@$DOMAIN>"
 EOF
   chown "$CPUSER:$CPUSER" "$ENVF"
   echo "Creado. Las claves secretas se generaron solas en el servidor."
@@ -104,6 +105,9 @@ else
   echo "Ya existía: se conserva tal cual (tus claves no cambian)."
 fi
 chmod 600 "$ENVF"
+# Fix files written by the first version of this script (unquoted value with < >).
+sed -i -E 's/^MAIL_FROM=([^"].*<.*>)$/MAIL_FROM="\1"/' "$ENVF"
+sudo -u "$CPUSER" bash -c "set -a; . '$ENVF'" || die "$ENVF tiene un error de formato."
 
 say "5/7 Dependencias, compilación y base de datos (5–15 minutos)"
 as_user_env "pnpm install --frozen-lockfile --prod=false --reporter=silent"

@@ -7,8 +7,9 @@ set -euo pipefail
 APP=$BASE/app
 ENVF=$BASE/gseo.env
 BRANCH="${GSEO_BRANCH:-master}"
-as_user() { sudo -u "$CPUSER" -H bash -c "$1"; }
-as_user_env() { sudo -u "$CPUSER" -H bash -c "set -a; . '$ENVF'; set +a; unset NODE_ENV; cd '$APP'; $1"; }
+UPATH=/usr/local/bin:/usr/bin:/bin
+as_user() { sudo -u "$CPUSER" -H env PATH="$UPATH" bash -c "$1"; }
+as_user_env() { sudo -u "$CPUSER" -H env PATH="$UPATH" bash -c "set -a; . '$ENVF'; set +a; unset NODE_ENV; cd '$APP'; $1"; }
 
 echo "▶ Respaldo antes de actualizar"
 as_user /usr/local/bin/gseo-backup
