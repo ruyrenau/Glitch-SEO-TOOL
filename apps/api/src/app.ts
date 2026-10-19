@@ -84,6 +84,8 @@ import {
   gscProperties,
   setSiteGscProperty,
   gscReport,
+  cannibalizationReport,
+  aiReadinessReport,
   explorerStructure,
   lookupEditable,
   proposeChange,
@@ -1207,6 +1209,20 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     const { id } = idParam.parse(req.params);
     await requireSite(id);
     return gscReport(id);
+  });
+  app.get('/api/v1/sites/:id/gsc/cannibalization', async req => {
+    const { id } = idParam.parse(req.params);
+    const q = z.object({ minImpressions: z.coerce.number().int().min(1).max(100000).optional(), minShare: z.coerce.number().min(1).max(50).optional() }).parse(req.query);
+    await requireSite(id);
+    return cannibalizationReport(id, { minImpressions: q.minImpressions, minShare: q.minShare ? q.minShare / 100 : undefined });
+  });
+
+  // "Listo para IA": per-page AI readiness of a crawl, plus robots.txt access for AI bots and llms.txt.
+  app.get('/api/v1/sites/:id/ai-readiness', async req => {
+    const { id } = idParam.parse(req.params);
+    const q = z.object({ crawlRunId: z.string().uuid().optional() }).parse(req.query);
+    await requireSite(id);
+    return aiReadinessReport(id, { crawlRunId: q.crawlRunId });
   });
 
   return app;

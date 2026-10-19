@@ -6,6 +6,7 @@ import { API_URL, apiGet, apiSend, fmt, fmtDate, waitForJob } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { JobRow, GoFn } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorBox, Kpi, Skeleton, inputCls } from './ui';
+import { CannibalPanel } from './CannibalPanel';
 
 interface Status { configured: boolean; connected: boolean; email: string | null; connectedAt: string | null }
 interface Property { siteUrl: string; permissionLevel: string }
@@ -300,7 +301,7 @@ export function GscView({ siteId, go, notice }: { siteId: string; go: GoFn; noti
               {tab === 'queries' && (<><p className="text-slate-500">Lo que la gente busca en Google cuando aparece tu sitio.</p><QueryTable rows={r.topQueries ?? []} /></>)}
               {tab === 'opportunities' && (<><ExplorerLink go={go} filter="striking-distance" label="Ver páginas en posición 4–15 en el Explorador" /><p className="text-slate-500"><strong>Las mejoras más baratas:</strong> consultas en posición 4 a 15 con demanda real. Subir unas posiciones, a la primera página o al top 3, suele multiplicar los clics. Mejora el contenido de la página principal de cada consulta y enlázala desde otras páginas.</p><QueryTable rows={r.opportunities ?? []} /></>)}
               {tab === 'lowctr' && (<><ExplorerLink go={go} filter="low-ctr" /><p className="text-slate-500"><strong>Buena posición, pocos clics:</strong> la gente ve la página pero no la elige. Casi siempre se arregla con un título y una meta description más atractivos; puedes cambiarlos desde el Explorador → Editar en WordPress.</p><PageTable rows={r.lowCtr ?? []} /></>)}
-              {tab === 'cannibal' && (<><p className="text-slate-500"><strong>Varias páginas compiten por la misma búsqueda.</strong> Google alterna entre ellas y ninguna sube. Decide cuál debe posicionar y enlaza o redirige las otras hacia ella.</p><QueryTable rows={r.cannibalization ?? []} showPages /></>)}
+              {tab === 'cannibal' && <CannibalPanel siteId={siteId} />}
               {tab === 'cross' && (
                 !r.crawl ? <Empty>Haz un crawl del sitio para cruzarlo con Search Console.</Empty> : (
                   <div className="space-y-5">

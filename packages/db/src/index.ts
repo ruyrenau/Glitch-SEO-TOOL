@@ -15,3 +15,5 @@ export * from './gsc-service';
 export * from './monitor-service';
 export * from './ai-visibility-service';
 export * from './report-service';
+export * from './ai-readiness-service';
+export * from './cannibalization-service';

@@ -3,7 +3,7 @@ import type { GoFn } from '@/lib/types';
 
 import React from 'react';
 import {
-  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart
+  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart, Bot
 } from 'lucide-react';
 import { Badge, Button, Card } from './ui';
 
@@ -231,7 +231,7 @@ const SECTIONS: Section[] = [
       ['Posición media', 'Promedio de la posición en la que apareció, ponderado por impresiones. 1 es el primer resultado.'],
       ['Oportunidades', 'Consultas en posición 4 a 15 con al menos 50 impresiones: subirlas a la primera página o al top 3 multiplica los clics.'],
       ['CTR bajo', 'Páginas en buena posición que casi nadie elige: mejora el título y la meta description.'],
-      ['Canibalización', 'Varias páginas tuyas compiten por la misma consulta.']
+      ['Canibalización', 'Varias páginas tuyas compiten por la misma búsqueda (se juntan variantes con y sin acentos). Gravedad alta: dos páginas se reparten la demanda cerca una de otra. Para cada caso propone la página principal y qué hacer con las demás (fusionar y redirigir, diferenciar o revisar su canonical). "Pares de páginas" muestra las que compiten en varias búsquedas.']
     ],
     tips: ['Los datos se actualizan solos cada mañana.', 'El token de Google se guarda cifrado. Desconectar revoca el permiso en Google.'],
     limits: [
@@ -455,6 +455,28 @@ const SECTIONS: Section[] = [
       ['Evolución', 'Promedio de puntos por revisión en cada semana, para que agregar preguntas no infle el total.']
     ],
     limits: ['Hoy el registro es manual. Las consultas automáticas a cada motor se activarán con las claves de API que agregues en Configuración.', 'Las IAs no responden siempre igual: compara tendencias de varias semanas, no una sola revisión.']
+  },
+  {
+    id: 'aiready',
+    nav: 'aiready',
+    icon: Bot,
+    title: 'Listo para IA',
+    status: 'ready',
+    what: 'Califica de 0 a 100 qué tan fácil es para ChatGPT, Gemini, Perplexity y los AI Overviews de Google leer cada página, sacar una respuesta y citarla. También revisa qué bots de IA deja entrar tu robots.txt y si tienes llms.txt.',
+    why: 'Una página puede posicionar en Google y aun así no aparecer en las respuestas de las IAs. Aquí ves qué le falta a cada una y cómo corregirlo.',
+    steps: [
+      'Haz un crawl del sitio (si el sitio usa mucho JavaScript, con "Ejecutar JavaScript" para medir qué texto depende de él).',
+      'Abre "Listo para IA". Revisa primero "Acceso de los bots de IA": si bloqueas un bot de búsqueda, sus respuestas no te pueden citar.',
+      'En "Lo que más falta en el sitio" haz clic en una revisión para ver solo las páginas que fallan en ella.',
+      'Ordena por prioridad (con Search Console conectado: páginas con más impresiones y puntaje bajo primero) y abre una página para ver cada revisión con su corrección.',
+      'Corrige, vuelve a hacer crawl y compara eligiendo el crawl arriba. Descarga el CSV para pasarlo al equipo de contenido.'
+    ],
+    read: [
+      ['Revisiones', 'Respuesta directa al inicio (15), encabezados en forma de pregunta (10), listas o tablas (5), jerarquía de encabezados (5), datos estructurados (15), autor y fecha (10), contenido sin JavaScript (15), profundidad (10), datos concretos (5), fuentes citadas (5) y permitir fragmentos (5).'],
+      ['Niveles', 'Excelente 80+, Bien 60–79, Mejorable 40–59, Bajo menos de 40.'],
+      ['Bots de entrenamiento y de búsqueda', 'Bloquear GPTBot, ClaudeBot, CCBot o Google-Extended es decisión de negocio. Bloquear OAI-SearchBot, PerplexityBot, Googlebot o Bingbot te quita de sus respuestas.']
+    ],
+    limits: ['Son reglas fijas: un puntaje alto ayuda, pero no garantiza que una IA te cite. Mídelo en Visibilidad en IA.', 'Usa el HTML guardado del crawl; los crawls viejos cuyo HTML ya se borró no se pueden calificar.', 'Califica hasta 5,000 páginas por crawl.']
   },
   {
     id: 'reports',

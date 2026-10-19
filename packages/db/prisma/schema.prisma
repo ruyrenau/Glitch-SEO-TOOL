@@ -227,6 +227,7 @@ model CrawlRun {
   resources      CrawledResource[]
   issues         Issue[]
   alerts         Alert[]
+  aiReadiness    AiReadinessPage[]
 }
 
 model CrawledPage {
@@ -824,4 +825,20 @@ model ReportShare {
   views       Int       @default(0)
 
   @@index([siteId, createdAt])
+}
+
+/// "Listo para IA" score of one crawled page, computed once from the stored HTML of a crawl.
+model AiReadinessPage {
+  id         String   @id @default(uuid())
+  crawlRunId String
+  crawlRun   CrawlRun @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
+  url        String
+  title      String?
+  score      Int
+  grade      String
+  checks     Json
+  createdAt  DateTime @default(now())
+
+  @@unique([crawlRunId, url])
+  @@index([crawlRunId, score])
 }
