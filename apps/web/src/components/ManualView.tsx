@@ -3,7 +3,7 @@ import type { GoFn } from '@/lib/types';
 
 import React from 'react';
 import {
-  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart, Bot, FileSearch, BarChart3, Network
+  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart, Bot, FileSearch, BarChart3, Network, BadgeCheck
 } from 'lucide-react';
 import { Badge, Button, Card } from './ui';
 
@@ -349,6 +349,28 @@ const SECTIONS: Section[] = [
     limits: ['Cumplir la validación no garantiza que Google muestre el resultado enriquecido: el contenido debe coincidir con lo visible en la página.', 'Todavía no se envía a WordPress automáticamente; copia la etiqueta o usa el CSV.']
   },
   {
+    id: 'entities',
+    nav: 'entities',
+    icon: BadgeCheck,
+    title: 'Entidades y E-E-A-T',
+    status: 'ready',
+    what: 'Un "perfil de entidad" del sitio: la organización, sus autores y de qué trata cada página (con entidades de Wikidata y Wikipedia), convertidos en un solo grafo de Schema.org conectado por @id. Incluye una auditoría de E-E-A-T (experiencia, autoridad y confianza).',
+    why: 'Google y los motores de IA confían más en contenido con autoría verificable y una organización identificable. Conectar todo en un grafo amarra el SEO semántico con la visibilidad en IA.',
+    steps: [
+      'Organización: nombre, tipo, logo, descripción, contacto y perfiles oficiales (sameAs: LinkedIn, Facebook, Google Business, Wikidata…). Solo administradores.',
+      'Autores: agrega a quienes escriben o revisan, con biografía de su experiencia, foto, página de autor y perfiles verificables.',
+      'Páginas: abre una página, elige su tipo, su autor y su fecha, y pulsa "Sugerir entidades de Wikidata" para marcar de qué trata (about) y qué menciona (mentions). Revisa la descripción de cada entidad: hay homónimos.',
+      'Copia el JSON-LD o pulsa "Proponer en WordPress": se crea un cambio en Cambios SEO para aprobar, aplicar, verificar y revertir (necesita la versión 2 del mu-plugin docs/wordpress/glitch-seo-meta.php).',
+      'Auditoría E-E-A-T: revisa qué falta y vuelve después de cada cambio.'
+    ],
+    read: [
+      ['@id', 'Un identificador fijo por entidad (por ejemplo https://tusitio.com/#organization). Los artículos apuntan a su autor y a la organización por @id, en lugar de repetir los datos.'],
+      ['about y mentions', 'De qué trata la página y qué nombra, enlazado a Wikidata y Wikipedia: así no hay duda de a qué "Python" o a qué "Puebla" te refieres.'],
+      ['Puntaje E-E-A-T', 'Suma ponderada de las revisiones: organización, autores, artículos con autor y fecha, y páginas de confianza (nosotros, contacto, privacidad).']
+    ],
+    limits: ['La búsqueda en Wikidata necesita conexión a internet.', 'Si el tema o el plugin SEO ya imprimen schema de Organization o Article, desactiva el suyo para no duplicar entidades.', 'La auditoría detecta el autor y la fecha por el HTML; si tu tema los muestra de forma poco común, puede no verlos.']
+  },
+  {
     id: 'programmatic',
     nav: 'programmatic',
     icon: Layers,
@@ -519,14 +541,16 @@ const SECTIONS: Section[] = [
       'Duplicados y poco texto: haz un crawl. Revisa "Duplicados exactos" y "Casi duplicados" (ajusta la similitud mínima). En cada grupo se propone qué página conservar y qué hacer con las demás. En "Poco texto" elige el mínimo de palabras.',
       'En declive: importa Search Console. La primera vez se descargan hasta 16 meses de clics por página; después solo los meses nuevos. Cada página muestra cuánto cayó, su curva mensual y el diagnóstico (perdió posiciones, bajó la demanda o bajó el CTR).',
       'Temas de keywords: con Search Console importado, abre un tema para ver sus búsquedas, la página principal y las páginas que aparecen. Filtra por "Disperso" o "Sin página fuerte" para encontrar trabajo.',
-      'Descarga cualquier lista en CSV para el equipo de contenido.'
+      'Descarga cualquier lista en CSV para el equipo de contenido.',
+      'Consolidación: elige un par de páginas que compiten o se repiten, revisa cuál será la ganadora, pide un borrador unificado a Claude (o ármalo a mano con las dos páginas), edítalo, apruébalo y aplícalo: el texto va a la ganadora en WordPress y la otra URL recibe una 301. Se guarda una copia y se puede revertir todo.'
     ],
     read: [
       ['Similitud', 'Se compara solo el texto principal (sin menú, cabecera ni pie) con una huella del texto; 90 % quiere decir que casi todas las frases coinciden.'],
       ['Resuelto', 'La copia ya tiene canonical hacia la principal o ya no es indexable: no compite.'],
       ['De temporada', 'Cayó contra los 3 meses anteriores, pero tiene los mismos clics que hace un año. Requiere 15 meses de historial.'],
       ['Disperso', 'La página principal se lleva menos del 70 % de las impresiones del tema: varias páginas se lo reparten.'],
-      ['Sin página fuerte', 'La posición media del tema es peor que 20: conviene crear o ampliar una página dedicada.']
+      ['Sin página fuerte', 'La posición media del tema es peor que 20: conviene crear o ampliar una página dedicada.'],
+      ['Consolidación', 'El borrador con IA solo puede usar información de las dos páginas, pero revisa cifras, precios y nombres antes de aprobar. Aplicar necesita WordPress conectado; la 301 se crea con el plugin Redirection o se exporta para .htaccess o Nginx.']
     ],
     limits: ['Los duplicados usan el HTML guardado del crawl (hasta 10,000 páginas) y no detectan textos reescritos con otras palabras.', 'Los temas se arman con reglas de palabras y páginas compartidas, no con IA; revisa los grupos antes de reorganizar el sitio.', 'Search Console solo guarda 16 meses.']
   },
@@ -584,7 +608,7 @@ const SECTIONS: Section[] = [
 ];
 
 /** Same order as the side menu. */
-const ORDER = ['wizard', 'overview', 'monitor', 'sites', 'logs', 'crawler', 'explorer', 'architecture', 'seochanges', 'issues', 'alerts', 'vitals', 'schema', 'programmatic', 'wordpress', 'gsc', 'ga4', 'geo', 'contentaudit', 'aiready', 'reports', 'automations', 'audit', 'users', 'settings'];
+const ORDER = ['wizard', 'overview', 'monitor', 'sites', 'logs', 'crawler', 'explorer', 'architecture', 'seochanges', 'issues', 'alerts', 'vitals', 'schema', 'entities', 'programmatic', 'wordpress', 'gsc', 'ga4', 'geo', 'contentaudit', 'aiready', 'reports', 'automations', 'audit', 'users', 'settings'];
 SECTIONS.sort((a, b) => (ORDER.indexOf(a.id) + 1 || 99) - (ORDER.indexOf(b.id) + 1 || 99));
 
 const STATUS_BADGE = {

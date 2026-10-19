@@ -226,7 +226,9 @@ export const SEO_META_KEYS: Record<SeoMetaProvider, { title: string; description
   yoast: { title: '_yoast_wpseo_title', description: '_yoast_wpseo_metadesc' },
   rankmath: { title: 'rank_math_title', description: 'rank_math_description' }
 };
-const ALLOWED_META = new Set(Object.values(SEO_META_KEYS).flatMap(k => [k.title, k.description]));
+/** JSON-LD graph printed in <head> by docs/wordpress/glitch-seo-meta.php (v2). */
+export const GLITCH_SCHEMA_KEY = '_glitch_schema_jsonld';
+const ALLOWED_META = new Set([...Object.values(SEO_META_KEYS).flatMap(k => [k.title, k.description]), GLITCH_SCHEMA_KEY]);
 
 export interface WpSeoItem {
   id: number;
@@ -372,6 +374,11 @@ export class WordPressSeoClient extends WordPressClient {
       title: 'G.SEO'
     });
     return { id: r.id ?? r.items?.[0]?.id ?? 0 };
+  }
+
+  /** Deletes a redirect created through the Redirection plugin (bulk endpoint of redirection/v1). */
+  async deleteRedirect(id: number): Promise<void> {
+    await this.post('/redirection/v1/bulk/redirect/delete', { items: [id] });
   }
 
   async updateMediaAlt(id: number, alt: string): Promise<WpMediaItem> {

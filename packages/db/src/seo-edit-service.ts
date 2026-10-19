@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { decryptSecret } from '@glitch/core';
-import { WordPressSeoClient, WordPressError, SEO_META_KEYS, WpSeoItem } from '@glitch/connectors';
+import { WordPressSeoClient, WordPressError, SEO_META_KEYS, GLITCH_SCHEMA_KEY, WpSeoItem } from '@glitch/connectors';
 import { assertSafeUrl, injectLink, phraseRegex } from '@glitch/crawler';
 import { prisma } from './client';
 import { recordAuditEvent, currentActorId } from './audit';
@@ -13,8 +13,8 @@ import { WorkflowError } from './errors';
  * the link is inserted around one phrase of the current body and reverting removes exactly that link.
  */
 
-export type SeoField = 'postTitle' | 'slug' | 'seoTitle' | 'metaDescription' | 'imageAlt' | 'internalLink';
-export const FIELD_LABEL: Record<SeoField, string> = { postTitle: 'Título de la entrada', slug: 'Slug', seoTitle: 'Título SEO', metaDescription: 'Meta description', imageAlt: 'Texto alternativo', internalLink: 'Enlace interno' };
+export type SeoField = 'postTitle' | 'slug' | 'seoTitle' | 'metaDescription' | 'imageAlt' | 'internalLink' | 'schemaJsonLd';
+export const FIELD_LABEL: Record<SeoField, string> = { postTitle: 'Título de la entrada', slug: 'Slug', seoTitle: 'Título SEO', metaDescription: 'Meta description', imageAlt: 'Texto alternativo', internalLink: 'Enlace interno', schemaJsonLd: 'Schema JSON-LD (grafo de entidades)' };
 
 const allowHosts = () => (process.env.CRAWL_ALLOW_PRIVATE_HOSTS ?? '').split(',').map(s => s.trim()).filter(Boolean);
 
@@ -33,6 +33,10 @@ function valueOf(item: WpSeoItem, field: SeoField, metaKey?: string | null): str
 }
 
 function metaKeyFor(item: WpSeoItem, field: SeoField): string | null {
+  if (field === 'schemaJsonLd') {
+    if (!(GLITCH_SCHEMA_KEY in item.meta)) throw new WorkflowError('SCHEMA_META_NOT_EXPOSED', 'Para publicar el JSON-LD instala la versión 2 del mu-plugin docs/wordpress/glitch-seo-meta.php (copia el archivo a wp-content/mu-plugins/).', 400);
+    return GLITCH_SCHEMA_KEY;
+  }
   if (field !== 'seoTitle' && field !== 'metaDescription') return null;
   if (!item.metaProvider) throw new WorkflowError('META_NOT_EXPOSED', 'No se puede editar: el sitio no tiene Yoast SEO ni Rank Math activos, o sus campos no están expuestos por la API (instala docs/wordpress/glitch-seo-meta.php como mu-plugin).', 400);
   const k = SEO_META_KEYS[item.metaProvider];
@@ -87,9 +91,17 @@ export interface ProposeInput {
 }
 
 function validate(field: SeoField, v: string) {
+  if (field === 'schemaJsonLd' && v.trim()) {
+    try {
+      const j = JSON.parse(v);
+      if (typeof j !== 'object' || !j || !('@context' in j)) throw new Error('sin @context');
+    } catch (e) {
+      throw new WorkflowError('INVALID_JSON_LD', `El JSON-LD no es válido: ${(e as Error).message}`, 400);
+    }
+  }
   if (field === 'slug' && !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(v)) throw new WorkflowError('INVALID_SLUG', 'El slug solo admite minúsculas, números y guiones.', 400);
   if ((field === 'postTitle' || field === 'slug') && !v.trim()) throw new WorkflowError('EMPTY_VALUE', 'Este campo no puede quedar vacío.', 400);
-  if (v.length > 1000) throw new WorkflowError('TOO_LONG', 'Valor demasiado largo.', 400);
+  if (v.length > (field === 'schemaJsonLd' ? 60_000 : 1000)) throw new WorkflowError('TOO_LONG', 'Valor demasiado largo.', 400);
 }
 
 export async function proposeChange(siteId: string, input: ProposeInput) {
@@ -298,7 +310,18 @@ export async function verifyProposal(id: string) {
     const norm = (s: string | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
     const want = norm(p.newValue);
     let found = '';
-    if (p.field === 'internalLink') {
+    if (p.field === 'schemaJsonLd') {
+      const want = p.newValue.trim() ? JSON.stringify(JSON.parse(p.newValue)) : '';
+      const blocks = $('script[type="application/ld+json"]').toArray().map(el => {
+        try {
+          return JSON.stringify(JSON.parse($(el).text()));
+        } catch {
+          return '';
+        }
+      });
+      found = want ? (blocks.includes(want) ? 'el grafo publicado coincide' : `${blocks.length} bloque(s) JSON-LD en la página, ninguno igual al propuesto`) : blocks.length ? `${blocks.length} bloque(s)` : 'sin JSON-LD';
+      verifyStatus = want ? (blocks.includes(want) ? 'verified' : 'mismatch') : 'verified';
+    } else if (p.field === 'internalLink') {
       const sameTarget = (h: string) => {
         try {
           const a = new URL(h, target);

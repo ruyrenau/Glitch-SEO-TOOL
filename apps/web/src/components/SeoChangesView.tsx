@@ -26,7 +26,7 @@ interface Proposal {
   appliedAt: string | null;
 }
 
-const FIELD: Record<string, string> = { postTitle: 'Título de la entrada', slug: 'Slug (URL)', seoTitle: 'Título SEO', metaDescription: 'Meta description', imageAlt: 'Alt de imagen', internalLink: 'Enlace interno' };
+const FIELD: Record<string, string> = { postTitle: 'Título de la entrada', slug: 'Slug (URL)', seoTitle: 'Título SEO', metaDescription: 'Meta description', imageAlt: 'Alt de imagen', internalLink: 'Enlace interno', schemaJsonLd: 'Schema JSON-LD' };
 const STATUS: Record<string, [string, 'default' | 'good' | 'warn' | 'bad']> = {
   proposed: ['Propuesto', 'default'],
   approved: ['Aprobado', 'warn'],

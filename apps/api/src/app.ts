@@ -86,6 +86,29 @@ import {
   gscReport,
   cannibalizationReport,
   aiReadinessReport,
+  ENTITY_PAGE_TYPES,
+  getEntityOrg,
+  saveEntityOrg,
+  listEntityAuthors,
+  saveEntityAuthor,
+  deleteEntityAuthor,
+  listEntityPages,
+  saveEntityPage,
+  entityGraphFor,
+  suggestPageEntities,
+  searchWikidata,
+  eeatAudit,
+  consolidationCandidates,
+  listConsolidations,
+  createConsolidation,
+  getConsolidation,
+  aiDraft,
+  manualDraft,
+  saveDraft,
+  approveConsolidation,
+  applyConsolidation,
+  revertConsolidation,
+  discardConsolidation,
   proposeInternalLink,
   internalLinkReport,
   internalLinkSuggestions,
@@ -742,7 +765,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     const { id } = idParam.parse(req.params);
     await requireSite(id);
     const b = z
-      .object({ url: z.string().url(), field: z.enum(['postTitle', 'slug', 'seoTitle', 'metaDescription', 'imageAlt']), newValue: z.string().max(1000), note: z.string().max(500).optional(), imageSrc: z.string().max(2000).optional() })
+      .object({ url: z.string().url(), field: z.enum(['postTitle', 'slug', 'seoTitle', 'metaDescription', 'imageAlt', 'schemaJsonLd']), newValue: z.string().max(60_000), note: z.string().max(500).optional(), imageSrc: z.string().max(2000).optional() })
       .strict()
       .parse(req.body);
     return reply.status(201).send(await proposeChange(id, b));
@@ -754,6 +777,114 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     const b = z.object({ url: z.string().url(), targetUrl: z.string().url(), anchor: z.string().min(2).max(120), note: z.string().max(500).optional() }).strict().parse(req.body);
     return reply.status(201).send(await proposeInternalLink(id, b));
   });
+
+  // Entidades y E-E-A-T: Organization + authors + per-page entities → one connected JSON-LD graph.
+  const entityRef = z.object({ label: z.string().min(1).max(200), qid: z.string().regex(/^Q\d+$/).optional(), wikipedia: z.string().url().optional() });
+  const urlList = z.array(z.string().url().max(500)).max(30);
+  app.get('/api/v1/sites/:id/entities', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return { org: await getEntityOrg(id), authors: await listEntityAuthors(id), types: ENTITY_PAGE_TYPES };
+  });
+  app.put('/api/v1/sites/:id/entities/org', async req => {
+    const { id } = idParam.parse(req.params);
+    const b = z
+      .object({
+        name: z.string().min(1).max(200),
+        legalName: z.string().max(200).optional(),
+        type: z.string().regex(/^[A-Za-z]+$/).max(60).optional(),
+        url: z.string().url(),
+        logo: z.string().url().optional().or(z.literal('')),
+        description: z.string().max(2000).optional(),
+        email: z.string().max(200).optional(),
+        telephone: z.string().max(60).optional(),
+        address: z.object({ streetAddress: z.string().max(200).optional(), addressLocality: z.string().max(100).optional(), addressRegion: z.string().max(100).optional(), postalCode: z.string().max(20).optional(), addressCountry: z.string().max(60).optional() }).optional(),
+        foundingDate: z.string().max(20).optional(),
+        sameAs: urlList.optional()
+      })
+      .strict()
+      .parse(req.body);
+    await requireSite(id);
+    return saveEntityOrg(id, { ...b, logo: b.logo || undefined }, req.auth!.user.id);
+  });
+  const authorBody = z.object({ name: z.string().min(1).max(120), url: z.string().url().nullable().optional().or(z.literal('')), jobTitle: z.string().max(120).nullable().optional(), description: z.string().max(3000).nullable().optional(), image: z.string().url().nullable().optional().or(z.literal('')), sameAs: urlList.optional(), knowsAbout: z.array(z.string().max(120)).max(30).optional() }).strict();
+  app.post('/api/v1/sites/:id/entities/authors', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const b = authorBody.parse(req.body);
+    await requireSite(id);
+    return reply.status(201).send(await saveEntityAuthor(id, b));
+  });
+  app.put('/api/v1/sites/:id/entities/authors/:authorId', async req => {
+    const p = z.object({ id: z.string().uuid(), authorId: z.string().uuid() }).parse(req.params);
+    const b = authorBody.parse(req.body);
+    await requireSite(p.id);
+    return saveEntityAuthor(p.id, { ...b, id: p.authorId });
+  });
+  app.delete('/api/v1/sites/:id/entities/authors/:authorId', async req => {
+    const p = z.object({ id: z.string().uuid(), authorId: z.string().uuid() }).parse(req.params);
+    await requireSite(p.id);
+    return deleteEntityAuthor(p.id, p.authorId);
+  });
+  app.get('/api/v1/sites/:id/entities/pages', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return listEntityPages(id);
+  });
+  app.put('/api/v1/sites/:id/entities/pages', async req => {
+    const { id } = idParam.parse(req.params);
+    const b = z.object({ url: z.string().url(), type: z.enum(ENTITY_PAGE_TYPES), authorId: z.string().uuid().nullable().optional(), about: z.array(entityRef).max(10).optional(), mentions: z.array(entityRef).max(20).optional(), datePublished: z.string().max(30).nullable().optional() }).strict().parse(req.body);
+    await requireSite(id);
+    return saveEntityPage(id, b);
+  });
+  app.get('/api/v1/sites/:id/entities/graph', async req => {
+    const { id } = idParam.parse(req.params);
+    const q = z.object({ url: z.string().url() }).parse(req.query);
+    await requireSite(id);
+    return entityGraphFor(id, q.url);
+  });
+  app.get('/api/v1/sites/:id/entities/suggest', async req => {
+    const { id } = idParam.parse(req.params);
+    const q = z.object({ url: z.string().url() }).parse(req.query);
+    await requireSite(id);
+    return suggestPageEntities(id, q.url);
+  });
+  app.get('/api/v1/wikidata/search', async req => {
+    const q = z.object({ q: z.string().min(1).max(120), lang: z.enum(['es', 'en', 'pt', 'fr']).default('es') }).parse(req.query);
+    return searchWikidata(q.q, q.lang);
+  });
+  app.get('/api/v1/sites/:id/entities/eeat', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return eeatAudit(id);
+  });
+
+  // Consolidación: merge two competing pages, 301 the other one, revert if needed.
+  app.get('/api/v1/sites/:id/consolidations', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return { items: await listConsolidations(id), candidates: await consolidationCandidates(id) };
+  });
+  app.post('/api/v1/sites/:id/consolidations', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const b = z.object({ a: z.string().url(), b: z.string().url(), winnerUrl: z.string().url().optional(), queries: z.array(z.string().max(200)).max(30).optional() }).strict().parse(req.body);
+    await requireSite(id);
+    return reply.status(201).send(await createConsolidation(id, b));
+  });
+  const cId = z.object({ id: z.string().uuid() });
+  app.get('/api/v1/consolidations/:id', async req => getConsolidation(cId.parse(req.params).id));
+  app.post('/api/v1/consolidations/:id/draft-ai', async req => aiDraft(cId.parse(req.params).id, req.auth!.user.id));
+  app.post('/api/v1/consolidations/:id/draft-manual', async req => manualDraft(cId.parse(req.params).id));
+  app.put('/api/v1/consolidations/:id/draft', async req => saveDraft(cId.parse(req.params).id, z.object({ title: z.string().max(200).optional(), html: z.string().max(300_000).optional(), winnerUrl: z.string().url().optional() }).strict().parse(req.body)));
+  app.post('/api/v1/consolidations/:id/approve', async req => approveConsolidation(cId.parse(req.params).id));
+  app.post('/api/v1/consolidations/:id/apply', async req => {
+    z.object({ confirm: z.literal(true) }).parse(req.body);
+    return applyConsolidation(cId.parse(req.params).id);
+  });
+  app.post('/api/v1/consolidations/:id/revert', async req => {
+    z.object({ confirm: z.literal(true) }).parse(req.body);
+    return revertConsolidation(cId.parse(req.params).id);
+  });
+  app.delete('/api/v1/consolidations/:id', async req => discardConsolidation(cId.parse(req.params).id));
 
   // Arquitectura: internal link graph, link suggestions, 301 map and rendering audit.
   const runQuery = z.object({ crawlRunId: z.string().uuid().optional() });

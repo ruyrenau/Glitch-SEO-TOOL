@@ -21,3 +21,5 @@ export * from './content-analysis-service';
 export * from './ga4-service';
 export * from './ai-view-service';
 export * from './architecture-service';
+export * from './entity-service';
+export * from './consolidation-service';

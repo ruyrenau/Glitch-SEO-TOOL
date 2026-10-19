@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  Activity, AlertTriangle, ArrowRight, BarChart3, Bell, Network, BookOpen, Bot, CheckCircle2, Circle, Code2, FileBarChart, FileSearch, FileText, Gauge, Globe, Layers, Loader2, PencilLine, Play, ScanSearch, Search, Send, Settings, ShieldAlert, Sparkles
+  Activity, AlertTriangle, ArrowRight, BadgeCheck, BarChart3, Bell, Network, BookOpen, Bot, CheckCircle2, Circle, Code2, FileBarChart, FileSearch, FileText, Gauge, Globe, Layers, Loader2, PencilLine, Play, ScanSearch, Search, Send, Settings, ShieldAlert, Sparkles
 } from 'lucide-react';
 import { apiGet, apiSend, fmt, waitForJob } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -41,13 +41,14 @@ const GROUPS: Array<{ title: string; cards: SectionCard[] }> = [
       { nav: 'alerts', icon: Bell, title: 'Alertas', what: 'Compara cada crawl con el anterior y avisa si algo se rompió: noindex nuevo, páginas caídas, canonical cambiado.', when: 'Después de cada deploy o con un crawl programado.' },
       { nav: 'vitals', icon: Gauge, title: 'Core Web Vitals', what: 'Reporte de velocidad tipo GTmetrix: nota, captura, LCP, CLS e INP, problemas principales, peso por tipo de archivo y cascada.', when: 'Para páginas importantes que tardan en cargar.' },
       { nav: 'logs', icon: FileText, title: 'Logs y sitemap', what: 'Sube los logs del servidor para ver qué páginas visita Googlebot y los bots de IA, y cuáles del sitemap nunca visita.', when: 'Para entender cómo te rastrea Google de verdad.', needs: 'Archivo de logs de Nginx o Apache' },
+      { nav: 'entities', icon: BadgeCheck, title: 'Entidades y E-E-A-T', what: 'Perfil de la organización y sus autores, entidades de Wikidata por página, un solo grafo de Schema.org conectado y una auditoría de E-E-A-T.', when: 'Para que Google y las IAs sepan quién publica, quién escribe y de qué trata cada página.' },
       { nav: 'schema', icon: Code2, title: 'Schema.org', what: 'Genera datos estructurados para cualquier tipo de negocio o página, los rellena desde una URL, los valida y los crea en masa desde un CSV.', when: 'Para que Google y las IAs entiendan qué es cada página.' }
     ]
   },
   {
     title: 'Contenido',
     cards: [
-      { nav: 'contentaudit', icon: FileSearch, title: 'Análisis de contenido', what: 'Páginas duplicadas, casi duplicadas o con poco texto; páginas que pierden clics mes a mes; y tus búsquedas agrupadas por tema con la página que debe posicionar cada una.', when: 'Para decidir qué fusionar, qué refrescar y qué página crear.', needs: 'Un crawl y, para declive y temas, Search Console' },
+      { nav: 'contentaudit', icon: FileSearch, title: 'Análisis de contenido', what: 'Páginas duplicadas, casi duplicadas o con poco texto; páginas que pierden clics mes a mes; tus búsquedas agrupadas por tema; y la consolidación asistida de páginas que compiten (borrador con IA, WordPress y 301).', when: 'Para decidir qué fusionar, qué refrescar y qué página crear.', needs: 'Un crawl y, para declive y temas, Search Console' },
       { nav: 'seochanges', icon: PencilLine, title: 'Cambios SEO', what: 'Corrige títulos, meta descriptions, slugs y alt de imágenes directo en WordPress, con aprobación y opción de revertir.', when: 'Cuando el explorador encontró algo que quieres arreglar.', needs: 'Conectar WordPress' },
       { nav: 'programmatic', icon: Layers, title: 'Contenido programático', what: 'Genera muchas páginas desde un CSV y una plantilla, con control de calidad y aprobación antes de enviarlas como borrador.', when: 'Para páginas por ciudad, producto o servicio.' },
       { nav: 'wordpress', icon: Send, title: 'WordPress', what: 'Conecta el sitio con una contraseña de aplicación para enviar borradores y editar campos SEO.', when: 'Una sola vez por sitio.', needs: 'Usuario de WordPress con permiso de edición' }

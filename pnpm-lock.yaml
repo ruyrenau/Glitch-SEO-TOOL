@@ -463,6 +463,9 @@ importers:
       '@glitch/log-parser':
         specifier: workspace:*
         version: link:../log-parser
+      '@glitch/schema-engine':
+        specifier: workspace:*
+        version: link:../schema-engine
       '@glitch/testing':
         specifier: workspace:*
         version: link:../testing

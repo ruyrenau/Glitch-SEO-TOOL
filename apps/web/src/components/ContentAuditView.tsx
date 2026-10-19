@@ -6,6 +6,7 @@ import { apiGet, fmt, fmtDate } from '@/lib/api';
 import type { GoFn } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorBox, Kpi, Skeleton, inputCls } from './ui';
 import { TimeChart } from './MonitorView';
+import { ConsolidationPanel } from './ConsolidationPanel';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const path = (u: string) => {
@@ -226,8 +227,8 @@ function Topics({ siteId, go }: { siteId: string; go: GoFn }) {
 
 /** Análisis de contenido: duplicates and thin pages, declining pages and keyword topics. */
 export function ContentAuditView({ siteId, go }: { siteId: string; go: GoFn }) {
-  const [tab, setTab] = useState<'dup' | 'decline' | 'topics'>('dup');
-  const TABS = [['dup', 'Duplicados y poco texto'], ['decline', 'En declive'], ['topics', 'Temas de keywords']] as const;
+  const [tab, setTab] = useState<'dup' | 'decline' | 'topics' | 'merge'>('dup');
+  const TABS = [['dup', 'Duplicados y poco texto'], ['decline', 'En declive'], ['topics', 'Temas de keywords'], ['merge', 'Consolidación']] as const;
   return (
     <Card>
       <div role="tablist" aria-label="Análisis de contenido" className="flex flex-wrap gap-1 mb-4">
@@ -236,6 +237,7 @@ export function ContentAuditView({ siteId, go }: { siteId: string; go: GoFn }) {
       {tab === 'dup' && <Duplicates siteId={siteId} />}
       {tab === 'decline' && <Declining siteId={siteId} go={go} />}
       {tab === 'topics' && <Topics siteId={siteId} go={go} />}
+      {tab === 'merge' && <ConsolidationPanel siteId={siteId} go={go} />}
     </Card>
   );
 }

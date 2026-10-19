@@ -152,6 +152,10 @@ model Site {
   geoPrompts         GeoPrompt[]
   gscMonths      GscPageMonth[]
   ga4Imports     Ga4Import[]
+  entityProfile  EntityProfile?
+  entityAuthors  EntityAuthor[]
+  entityPages    EntityPage[]
+  consolidations Consolidation[]
 }
 
 model LogImport {
@@ -929,4 +933,75 @@ model Ga4DailyStat {
   keyEvents Float
 
   @@index([importId, date])
+}
+
+/// "Perfil de entidad del sitio": the Organization behind the site (JSON with the OrgProfile fields).
+model EntityProfile {
+  id        String   @id @default(uuid())
+  siteId    String   @unique
+  site      Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  org       Json
+  updatedAt DateTime @updatedAt
+}
+
+/// An author (Person) of the site, referenced by articles through a stable @id.
+model EntityAuthor {
+  id          String       @id @default(uuid())
+  siteId      String
+  site        Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  name        String
+  slug        String
+  url         String?
+  jobTitle    String?
+  description String?
+  image       String?
+  sameAs      Json         @default("[]")
+  knowsAbout  Json         @default("[]")
+  createdAt   DateTime     @default(now())
+  pages       EntityPage[]
+
+  @@unique([siteId, slug])
+}
+
+/// Entity data of one page: type, author, and Wikidata entities in about / mentions.
+model EntityPage {
+  id            String        @id @default(uuid())
+  siteId        String
+  site          Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  url           String
+  type          String        @default("Article")
+  authorId      String?
+  author        EntityAuthor? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  about         Json          @default("[]")
+  mentions      Json          @default("[]")
+  datePublished String?
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([siteId, url])
+}
+
+/// "Consolidación": two pages that compete merged into the winner, with a 301 from the other one.
+model Consolidation {
+  id             String    @id @default(uuid())
+  siteId         String
+  site           Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  winnerUrl      String
+  loserUrl       String
+  queries        Json      @default("[]")
+  status         String    @default("draft") // draft, approved, applied, reverted, failed
+  draftTitle     String?
+  draftHtml      String?
+  aiModel        String?
+  winnerTarget   String?   // post | page
+  winnerWpId     Int?
+  winnerBackup   String?   // raw content before applying (used to revert)
+  redirectId     Int?      // Redirection plugin rule id
+  redirectMethod String?   // wordpress | export
+  error          String?
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  appliedAt      DateTime?
+
+  @@index([siteId, status])
 }

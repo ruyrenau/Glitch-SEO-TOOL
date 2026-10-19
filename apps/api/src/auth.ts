@@ -56,6 +56,14 @@ const RULES: Array<[RegExp, RegExp, Permission]> = [
   [/^POST$/, /^\/api\/v1\/sites\/:id\/performance$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/seo-edits(\/link)?$/, 'content:edit'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/architecture\/redirects\/wordpress$/, 'wordpress:send'],
+  // Entity profile: editors keep authors and page entities; the Organization is a site setting.
+  [/^(PUT)$/, /^\/api\/v1\/sites\/:id\/entities\/org$/, 'site:manage'],
+  [/^(POST|PUT|DELETE)$/, /^\/api\/v1\/sites\/:id\/entities\/(authors(\/:authorId)?|pages)$/, 'content:edit'],
+  // Consolidación: editors draft; the AI draft spends API credit; applying writes to WordPress.
+  [/^POST$/, /^\/api\/v1\/sites\/:id\/consolidations$/, 'content:edit'],
+  [/^(POST|PUT|DELETE)$/, /^\/api\/v1\/consolidations\/:id(\/(draft-manual|draft))?$/, 'content:edit'],
+  [/^POST$/, /^\/api\/v1\/consolidations\/:id\/(draft-ai|approve)$/, 'seo:operate'],
+  [/^POST$/, /^\/api\/v1\/consolidations\/:id\/(apply|revert)$/, 'wordpress:send'],
   [/^POST$/, /^\/api\/v1\/seo-edits\/:id\/(review|apply|verify|revert)$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/(issues\/:id\/status|alerts\/:id\/acknowledge)$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/wordpress\/test$/, 'seo:operate'],
@@ -99,6 +107,7 @@ async function workspaceOfResource(route: string, id: string): Promise<string | 
     const p = await prisma.wordPressPublication.findUnique({ where: { id }, select: { generatedPage: { select: { site: { select: { workspaceId: true } } } } } });
     return p ? p.generatedPage.site?.workspaceId ?? null : undefined;
   }
+  if (/^\/api\/v1\/consolidations\/:id/.test(route)) return viaSite(await prisma.consolidation.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
   if (/^\/api\/v1\/reports\/:id/.test(route)) return viaSite(await prisma.reportShare.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
   if (/^\/api\/v1\/ai-prompts\/:id/.test(route)) return viaSite(await prisma.aiPrompt.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));
   if (/^\/api\/v1\/ai-observations\/:id/.test(route)) return viaSite(await prisma.aiObservation.findUnique({ where: { id }, select: { site: { select: { workspaceId: true } } } }));

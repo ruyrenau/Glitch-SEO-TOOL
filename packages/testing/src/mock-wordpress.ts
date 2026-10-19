@@ -65,7 +65,7 @@ export async function startMockWordPress(): Promise<MockWordPress> {
   let base = '';
   const media = new Map<number, { id: number; source_url: string; alt_text: string; modified_gmt: string }>();
   let frozen: Map<string, string> | null = null;
-  const YOAST = ['_yoast_wpseo_title', '_yoast_wpseo_metadesc'];
+  const YOAST = ['_yoast_wpseo_title', '_yoast_wpseo_metadesc', '_glitch_schema_jsonld'];
 
   const view = (p: MockPost) => ({
     id: p.id,
@@ -112,7 +112,7 @@ export async function startMockWordPress(): Promise<MockWordPress> {
         const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
         const imgs = (p.imageIds ?? []).map(id => media.get(id)).filter(Boolean).map(m => `<img src="${m!.source_url}" alt="${esc(m!.alt_text)}">`).join('');
         const desc = p.meta?._yoast_wpseo_metadesc;
-        const html = `<!doctype html><html lang="es"><head><title>${esc(p.meta?._yoast_wpseo_title || p.title)} – Mock WP</title>${desc ? `<meta name="description" content="${esc(desc)}">` : ''}</head><body><h1>${esc(p.title)}</h1>${imgs}<p>${p.content}</p></body></html>`;
+        const html = `<!doctype html><html lang="es"><head><title>${esc(p.meta?._yoast_wpseo_title || p.title)} – Mock WP</title>${desc ? `<meta name="description" content="${esc(desc)}">` : ''}${p.meta?._glitch_schema_jsonld ? `<script type="application/ld+json">${p.meta._glitch_schema_jsonld.replace(/</g, '\\u003c')}</script>` : ''}</head><body><h1>${esc(p.title)}</h1>${imgs}<p>${p.content}</p></body></html>`;
         const key = u.pathname;
         if (frozen && !frozen.has(key)) frozen.set(key, html);
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -131,6 +131,11 @@ export async function startMockWordPress(): Promise<MockWordPress> {
         if (redirects.some(x => x.url === r.url)) return send(400, { code: 'redirect_exists', message: 'Ya existe una redirección para esa URL.' });
         redirects.push({ url: r.url, to: r.action_data?.url, code: r.action_code });
         return send(200, { items: [{ id: redirects.length }] });
+      }
+      if (route === '/redirection/v1/bulk/redirect/delete' && req.method === 'POST') {
+        const ids: number[] = JSON.parse(body || '{}').items ?? [];
+        for (const id of ids) if (redirects[id - 1]) redirects[id - 1] = { url: '', to: '', code: 0 };
+        return send(200, { items: [] });
       }
       const input = body ? JSON.parse(body) : {};
       if (route === '/wp/v2/posts' && req.method === 'POST') {
@@ -193,7 +198,7 @@ export async function startMockWordPress(): Promise<MockWordPress> {
     failNext: n => (failures = n),
     media,
     addPublished: o => {
-      const p: MockPost = { id: nextId++, type: o.type ?? 'post', status: 'publish', slug: o.slug, title: o.title, content: o.content ?? 'Contenido publicado.', excerpt: '', categories: [1], modified_gmt: tick(), meta: { _yoast_wpseo_title: o.seoTitle ?? '', _yoast_wpseo_metadesc: o.metaDescription ?? '' }, imageIds: o.imageIds };
+      const p: MockPost = { id: nextId++, type: o.type ?? 'post', status: 'publish', slug: o.slug, title: o.title, content: o.content ?? 'Contenido publicado.', excerpt: '', categories: [1], modified_gmt: tick(), meta: { _yoast_wpseo_title: o.seoTitle ?? '', _yoast_wpseo_metadesc: o.metaDescription ?? '', _glitch_schema_jsonld: '' }, imageIds: o.imageIds };
       posts.set(p.id, p);
       return p;
     },
