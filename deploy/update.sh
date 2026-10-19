@@ -24,6 +24,7 @@ echo "$BEFORE → $AFTER"
 
 echo "▶ Compilando (unos minutos)"
 as_user_env "pnpm install --frozen-lockfile --prod=false --reporter=silent"
+as_user_env "pnpm --filter @glitch/db exec prisma generate >/dev/null"
 as_user_env "NODE_ENV=production pnpm build >/dev/null"
 echo "▶ Base de datos"
 as_user_env "pnpm --filter @glitch/db exec prisma migrate deploy"

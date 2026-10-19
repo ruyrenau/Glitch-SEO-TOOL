@@ -111,6 +111,7 @@ sudo -u "$CPUSER" bash -c "set -a; . '$ENVF'" || die "$ENVF tiene un error de fo
 
 say "5/7 Dependencias, compilación y base de datos (5–15 minutos)"
 as_user_env "pnpm install --frozen-lockfile --prod=false --reporter=silent"
+as_user_env "pnpm --filter @glitch/db exec prisma generate >/dev/null"
 as_user_env "NODE_ENV=production pnpm build >/dev/null"
 as_user_env "pnpm --filter @glitch/db exec prisma migrate deploy"
 SEED_OUT=$(as_user_env "pnpm --silent db:seed" 2>&1 | tail -n 3 || true)
