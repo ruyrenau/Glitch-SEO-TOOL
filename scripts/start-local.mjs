@@ -3,7 +3,7 @@
  *   pnpm build          (once, and after pulling changes)
  *   pnpm start:local    then open http://localhost:3000   (Ctrl+C stops everything)
  */
-import { spawn } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -26,6 +26,28 @@ for (const f of ['apps/api/dist/index.js', 'apps/worker/dist/index.js', 'apps/we
   }
 }
 
+// A stack killed without Ctrl+C (closed terminal, killed parent) leaves its API, worker and web running on
+// Windows. An old worker would keep taking jobs it does not know, so stop the previous stack first.
+const PID_FILE = path.join(ROOT, '.tmp', 'stack.pids');
+try {
+  for (const pid of JSON.parse(fs.readFileSync(PID_FILE, 'utf8'))) {
+    try {
+      // The whole tree: on Windows "npx next start" runs under a shell.
+      if (process.platform === 'win32') execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' });
+      else process.kill(pid);
+      console.log(`Stopped a process of the previous run (pid ${pid}).`);
+    } catch {
+      /* already gone */
+    }
+  }
+} catch {
+  /* no previous run */
+}
+const savePids = () => {
+  fs.mkdirSync(path.dirname(PID_FILE), { recursive: true });
+  fs.writeFileSync(PID_FILE, JSON.stringify([process.pid, ...children.filter(c => c !== redis).map(c => c.pid).filter(Boolean)]));
+};
+
 function run(name, cmd, args, cwd = ROOT) {
   const useShell = process.platform === 'win32' && cmd === 'npx';
   const child = useShell ? spawn([cmd, ...args].join(' '), { cwd, env, shell: true }) : spawn(cmd, args, { cwd, env });
@@ -38,7 +60,8 @@ function run(name, cmd, args, cwd = ROOT) {
   return child;
 }
 
-const redis = await ensureRedis({ detached: false }).catch(err => {
+let redis = null;
+redis = await ensureRedis({ detached: false }).catch(err => {
   console.error(`[redis] ${err.message}`);
   process.exit(1);
 });
@@ -48,6 +71,7 @@ console.log(`\x1b[31m[redis]\x1b[0m ${redis ? 'started' : 'already running'} on 
 run('api', process.execPath, ['apps/api/dist/index.js']);
 run('worker', process.execPath, ['apps/worker/dist/index.js']);
 run('web', 'npx', ['next', 'start', '-p', '3000'], path.join(ROOT, 'apps/web'));
+savePids();
 setTimeout(() => console.log('\nOpen http://localhost:3000  (Ctrl+C to stop everything)\n'), 4000);
 
 const stop = () => {
