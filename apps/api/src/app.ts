@@ -86,6 +86,10 @@ import {
   gscReport,
   cannibalizationReport,
   aiReadinessReport,
+  ga4Status,
+  ga4Properties,
+  setSiteGa4Property,
+  ga4Report,
   duplicateContentReport,
   decliningContentReport,
   keywordTopicsReport,
@@ -1178,13 +1182,17 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   // ------------------------------------------------------------------ Google Search Console
   const webOrigin = () => (process.env.WEB_ORIGIN ?? 'http://localhost:3000').split(',')[0].trim();
   app.get('/api/v1/gsc/status', async req => gscStatus(req.auth!.workspaceId));
-  app.get('/api/v1/gsc/oauth/start', async (req, reply) => reply.redirect(gscAuthUrl(req.auth!.workspaceId, req.auth!.user.id)));
+  app.get('/api/v1/gsc/oauth/start', async (req, reply) => {
+    const q = z.object({ back: z.enum(['gsc', 'ga4']).optional() }).parse(req.query);
+    return reply.redirect(gscAuthUrl(req.auth!.workspaceId, req.auth!.user.id, q.back));
+  });
   app.get('/api/v1/gsc/oauth/callback', async (req, reply) => {
     const q = z.object({ code: z.string().optional(), state: z.string().optional(), error: z.string().optional() }).parse(req.query);
-    const back = (params: Record<string, string>) => reply.redirect(`${webOrigin()}/?${new URLSearchParams({ nav: 'gsc', ...params })}`);
+    let nav = 'gsc';
+    const back = (params: Record<string, string>) => reply.redirect(`${webOrigin()}/?${new URLSearchParams({ nav, ...params })}`);
     if (q.error || !q.code || !q.state) return back({ gsc: 'error', message: q.error === 'access_denied' ? 'Cancelaste el permiso en Google.' : `Google respondió: ${q.error ?? 'sin código'}` });
     try {
-      await gscFinishOAuth({ code: q.code, state: q.state, workspaceId: req.auth!.workspaceId, userId: req.auth!.user.id });
+      nav = (await gscFinishOAuth({ code: q.code, state: q.state, workspaceId: req.auth!.workspaceId, userId: req.auth!.user.id })).back;
       return back({ gsc: 'connected' });
     } catch (e) {
       return back({ gsc: 'error', message: (e as Error).message });
@@ -1213,6 +1221,31 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     await requireSite(id);
     return gscReport(id);
   });
+  // Google Analytics 4 (same Google account as Search Console).
+  app.get('/api/v1/ga4/status', async req => ga4Status(req.auth!.workspaceId));
+  app.get('/api/v1/ga4/properties', async req => ga4Properties(req.auth!.workspaceId));
+  app.put('/api/v1/sites/:id/ga4', async req => {
+    const { id } = idParam.parse(req.params);
+    const b = z.object({ property: z.string().regex(/^properties\/\d+$/).nullable() }).strict().parse(req.body);
+    await requireSite(id);
+    return setSiteGa4Property(id, b.property, req.auth!.user.id);
+  });
+  app.post('/api/v1/sites/:id/ga4/import', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const b = z.object({ days: z.number().int().min(7).max(480).default(90) }).parse(req.body ?? {});
+    const site = await requireSite(id);
+    if (!site.ga4Property) throw new ApiError(400, 'GA4_NO_PROPERTY', 'Elige la propiedad de Google Analytics de este sitio.');
+    const active = await prisma.job.findFirst({ where: { siteId: id, type: 'ga4-import', status: { in: ['QUEUED', 'RUNNING', 'RETRYING'] } } });
+    if (active) throw new ApiError(409, 'GA4_IMPORT_RUNNING', 'Ya hay una importación de Analytics en curso para este sitio.', { jobId: active.id });
+    const job = await enqueue('ga4-import', { siteId: id, days: b.days }, { siteId: id, workspaceId: site.workspaceId });
+    return reply.status(202).send({ jobId: job.id, status: job.status });
+  });
+  app.get('/api/v1/sites/:id/ga4/report', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return ga4Report(id);
+  });
+
   app.get('/api/v1/sites/:id/gsc/cannibalization', async req => {
     const { id } = idParam.parse(req.params);
     const q = z.object({ minImpressions: z.coerce.number().int().min(1).max(100000).optional(), minShare: z.coerce.number().min(1).max(50).optional() }).parse(req.query);

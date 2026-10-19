@@ -28,27 +28,28 @@ const wrap = (e: unknown): never => {
 
 // ---- OAuth state: signed, short-lived, bound to the workspace and the user who started it.
 const stateKey = () => crypto.createHash('sha256').update(`gsc-state:${process.env.CREDENTIALS_KEY ?? process.env.SALT_SECRET ?? 'glitch-dev'}`).digest();
-function signState(payload: { w: string; u: string }) {
+function signState(payload: { w: string; u: string; b?: string }) {
   const body = Buffer.from(JSON.stringify({ ...payload, exp: Date.now() + 10 * 60_000, n: crypto.randomBytes(8).toString('hex') })).toString('base64url');
   const mac = crypto.createHmac('sha256', stateKey()).update(body).digest('base64url');
   return `${body}.${mac}`;
 }
-function readState(state: string): { w: string; u: string } {
+function readState(state: string): { w: string; u: string; b?: string } {
   const [body, mac] = state.split('.');
   const want = body ? crypto.createHmac('sha256', stateKey()).update(body).digest('base64url') : '';
   if (!body || !mac || mac.length !== want.length || !crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(want))) throw new WorkflowError('GSC_BAD_STATE', 'La respuesta de Google no es válida. Vuelve a intentar la conexión.', 400);
-  const p = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as { w: string; u: string; exp: number };
+  const p = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as { w: string; u: string; b?: string; exp: number };
   if (Date.now() > p.exp) throw new WorkflowError('GSC_STATE_EXPIRED', 'La conexión tardó demasiado. Vuelve a intentarlo.', 400);
   return p;
 }
 
 export async function gscStatus(workspaceId: string) {
   const acc = await prisma.googleAccount.findUnique({ where: { workspaceId } });
-  return { configured: !!googleConfig(), connected: !!acc, email: acc?.email ?? null, connectedAt: acc?.createdAt ?? null };
+  return { configured: !!googleConfig(), connected: !!acc, email: acc?.email ?? null, connectedAt: acc?.createdAt ?? null, analytics: !!acc?.scope.includes('analytics.readonly') };
 }
 
-export function gscAuthUrl(workspaceId: string, userId: string) {
-  return buildAuthUrl(cfgOrThrow(), signState({ w: workspaceId, u: userId }));
+/** `back`: the dashboard section to return to after Google ("gsc" or "ga4"). */
+export function gscAuthUrl(workspaceId: string, userId: string, back: 'gsc' | 'ga4' = 'gsc') {
+  return buildAuthUrl(cfgOrThrow(), signState({ w: workspaceId, u: userId, b: back }));
 }
 
 export async function gscFinishOAuth(input: { code: string; state: string; workspaceId: string; userId: string }) {
@@ -61,7 +62,7 @@ export async function gscFinishOAuth(input: { code: string; state: string; works
     update: { email: tok.email, refreshTokenEnc: encryptSecret(tok.refreshToken), scope: tok.scope, connectedById: input.userId }
   });
   await recordAuditEvent({ workspaceId: input.workspaceId, userId: input.userId, action: 'gsc.connected', entity: 'GoogleAccount', entityId: input.workspaceId, details: { email: tok.email } });
-  return { email: tok.email };
+  return { email: tok.email, back: st.b === 'ga4' ? 'ga4' : 'gsc' };
 }
 
 export async function gscDisconnect(workspaceId: string, userId: string | null) {

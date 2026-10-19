@@ -1,10 +1,11 @@
 /**
  * Google Search Console: OAuth 2.0 (authorization code, offline access) and the Search Analytics API.
  * Endpoints come from env so tests can point them at a local mock.
- * Scope: read-only Search Console + openid/email (to show which Google account is connected).
+ * Scopes: read-only Search Console and Google Analytics + openid/email (to show which Google account is connected).
  */
 
-export const GSC_SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/webmasters.readonly'];
+export const GA4_SCOPE = 'https://www.googleapis.com/auth/analytics.readonly';
+export const GSC_SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/webmasters.readonly', GA4_SCOPE];
 
 export interface GoogleOAuthConfig {
   clientId: string;
@@ -14,6 +15,8 @@ export interface GoogleOAuthConfig {
   tokenUrl: string;
   revokeUrl: string;
   apiUrl: string;
+  ga4DataUrl: string;
+  ga4AdminUrl: string;
 }
 
 export function googleConfig(): GoogleOAuthConfig | null {
@@ -28,7 +31,9 @@ export function googleConfig(): GoogleOAuthConfig | null {
     authUrl: process.env.GOOGLE_AUTH_URL ?? 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenUrl: process.env.GOOGLE_TOKEN_URL ?? 'https://oauth2.googleapis.com/token',
     revokeUrl: process.env.GOOGLE_REVOKE_URL ?? 'https://oauth2.googleapis.com/revoke',
-    apiUrl: (process.env.GSC_API_URL ?? 'https://www.googleapis.com/webmasters/v3').replace(/\/$/, '')
+    apiUrl: (process.env.GSC_API_URL ?? 'https://www.googleapis.com/webmasters/v3').replace(/\/$/, ''),
+    ga4DataUrl: (process.env.GA4_DATA_API_URL ?? 'https://analyticsdata.googleapis.com/v1beta').replace(/\/$/, ''),
+    ga4AdminUrl: (process.env.GA4_ADMIN_API_URL ?? 'https://analyticsadmin.googleapis.com/v1beta').replace(/\/$/, '')
   };
 }
 
@@ -55,7 +60,7 @@ export function buildAuthUrl(cfg: GoogleOAuthConfig, state: string): string {
   return u.toString();
 }
 
-async function tokenRequest(cfg: GoogleOAuthConfig, body: Record<string, string>) {
+export async function tokenRequest(cfg: GoogleOAuthConfig, body: Record<string, string>) {
   const res = await fetch(cfg.tokenUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },

@@ -139,6 +139,9 @@ model Site {
   issues             Issue[]
   wpConnection       WordPressConnection?
   gscProperty        String?
+  /// GA4 property (\"properties/123\") and its display name
+  ga4Property     String?
+  ga4PropertyName String?
   gscImports         GscImport[]
   monitor            SiteMonitor?
   monitorNotifications MonitorNotification[]
@@ -148,6 +151,7 @@ model Site {
   aiAnalyses         AiAnalysis[]
   geoPrompts         GeoPrompt[]
   gscMonths      GscPageMonth[]
+  ga4Imports     Ga4Import[]
 }
 
 model LogImport {
@@ -873,4 +877,54 @@ model ContentFingerprint {
 
   @@unique([crawlRunId, url])
   @@index([crawlRunId, textHash])
+}
+
+/// One import of Google Analytics 4 for a site (a date window); the newest completed one is reported.
+model Ga4Import {
+  id          String         @id @default(uuid())
+  siteId      String
+  site        Site           @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  property    String
+  startDate   String
+  endDate     String
+  status      String         @default("running") // running, completed, failed
+  error       String?
+  pageRows    Int            @default(0)
+  createdAt   DateTime       @default(now())
+  completedAt DateTime?
+  pages       Ga4PageStat[]
+  days        Ga4DailyStat[]
+
+  @@index([siteId, createdAt])
+}
+
+/// Landing page metrics: kind "organic" (Organic Search) or "ai" (sessions referred by an AI assistant, per source).
+model Ga4PageStat {
+  id              String    @id @default(uuid())
+  importId        String
+  import          Ga4Import @relation(fields: [importId], references: [id], onDelete: Cascade)
+  kind            String
+  page            String
+  source          String    @default("")
+  sessions        Int
+  users           Int
+  engagedSessions Int
+  engagementSec   Float
+  keyEvents       Float
+  revenue         Float
+
+  @@index([importId, kind])
+}
+
+/// Sessions and key events per day and channel group.
+model Ga4DailyStat {
+  id        String    @id @default(uuid())
+  importId  String
+  import    Ga4Import @relation(fields: [importId], references: [id], onDelete: Cascade)
+  date      String
+  channel   String
+  sessions  Int
+  keyEvents Float
+
+  @@index([importId, date])
 }

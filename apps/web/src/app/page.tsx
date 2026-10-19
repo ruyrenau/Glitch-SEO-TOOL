@@ -11,7 +11,8 @@ import {
   PanelLeftOpen,
   FileBarChart,
   Bot,
-  FileSearch
+  FileSearch,
+  BarChart3
 } from 'lucide-react';
 import { API_URL, ApiRequestError, UNAUTHORIZED_EVENT, apiGet, apiSend } from '@/lib/api';
 import { AuthProvider, useAuth } from '@/lib/auth';
@@ -28,6 +29,7 @@ import { MonitorView } from '@/components/MonitorView';
 import { ReportsView } from '@/components/ReportsView';
 import { AiReadinessView } from '@/components/AiReadinessView';
 import { ContentAuditView } from '@/components/ContentAuditView';
+import { Ga4View } from '@/components/Ga4View';
 import { AiVisibilityView } from '@/components/AiVisibilityView';
 import { SettingsView } from '@/components/SettingsView';
 import { SeoChangesView } from '@/components/SeoChangesView';
@@ -45,7 +47,7 @@ import { SchemaGeneratorView } from '@/components/SchemaGeneratorView';
 import { WordPressView } from '@/components/WordPressView';
 import { ContentView } from '@/components/ContentView';
 
-type NavId = 'wizard' | 'overview' | 'monitor' | 'sites' | 'logs' | 'crawler' | 'explorer' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'programmatic' | 'wordpress' | 'seochanges' | 'gsc' | 'geo' | 'aiready' | 'contentaudit' | 'reports' | 'automations' | 'audit' | 'manual' | 'users' | 'settings' | 'account';
+type NavId = 'wizard' | 'overview' | 'monitor' | 'sites' | 'logs' | 'crawler' | 'explorer' | 'issues' | 'alerts' | 'vitals' | 'schema' | 'programmatic' | 'wordpress' | 'seochanges' | 'gsc' | 'ga4' | 'geo' | 'aiready' | 'contentaudit' | 'reports' | 'automations' | 'audit' | 'manual' | 'users' | 'settings' | 'account';
 
 const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ className?: string }>; ready: boolean; perm?: Permission }> = [
   { id: 'wizard', label: 'Inicio guiado', icon: Rocket, ready: true },
@@ -63,6 +65,7 @@ const NAV: Array<{ id: NavId; label: string; icon: React.ComponentType<{ classNa
   { id: 'programmatic', label: 'Contenido programático', icon: Layers, ready: true },
   { id: 'wordpress', label: 'WordPress', icon: Send, ready: true },
   { id: 'gsc', label: 'Search Console', icon: Search, ready: true },
+  { id: 'ga4', label: 'Google Analytics', icon: BarChart3, ready: true },
   { id: 'geo', label: 'Visibilidad en IA', icon: Sparkles, ready: true },
   { id: 'contentaudit', label: 'Análisis de contenido', icon: FileSearch, ready: true },
   { id: 'aiready', label: 'Listo para IA', icon: Bot, ready: true },
@@ -86,8 +89,9 @@ function Dashboard() {
   // Back from Google's consent screen: /?nav=gsc&gsc=connected|error&message=…
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
-    if (q.get('nav') === 'gsc') {
-      setNav('gsc');
+    const back = q.get('nav');
+    if (back === 'gsc' || back === 'ga4') {
+      setNav(back);
       const kind = q.get('gsc');
       if (kind === 'connected' || kind === 'error') setGscNotice({ kind, message: q.get('message') ?? undefined });
       window.history.replaceState(null, '', window.location.pathname);
@@ -165,7 +169,7 @@ function Dashboard() {
 
   const current = nav === 'manual' ? { label: 'Manual de uso' } : nav === 'account' ? { label: 'Mi cuenta' } : NAV.find(n => n.id === nav)!;
   const visibleNav = NAV.filter(n => !n.perm || can(n.perm));
-  const needsSite = ['overview', 'monitor', 'geo', 'aiready', 'contentaudit', 'reports', 'logs', 'crawler', 'explorer', 'seochanges', 'gsc', 'issues', 'alerts', 'programmatic', 'wordpress', 'vitals'].includes(nav);
+  const needsSite = ['overview', 'monitor', 'ga4', 'geo', 'aiready', 'contentaudit', 'reports', 'logs', 'crawler', 'explorer', 'seochanges', 'gsc', 'issues', 'alerts', 'programmatic', 'wordpress', 'vitals'].includes(nav);
 
   return (
     <div className={dark ? 'dark' : ''}>
@@ -305,6 +309,7 @@ function Dashboard() {
                 {nav === 'settings' && can('users:manage') && <SettingsView />}
                 {nav === 'monitor' && <MonitorView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'gsc' && <GscView key={siteId} siteId={siteId} go={go} notice={gscNotice} />}
+                {nav === 'ga4' && <Ga4View key={siteId} siteId={siteId} go={go} notice={gscNotice} />}
                 {nav === 'vitals' && <PerformanceView key={siteId} siteId={siteId} />}
                 {nav === 'automations' && <JobsView sites={sites} />}
                 {nav === 'audit' && <AuditView />}

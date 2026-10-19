@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  Activity, AlertTriangle, ArrowRight, Bell, BookOpen, Bot, CheckCircle2, Circle, Code2, FileBarChart, FileSearch, FileText, Gauge, Globe, Layers, Loader2, PencilLine, Play, ScanSearch, Search, Send, Settings, ShieldAlert, Sparkles
+  Activity, AlertTriangle, ArrowRight, BarChart3, Bell, BookOpen, Bot, CheckCircle2, Circle, Code2, FileBarChart, FileSearch, FileText, Gauge, Globe, Layers, Loader2, PencilLine, Play, ScanSearch, Search, Send, Settings, ShieldAlert, Sparkles
 } from 'lucide-react';
 import { apiGet, apiSend, fmt, waitForJob } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -55,7 +55,8 @@ const GROUPS: Array<{ title: string; cards: SectionCard[] }> = [
   {
     title: 'Google',
     cards: [
-      { nav: 'gsc', icon: Search, title: 'Search Console', what: 'Clics, impresiones y posición de cada página y consulta, cruzados con el crawl: oportunidades, CTR bajo, canibalización con recomendaciones y páginas que Google muestra pero no deberían indexarse.', when: 'Para decidir qué arreglar primero según el tráfico real.', needs: 'Conectar tu cuenta de Google' }
+      { nav: 'gsc', icon: Search, title: 'Search Console', what: 'Clics, impresiones y posición de cada página y consulta, cruzados con el crawl: oportunidades, CTR bajo, canibalización con recomendaciones y páginas que Google muestra pero no deberían indexarse.', when: 'Para decidir qué arreglar primero según el tráfico real.', needs: 'Conectar tu cuenta de Google' },
+      { nav: 'ga4', icon: BarChart3, title: 'Google Analytics', what: 'Lo que pasa después del clic: sesiones, interacción, eventos clave e ingresos por página orgánica, y las visitas que llegan desde ChatGPT, Perplexity, Gemini y otras IAs.', when: 'Para saber qué páginas convierten y si las IAs te traen visitas.', needs: 'Conectar tu cuenta de Google con permiso de Analytics' }
     ]
   },
   {

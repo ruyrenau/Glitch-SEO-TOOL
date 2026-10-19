@@ -46,7 +46,7 @@ const RULES: Array<[RegExp, RegExp, Permission]> = [
   [/^POST$/, /^\/api\/v1\/jobs\/:id\/(cancel|retry)$/, 'seo:operate'],
   // Connecting a Google account is a workspace setting; importing data is an operation.
   [/^GET$/, /^\/api\/v1\/gsc\/oauth\/(start|callback)$/, 'site:manage'],
-  [/^POST$/, /^\/api\/v1\/sites\/:id\/gsc\/import$/, 'seo:operate'],
+  [/^POST$/, /^\/api\/v1\/sites\/:id\/(gsc|ga4)\/import$/, 'seo:operate'],
   [/^PUT$/, /^\/api\/v1\/sites\/:id\/schedule$/, 'seo:operate'],
   [/^PUT$/, /^\/api\/v1\/sites\/:id\/monitor$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/reports$/, 'seo:operate'],

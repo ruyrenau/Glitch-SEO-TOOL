@@ -12,6 +12,9 @@ export interface MockGoogle {
   /** Search Analytics rows per property: page-level and query+page-level. */
   data: Map<string, { pages: Array<{ page: string; clicks: number; impressions: number; position: number }>; queries: Array<{ query: string; page: string; clicks: number; impressions: number; position: number }>; /** Optional page rows per month (YYYY-MM) for month-long queries. */ months?: Record<string, Array<{ page: string; clicks: number; impressions: number; position: number }>> }>;
   properties: Array<{ siteUrl: string; permissionLevel: string }>;
+  /** GA4 properties ("properties/123") and their reports. */
+  ga4Properties: Array<{ property: string; displayName: string }>;
+  ga4: Map<string, Ga4MockData>;
   revoked: string[];
   requests: string[];
   /** Next consent: grant only these scopes (to test a user unticking Search Console). */
@@ -19,7 +22,17 @@ export interface MockGoogle {
   close: () => Promise<void>;
 }
 
+type Ga4Metrics = { sessions: number; users: number; engaged: number; engagementSec: number; keyEvents: number; revenue: number };
+export interface Ga4MockData {
+  organic: Array<{ page: string } & Ga4Metrics>;
+  ai: Array<{ page: string; source: string } & Ga4Metrics>;
+  daily: Array<{ date: string; channel: string; sessions: number; keyEvents: number }>;
+}
+
 export async function startMockGoogle(): Promise<MockGoogle> {
+  const ga4: MockGoogle['ga4'] = new Map();
+  const ga4Properties: MockGoogle['ga4Properties'] = [];
+  const tokenScopes = new Map<string, string>();
   const data: MockGoogle['data'] = new Map();
   const properties: MockGoogle['properties'] = [];
   const revoked: string[] = [];
@@ -54,13 +67,17 @@ export async function startMockGoogle(): Promise<MockGoogle> {
           refreshTokens.add(rt);
           const at = `access-${++n}`;
           accessTokens.add(at);
+          const granted = scopesOverride ?? 'openid email https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly';
+          tokenScopes.set(rt, granted);
+          tokenScopes.set(at, granted);
           const idToken = ['e30', Buffer.from(JSON.stringify({ email: 'seo@example.com' })).toString('base64url'), 'sig'].join('.');
-          return send(200, { access_token: at, refresh_token: rt, expires_in: 3600, scope: scopesOverride ?? 'openid email https://www.googleapis.com/auth/webmasters.readonly', id_token: idToken });
+          return send(200, { access_token: at, refresh_token: rt, expires_in: 3600, scope: granted, id_token: idToken });
         }
         if (f.get('grant_type') === 'refresh_token') {
           if (!refreshTokens.has(f.get('refresh_token') ?? '')) return send(400, { error: 'invalid_grant', error_description: 'Token has been expired or revoked.' });
           const at = `access-${++n}`;
           accessTokens.add(at);
+          tokenScopes.set(at, tokenScopes.get(f.get('refresh_token') ?? '') ?? '');
           return send(200, { access_token: at, expires_in: 3600 });
         }
         return send(400, { error: 'unsupported_grant_type' });
@@ -70,6 +87,25 @@ export async function startMockGoogle(): Promise<MockGoogle> {
         revoked.push(t);
         refreshTokens.delete(t);
         return send(200, {});
+      }
+      if (u.pathname.startsWith('/v1beta/')) {
+        const at = (req.headers.authorization ?? '').replace('Bearer ', '');
+        if (!accessTokens.has(at)) return send(401, { error: { message: 'Invalid Credentials' } });
+        if (!(tokenScopes.get(at) ?? '').includes('analytics.readonly')) return send(403, { error: { message: 'Request had insufficient authentication scopes.', status: 'PERMISSION_DENIED' } });
+        if (u.pathname === '/v1beta/accountSummaries') return send(200, { accountSummaries: [{ displayName: 'Cuenta de prueba', propertySummaries: ga4Properties }] });
+        const m = /^\/v1beta\/(properties\/\d+):runReport$/.exec(u.pathname);
+        if (m && req.method === 'POST') {
+          const d = ga4.get(m[1]);
+          if (!d) return send(403, { error: { message: 'User does not have sufficient permissions for this property.' } });
+          const q = JSON.parse(body) as { dimensions: Array<{ name: string }>; limit: number; offset: number };
+          const dims = q.dimensions.map(x => x.name).join();
+          const met = (r: Ga4Metrics) => [r.sessions, r.users, r.engaged, r.engagementSec, r.keyEvents, r.revenue].map(v => ({ value: String(v) }));
+          let rows: Array<{ dimensionValues: Array<{ value: string }>; metricValues: Array<{ value: string }> }>;
+          if (dims === 'landingPagePlusQueryString') rows = d.organic.map(r => ({ dimensionValues: [{ value: r.page }], metricValues: met(r) }));
+          else if (dims === 'landingPagePlusQueryString,sessionSource') rows = d.ai.map(r => ({ dimensionValues: [{ value: r.page }, { value: r.source }], metricValues: met(r) }));
+          else rows = d.daily.map(r => ({ dimensionValues: [{ value: r.date.replace(/-/g, '') }, { value: r.channel }], metricValues: [{ value: String(r.sessions) }, { value: String(r.keyEvents) }] }));
+          return send(200, { rows: rows.slice(q.offset, q.offset + q.limit), rowCount: rows.length });
+        }
       }
       if (u.pathname.startsWith('/webmasters/v3/')) {
         if (!accessTokens.has((req.headers.authorization ?? '').replace('Bearer ', ''))) return send(401, { error: { message: 'Invalid Credentials' } });
@@ -106,9 +142,11 @@ export async function startMockGoogle(): Promise<MockGoogle> {
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   return {
     url,
-    env: { GOOGLE_AUTH_URL: `${url}/o/oauth2/v2/auth`, GOOGLE_TOKEN_URL: `${url}/token`, GOOGLE_REVOKE_URL: `${url}/revoke`, GSC_API_URL: `${url}/webmasters/v3` },
+    env: { GOOGLE_AUTH_URL: `${url}/o/oauth2/v2/auth`, GOOGLE_TOKEN_URL: `${url}/token`, GOOGLE_REVOKE_URL: `${url}/revoke`, GSC_API_URL: `${url}/webmasters/v3`, GA4_DATA_API_URL: `${url}/v1beta`, GA4_ADMIN_API_URL: `${url}/v1beta` },
     data,
     properties,
+    ga4Properties,
+    ga4,
     revoked,
     requests,
     grantScopes: s => (scopesOverride = s),

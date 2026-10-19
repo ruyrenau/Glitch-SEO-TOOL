@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { Prisma, prisma, importLogFile, runCrawl, deleteLogImport, purgeExpiredSessions, purgeOldCrawlDetail, runGscImport, sitesForDailyGsc, getMonitorConfig, pickVitalsUrls, notifyMonitorChanges } from '@glitch/db';
+import { Prisma, prisma, importLogFile, runCrawl, deleteLogImport, purgeExpiredSessions, purgeOldCrawlDetail, runGscImport, runGa4Import, sitesForDailyGsc, getMonitorConfig, pickVitalsUrls, notifyMonitorChanges } from '@glitch/db';
 import { enqueue } from './producer';
 import { measure, PerformanceError } from '@glitch/performance';
 
@@ -174,6 +174,11 @@ export async function gscImportHandler(p: { siteId: string; days?: number }, ctx
   return { gscImportId: imp.id, pages: imp.pageRows, queries: imp.queryRows, startDate: imp.startDate, endDate: imp.endDate };
 }
 
+export async function ga4ImportHandler(p: { siteId: string; days?: number }, ctx: JobContext) {
+  const imp = await runGa4Import(p.siteId, { days: p.days, log: m => ctx.log(m), signal: ctx.signal });
+  return { ga4ImportId: imp.id, rows: imp.pageRows, startDate: imp.startDate, endDate: imp.endDate };
+}
+
 /** Daily refresh: queues an import for every site with a Search Console property. */
 export async function gscDailyHandler(_p: Record<string, unknown>, ctx: JobContext) {
   const sites = await sitesForDailyGsc();
@@ -199,6 +204,7 @@ export const HANDLERS = {
   retention: retentionHandler,
   performance: performanceHandler,
   'gsc-import': gscImportHandler,
+  'ga4-import': ga4ImportHandler,
   'gsc-daily': gscDailyHandler,
   'monitor-vitals': monitorVitalsHandler
 } as const;

@@ -3,7 +3,7 @@ import type { GoFn } from '@/lib/types';
 
 import React from 'react';
 import {
-  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart, Bot, FileSearch
+  BookOpen, Users, LayoutDashboard, Globe, FileText, ShieldAlert, AlertTriangle, Bell, Code2, Layers, Send, Gauge, Search, Sparkles, Cpu, History, ArrowRight, Lightbulb, TriangleAlert, ScanSearch, PencilLine, Rocket, Activity, KeyRound, FileBarChart, Bot, FileSearch, BarChart3
 } from 'lucide-react';
 import { Badge, Button, Card } from './ui';
 
@@ -438,6 +438,30 @@ const SECTIONS: Section[] = [
     limits: ['Los crawls programados se ejecutan como máximo una vez por hora por sitio.', 'Una importación de log fallida se reintenta subiendo el archivo otra vez.']
   },
   {
+    id: 'ga4',
+    nav: 'ga4',
+    icon: BarChart3,
+    title: 'Google Analytics',
+    status: 'ready',
+    what: 'Importa de Google Analytics 4 lo que pasa después del clic: sesiones, usuarios, interacción, tiempo, eventos clave e ingresos de cada página de entrada orgánica, las visitas que llegan desde asistentes de IA (ChatGPT, Perplexity, Gemini, Copilot, Claude…) y el reparto por canal.',
+    why: 'Search Console dice cuántos clics trae cada página; Analytics dice si esos clics valen: si la gente se queda, convierte o se va. Y muestra si aparecer en las IAs trae visitas reales.',
+    steps: [
+      'Una sola vez, en Google Cloud (mismo proyecto que Search Console): habilita "Google Analytics Data API" y "Google Analytics Admin API", y en Google Auth Platform → Acceso a datos agrega el permiso analytics.readonly.',
+      'En Google Analytics pulsa "Volver a conectar con Google" (o "Conectar con Google") y acepta "Ver tus datos de Google Analytics".',
+      'Elige la propiedad de GA4 del sitio activo y pulsa "Guardar".',
+      'Elige el periodo y pulsa "Importar ahora".',
+      'Revisa las pestañas: Orgánico por página, Desde IAs, Clics sin interacción y Canales. Descarga el CSV si lo necesitas.'
+    ],
+    read: [
+      ['Tasa de interacción', 'Sesiones que duraron más de 10 segundos, vieron 2 o más páginas o tuvieron un evento clave. Debajo de 40 % la página suele no cumplir lo que prometía el resultado.'],
+      ['Eventos clave', 'Las conversiones que marcaste en GA4 (formularios, compras, llamadas). La conversión es eventos clave entre sesiones.'],
+      ['Desde IAs', 'Sesiones cuyo origen es un asistente de IA. Muchas IAs no pasan el origen, así que es un mínimo: el tráfico real suele ser mayor.'],
+      ['Clics sin interacción', 'Páginas que llegan desde Google pero no retienen. Con Search Console conectado se ven también sus clics.']
+    ],
+    tips: ['Se usa la misma cuenta de Google que en Search Console; no hay que poner claves nuevas en el .env.', 'Las páginas se cruzan con Search Console y con el título del último crawl.'],
+    limits: ['GA4 aplica umbrales de privacidad: en páginas con poco tráfico algunos valores pueden faltar o salir en cero.', 'Los datos del día anterior pueden cambiar durante 24 a 48 horas.', 'La importación es manual por ahora; la automática llegará con Monitoreo.']
+  },
+  {
     id: 'geo',
     nav: 'geo',
     icon: Sparkles,
@@ -534,7 +558,7 @@ const SECTIONS: Section[] = [
 ];
 
 /** Same order as the side menu. */
-const ORDER = ['wizard', 'overview', 'monitor', 'sites', 'logs', 'crawler', 'explorer', 'seochanges', 'issues', 'alerts', 'vitals', 'schema', 'programmatic', 'wordpress', 'gsc', 'geo', 'contentaudit', 'aiready', 'reports', 'automations', 'audit', 'users', 'settings'];
+const ORDER = ['wizard', 'overview', 'monitor', 'sites', 'logs', 'crawler', 'explorer', 'seochanges', 'issues', 'alerts', 'vitals', 'schema', 'programmatic', 'wordpress', 'gsc', 'ga4', 'geo', 'contentaudit', 'aiready', 'reports', 'automations', 'audit', 'users', 'settings'];
 SECTIONS.sort((a, b) => (ORDER.indexOf(a.id) + 1 || 99) - (ORDER.indexOf(b.id) + 1 || 99));
 
 const STATUS_BADGE = {
@@ -556,12 +580,12 @@ export function ManualView({ go }: { go: GoFn }) {
           <div className="space-y-2 text-sm">
             <h2 className="font-bold text-base">Cómo usar G.SEO</h2>
             <p className="text-slate-600 dark:text-slate-400">
-              G.SEO reúne en un solo lugar el SEO técnico (crawl tipo Screaming Frog, logs, velocidad, schema), los datos reales de Google (Search Console), el análisis de
+              G.SEO reúne en un solo lugar el SEO técnico (crawl tipo Screaming Frog, logs, velocidad, schema), los datos reales de Google (Search Console y Google Analytics), el análisis de
               contenido, la preparación y la visibilidad en buscadores con IA (AEO y GEO), la edición en WordPress y los reportes para clientes. Todo se organiza por sitio:
               elige uno en "Sitio activo" y trabaja sección por sección. Si es tu primera vez, empieza por el Inicio guiado.
             </p>
             <p className="text-slate-600 dark:text-slate-400">
-              <strong>Flujo recomendado:</strong> Inicio guiado (sitio + primer crawl) → conecta Search Console → trabaja Issues y el Explorador → revisa Análisis de contenido y Listo para IA →
+              <strong>Flujo recomendado:</strong> Inicio guiado (sitio + primer crawl) → conecta Search Console y Google Analytics → trabaja Issues y el Explorador → revisa Análisis de contenido y Listo para IA →
               corrige en WordPress desde Cambios SEO → activa Monitoreo con avisos → mide tu Visibilidad en IA cada semana → comparte un Reporte con el cliente.
             </p>
           </div>
