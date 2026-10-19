@@ -6,6 +6,7 @@ import { API_URL, apiGet, fmt, fmtDate } from '@/lib/api';
 import type { CrawlRun } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorBox, Skeleton, inputCls } from './ui';
 import { CustomSearchPanel, StructurePanel } from './ExplorerExtras';
+import { AiBotViewPanel } from './AiBotView';
 
 interface Column { key: string; label: string; type?: 'number' | 'text' | 'url' }
 interface Rows { tab: { id: string; label: string; columns: Column[] }; total: number; page: number; pageSize: number; rows: Array<Record<string, unknown> & { pageId?: string; url?: string }> }
@@ -61,6 +62,7 @@ const DETAIL_TABS = [
   ['outlinks', 'Enlaces salientes'],
   ['images', 'Imágenes'],
   ['serp', 'Vista en Google'],
+  ['aiview', 'Vista de bot de IA'],
   ['source', 'Código fuente'],
   ['headers', 'Cabeceras'],
   ['issues', 'Issues'],
@@ -129,7 +131,7 @@ function DetailPanel({ crawlId, pageId, extra }: { crawlId: string; pageId: stri
         <a href={p.finalUrl} target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 text-[11px] text-indigo-600 dark:text-indigo-400 underline">Abrir <ExternalLink className="w-3 h-3" aria-hidden /></a>
       </div>
       {tab === 'edit' && extra?.(d)}
-      <div className="text-xs max-h-80 overflow-auto">
+      <div className={`text-xs overflow-auto ${tab === 'aiview' ? 'max-h-[36rem]' : 'max-h-80'}`}>
         {tab === 'info' && (
           <dl className="grid grid-cols-1 md:grid-cols-[14rem_1fr] gap-x-4 gap-y-1">
             {info.filter(([, v]) => v !== null && v !== undefined && v !== '').map(([k, v]) => (
@@ -153,6 +155,7 @@ function DetailPanel({ crawlId, pageId, extra }: { crawlId: string; pageId: stri
             <tbody>{p.images.map((im, i) => <tr key={i}><td className="font-mono text-[11px] break-all py-0.5">{im.src}</td><td>{im.alt === null ? <Badge tone="bad">sin alt</Badge> : im.alt || <span className="text-slate-400">(vacío)</span>}</td><td>{im.width && im.height ? `${im.width}×${im.height}` : <Badge tone="warn">faltan</Badge>}</td></tr>)}</tbody></table>
         ) : <Empty>Sin imágenes.</Empty>)}
         {tab === 'serp' && <SerpPreview url={p.url} title={p.title} desc={p.metaDescription} />}
+        {tab === 'aiview' && (d.source ? <AiBotViewPanel crawlId={crawlId} pageId={pageId} /> : <Empty>No se guardó el HTML de esta URL (no es HTML 2xx).</Empty>)}
         {tab === 'source' && (d.source ? <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-slate-50 dark:bg-slate-900 p-2 rounded">{d.source}</pre> : <Empty>No se guardó el código de esta URL (no es HTML 2xx).</Empty>)}
         {tab === 'headers' && (p.headers && Object.keys(p.headers).length ? (
           <dl className="grid grid-cols-[12rem_1fr] gap-1 font-mono text-[11px]">{Object.entries(p.headers).map(([k, v]) => <React.Fragment key={k}><dt className="text-slate-500">{k}</dt><dd className="break-all">{v}</dd></React.Fragment>)}</dl>

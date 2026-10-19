@@ -14,9 +14,7 @@ Lista viva de lo que falta. Al terminar algo, se marca con [x] y se anota el com
 - [ ] **Bots de IA en los logs**: cuánto visitan GPTBot, ClaudeBot, PerplexityBot, Google-Extended; qué páginas leen.
 - [ ] **Automatizar Visibilidad en IA**: consultar ChatGPT, Gemini, Claude y Perplexity con las claves de Configuración y llenar la matriz sola cada semana.
 - [ ] **Cuota frente a competidores**: qué dominios citan las IAs en tus preguntas y con qué frecuencia.
-- [ ] **Generador y validador de llms.txt y llms-full.txt** desde el crawl.
 - [ ] **Consenso de marca y entidades off-page (co-citaciones)**: buscar menciones de la marca en fuentes semilla (Reddit, Quora, Wikipedia, medios, directorios) y comparar el contexto con lo que dice el sitio.
-- [ ] **Simulador de RAG / "Vista de bot de IA"** en el Explorador: Markdown limpio, fragmentos (chunks), marcar en rojo tablas o datos partidos y contenido que depende de JavaScript.
 - [ ] **Optimizador de "Information Gain"**: comparar la página con las fuentes que citan Perplexity o AI Overviews y decir qué dato único, tabla o estadística agregar.
 
 ## Google Analytics (GA4), fase 2
@@ -26,6 +24,7 @@ Lista viva de lo que falta. Al terminar algo, se marca con [x] y se anota el com
 - [ ] Sección de GA4 en los Reportes para clientes.
 
 ## Hecho recientemente
+- [x] Simulador de RAG ("Vista de bot de IA" en el Explorador) y generador/validador de llms.txt y llms-full.txt (en Listo para IA)
 - [x] Avisos de Monitoreo a Slack/Teams/Discord/webhook y Reportes para clientes (c09d423)
 - [x] Listo para IA y canibalización completa (b317bfb)
 - [x] Análisis de contenido: duplicados, poco texto, en declive, temas de keywords (7f11a64)

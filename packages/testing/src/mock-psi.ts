@@ -43,11 +43,13 @@ export const sampleCrux = {
  */
 export async function startMockPsi() {
   const requests: string[] = [];
-  const server = http.createServer((req, res) => {
+  let delayMs = 0;
+  const server = http.createServer(async (req, res) => {
     const u = new URL(req.url ?? '/', 'http://x');
     const target = u.searchParams.get('url') ?? '';
     requests.push(`${u.searchParams.get('strategy')} ${target} key=${u.searchParams.has('key')}`);
     res.setHeader('content-type', 'application/json');
+    if (delayMs) await new Promise(r => setTimeout(r, delayMs));
     if (target.includes('quota')) {
       res.statusCode = 429;
       return res.end(JSON.stringify({ error: { code: 429, message: 'Quota exceeded' } }));
@@ -61,5 +63,5 @@ export async function startMockPsi() {
     );
   });
   await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
-  return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/runPagespeed`, requests, close: () => new Promise<void>(r => server.close(() => r())) };
+  return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/runPagespeed`, requests, /** Slow every answer down (to test "one measurement at a time"). */ setDelay: (ms: number) => (delayMs = ms), close: () => new Promise<void>(r => server.close(() => r())) };
 }

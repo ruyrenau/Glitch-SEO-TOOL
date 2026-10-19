@@ -5,6 +5,7 @@ import { CheckCircle2, Download, XCircle, MinusCircle } from 'lucide-react';
 import { apiGet, fmt, fmtDate } from '@/lib/api';
 import type { GoFn } from '@/lib/types';
 import { Badge, Button, Card, Empty, ErrorBox, Kpi, Skeleton, inputCls } from './ui';
+import { LlmsTxtPanel } from './LlmsTxtPanel';
 
 type CheckId = string;
 interface CheckDef { label: string; weight: number; why: string; fix: string }
@@ -90,7 +91,7 @@ export function AiReadinessView({ siteId, go }: { siteId: string; go: GoFn }) {
         <div className="text-xs space-y-2">
           <div className="flex flex-wrap gap-2">
             <Badge tone={d.signals.robots.found ? 'default' : 'warn'}>{d.signals.robots.found ? 'robots.txt encontrado' : 'Sin robots.txt: todos pueden entrar'}</Badge>
-            <Badge tone={d.signals.llmsTxt.found ? 'good' : 'default'}>{d.signals.llmsTxt.found ? `llms.txt encontrado (${d.signals.llmsTxt.lines} líneas)` : 'Sin llms.txt (opcional)'}</Badge>
+            <Badge tone={d.signals.llmsTxt.found ? 'good' : 'default'}>{d.signals.llmsTxt.found ? `llms.txt encontrado (${d.signals.llmsTxt.lines} líneas): revísalo abajo` : 'Sin llms.txt (opcional): puedes generarlo abajo'}</Badge>
           </div>
           {d.summary && d.summary.blockedSearch.length > 0 && <p className="text-rose-700 dark:text-rose-400 font-semibold">Bloqueas a {d.summary.blockedSearch.join(', ')}: esos buscadores con IA no pueden leer ni citar tu sitio.</p>}
           <table className="w-full">
@@ -105,6 +106,8 @@ export function AiReadinessView({ siteId, go }: { siteId: string; go: GoFn }) {
           <p className="text-slate-500">Bloquear bots de entrenamiento (GPTBot, ClaudeBot, CCBot, Google-Extended) es una decisión de negocio; bloquear los de búsqueda (OAI-SearchBot, PerplexityBot, Googlebot, Bingbot) te saca de sus respuestas.</p>
         </div>
       </Card>
+
+      <LlmsTxtPanel siteId={siteId} hasCrawl={!!d.crawl} />
 
       {!d.crawl || !d.summary ? (
         <Empty>Haz un crawl del sitio para calificar sus páginas. <button className="text-indigo-600 underline" onClick={() => go('crawler')}>Ir a Crawl y auditoría</button></Empty>

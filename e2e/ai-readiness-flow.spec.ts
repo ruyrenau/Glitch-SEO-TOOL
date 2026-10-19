@@ -32,6 +32,17 @@ test('Listo para IA: scores the pages of a crawl, shows AI bot access and explai
   await expect(checks).toContainText('Contenido visible sin JavaScript');
   await expect(checks.getByText('Cómo mejorarlo:').first()).toBeVisible();
 
+  // llms.txt: the fixture publishes one with a broken link; generate a new one from the crawl.
+  const llms = page.getByRole('region', { name: 'Validación del llms.txt publicado' });
+  await expect(llms).toContainText('Sin enlaces rotos');
+  await expect(llms.getByRole('row').filter({ hasText: 'Rota' }).getByText('Rota', { exact: true }).last()).toBeVisible();
+  await page.getByLabel('Resumen del sitio').fill('Agencia de SEO técnico en Puebla.');
+  await page.getByRole('button', { name: 'Generar vista previa' }).click();
+  await expect(page.getByLabel('Vista previa del llms.txt')).toContainText('> Agencia de SEO técnico en Puebla.');
+  const dl = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Descargar llms.txt' }).click();
+  expect((await dl).suggestedFilename()).toBe('llms.txt');
+
   // Filter by one failing check.
   await page.getByLabel('Falla en').selectOption('schema');
   await expect(page.getByRole('heading', { name: /^Páginas \(\d+\)$/ })).toBeVisible();

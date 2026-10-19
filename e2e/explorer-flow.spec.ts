@@ -33,6 +33,13 @@ test('explore a crawl: resources, folder structure and custom extraction', async
   await expect(page.getByText('Detalle de la URL')).toBeVisible();
   await expect(page.getByText('Página profunda número 5 del sitio de pruebas').first()).toBeVisible();
 
+  // The same page as an AI retrieval system sees it: clean Markdown in chunks.
+  await page.getByRole('tab', { name: 'Vista de bot de IA' }).click();
+  await expect(page.getByRole('list', { name: 'Fragmentos' })).toBeVisible();
+  await expect(page.getByText(/\d+ fragmentos · \d+ palabras/)).toBeVisible();
+  await page.getByRole('tab', { name: 'Markdown limpio' }).click();
+  await expect(page.getByLabel('Markdown limpio')).toContainText('#');
+
   // Custom extraction over the stored HTML.
   await page.getByRole('radio', { name: 'Búsqueda personalizada' }).click();
   await page.getByLabel('Texto a buscar').fill('Pie de página');

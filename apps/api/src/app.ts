@@ -86,6 +86,9 @@ import {
   gscReport,
   cannibalizationReport,
   aiReadinessReport,
+  aiBotView,
+  generateSiteLlmsTxt,
+  validateSiteLlmsTxt,
   ga4Status,
   ga4Properties,
   setSiteGa4Property,
@@ -681,6 +684,14 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     return explorerPageDetail(p.id, p.pageId);
   });
 
+  // "Vista de bot de IA": clean Markdown and RAG chunks of one page.
+  app.get('/api/v1/crawls/:id/explorer/pages/:pageId/ai-view', async req => {
+    const p = z.object({ id: z.string().uuid(), pageId: z.string().uuid() }).parse(req.params);
+    const q = z.object({ size: z.coerce.number().int().min(128).max(4096).optional() }).parse(req.query);
+    await requireRun(p.id);
+    return aiBotView(p.id, p.pageId, { maxTokens: q.size });
+  });
+
   app.get('/api/v1/crawls/:id/explorer/structure', async req => {
     const { id } = idParam.parse(req.params);
     await requireRun(id);
@@ -1270,6 +1281,33 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     const { id } = idParam.parse(req.params);
     await requireSite(id);
     return keywordTopicsReport(id);
+  });
+
+  // llms.txt: validate the live file and generate one from the crawl.
+  app.get('/api/v1/sites/:id/llms-txt', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return validateSiteLlmsTxt(id);
+  });
+  app.get('/api/v1/sites/:id/llms-txt/generate', async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const q = z
+      .object({
+        crawlRunId: z.string().uuid().optional(),
+        perSection: z.coerce.number().int().min(1).max(200).optional(),
+        maxLinks: z.coerce.number().int().min(5).max(2000).optional(),
+        fullPages: z.coerce.number().int().min(1).max(200).optional(),
+        summary: z.string().max(500).optional(),
+        download: z.enum(['llms', 'full']).optional()
+      })
+      .parse(req.query);
+    await requireSite(id);
+    const g = await generateSiteLlmsTxt(id, { crawlRunId: q.crawlRunId, perSection: q.perSection, maxLinks: q.maxLinks, summary: q.summary || null, full: q.download === 'full' || !!q.fullPages, fullPages: q.fullPages });
+    if (q.download) {
+      const name = q.download === 'full' ? 'llms-full.txt' : 'llms.txt';
+      return reply.header('content-type', 'text/plain; charset=utf-8').header('content-disposition', `attachment; filename="${name}"`).send(q.download === 'full' ? g.full?.text ?? '' : g.text);
+    }
+    return { ...g, full: g.full ? { pages: g.full.pages, truncated: g.full.truncated, bytes: Buffer.byteLength(g.full.text, 'utf8'), preview: g.full.text.slice(0, 20_000) } : null };
   });
 
   // "Listo para IA": per-page AI readiness of a crawl, plus robots.txt access for AI bots and llms.txt.

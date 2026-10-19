@@ -167,11 +167,12 @@ const SECTIONS: Section[] = [
       'Elige el crawl arriba. Se usan los datos guardados; no se vuelve a descargar nada.',
       'Elige una pestaña y un filtro (por ejemplo Títulos → Más de 60 caracteres). El resumen de la derecha muestra cuántas URLs hay en cada filtro; haz clic para ir directo.',
       'Ajusta la tabla: arrastra el borde de un encabezado para cambiar el ancho (doble clic lo restablece), elige qué campos ver en "Columnas" y usa "Ajustar texto" para leer títulos completos.',
-      'Haz clic en una URL para ver su detalle: enlaces entrantes y salientes, imágenes, vista en Google, código fuente, cabeceras e issues.',
+      'Haz clic en una URL para ver su detalle: enlaces entrantes y salientes, imágenes, vista en Google, vista de bot de IA, código fuente, cabeceras e issues.',
       'Exporta a CSV la pestaña y el filtro actuales.',
       'Arriba cambia entre Tabla, Estructura y Búsqueda personalizada.'
     ],
     read: [
+      ['Vista de bot de IA', 'En el detalle de una URL: la página como la ve un sistema de IA que recupera fragmentos (RAG). Muestra el Markdown limpio y los fragmentos con su tamaño en tokens, y marca en rojo las tablas partidas y el contenido o los datos clave que solo aparecen con JavaScript (los bots de IA casi nunca lo ejecutan). Si el crawl ejecutó JavaScript, compara la versión sin JavaScript con la de Google.'],
       ['Recursos y archivos', 'CSS, JavaScript, imágenes, fuentes, PDF y documentos que usan las páginas, con estado, tipo de contenido, peso y en cuántas páginas se usan.'],
       ['Externos', 'Enlaces a otros sitios y recursos de terceros (CDN, scripts), con su código de respuesta. Útil para encontrar enlaces rotos.'],
       ['Tipos de archivo', 'En el resumen: cuántas URLs internas hay de cada tipo, como el panel Overview de Screaming Frog.'],
@@ -519,11 +520,13 @@ const SECTIONS: Section[] = [
       'Abre "Listo para IA". Revisa primero "Acceso de los bots de IA": si bloqueas un bot de búsqueda, sus respuestas no te pueden citar.',
       'En "Lo que más falta en el sitio" haz clic en una revisión para ver solo las páginas que fallan en ella.',
       'Ordena por prioridad (con Search Console conectado: páginas con más impresiones y puntaje bajo primero) y abre una página para ver cada revisión con su corrección.',
-      'Corrige, vuelve a hacer crawl y compara eligiendo el crawl arriba. Descarga el CSV para pasarlo al equipo de contenido.'
+      'Corrige, vuelve a hacer crawl y compara eligiendo el crawl arriba. Descarga el CSV para pasarlo al equipo de contenido.',
+      'En "llms.txt" revisa el archivo que ya tengas publicado (formato y enlaces rotos) o genera uno desde el crawl: escribe un resumen, pulsa "Generar vista previa", descarga llms.txt y llms-full.txt y súbelos a la raíz del sitio.'
     ],
     read: [
       ['Revisiones', 'Respuesta directa al inicio (15), encabezados en forma de pregunta (10), listas o tablas (5), jerarquía de encabezados (5), datos estructurados (15), autor y fecha (10), contenido sin JavaScript (15), profundidad (10), datos concretos (5), fuentes citadas (5) y permitir fragmentos (5).'],
       ['Niveles', 'Excelente 80+, Bien 60–79, Mejorable 40–59, Bajo menos de 40.'],
+      ['llms.txt', 'Un mapa en Markdown del sitio para los modelos de lenguaje: H1 con el nombre, un resumen con ">" y secciones H2 con enlaces "- [Título](url): descripción". llms-full.txt incluye el texto completo de las páginas principales. Es opcional y todavía no todos los motores lo leen.'],
       ['Bots de entrenamiento y de búsqueda', 'Bloquear GPTBot, ClaudeBot, CCBot o Google-Extended es decisión de negocio. Bloquear OAI-SearchBot, PerplexityBot, Googlebot o Bingbot te quita de sus respuestas.']
     ],
     limits: ['Son reglas fijas: un puntaje alto ayuda, pero no garantiza que una IA te cite. Mídelo en Visibilidad en IA.', 'Usa el HTML guardado del crawl; los crawls viejos cuyo HTML ya se borró no se pueden calificar.', 'Califica hasta 5,000 páginas por crawl.']

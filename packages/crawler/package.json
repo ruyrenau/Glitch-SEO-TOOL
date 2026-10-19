@@ -11,10 +11,11 @@
   "dependencies": {
     "@glitch/core": "workspace:*",
     "cheerio": "^1.0.0",
+    "domhandler": "5.0.3",
     "puppeteer-core": "^24.43.1"
   },
   "devDependencies": {
-    "typescript": "^5.8.2",
-    "@types/node": "^22.13.10"
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2"
   }
 }

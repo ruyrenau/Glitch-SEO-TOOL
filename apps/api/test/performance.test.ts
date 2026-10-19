@@ -81,9 +81,15 @@ describe('Core Web Vitals (PageSpeed Insights mock)', () => {
   });
 
   it('allows one measurement at a time per site', async () => {
-    const a = await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/performance`, payload: {} });
-    const b = await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/performance`, payload: {} });
-    expect(b.json().error.code).toBe('PERFORMANCE_RUNNING');
-    await waitForJob(app, a.json().jobId);
+    psi.setDelay(1500); // the first measurement must still be running when the second request arrives
+    try {
+      const a = await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/performance`, payload: {} });
+      const b = await app.inject({ method: 'POST', url: `/api/v1/sites/${siteId}/performance`, payload: {} });
+      expect(b.statusCode).toBe(409);
+      expect(b.json().error.code).toBe('PERFORMANCE_RUNNING');
+      await waitForJob(app, a.json().jobId);
+    } finally {
+      psi.setDelay(0);
+    }
   });
 });

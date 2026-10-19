@@ -19,3 +19,4 @@ export * from './ai-readiness-service';
 export * from './cannibalization-service';
 export * from './content-analysis-service';
 export * from './ga4-service';
+export * from './ai-view-service';

@@ -121,6 +121,11 @@ export async function startFixtureSite(port = 0): Promise<FixtureSite> {
     res.writeHead(200, { 'content-type': type, 'content-length': Buffer.byteLength(body) });
     res.end(body);
   };
+  // An llms.txt with one good link, one broken, one redirect, one not crawled and a malformed line.
+  routes['/llms.txt'] = res => {
+    res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+    res.end(['# Sitio de prueba', '', '> Agencia de SEO técnico en Puebla.', '', '## Páginas', '', `- [Nosotros](${abs('/about')}): quiénes somos`, `- [Rota](${abs('/missing')})`, `- [Vieja](${abs('/old')})`, `- [Nunca enlazada](${abs('/nunca-enlazada')})`, '- Contacto sin enlace', ''].join('\n'));
+  };
   routes['/style.css'] = file('text/css', 'body{margin:0}');
   routes['/app.js'] = file('application/javascript', 'console.log(1)');
   routes['/guia.pdf'] = file('application/pdf', '%PDF-1.4 demo');
