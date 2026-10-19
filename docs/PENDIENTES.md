@@ -25,7 +25,7 @@ Lista viva de lo que falta. Al terminar algo, se marca con [x] y se anota el com
 - [ ] Sección de GA4 en los Reportes para clientes.
 
 ## Hecho recientemente
-- [x] Entidades y E-E-A-T (organización, autores, Wikidata about/mentions, grafo JSON-LD conectado publicable en WordPress, auditoría) y Consolidación asistida (borrador con Claude o manual, WordPress + 301, revertir)
+- [x] Entidades y E-E-A-T (organización, autores, Wikidata about/mentions, grafo JSON-LD conectado publicable en WordPress, auditoría) y Consolidación asistida (borrador con Claude o manual, WordPress + 301, revertir) (5803483)
 - [x] Arquitectura: Link Score, huérfanas y profundidad; sugerencias de enlaces insertables en WordPress; mapa de 301 (.htaccess, Nginx, CSV, plugin Redirection); auditoría de renderizado lado a lado (3160adc)
 - [x] Simulador de RAG ("Vista de bot de IA" en el Explorador) y generador/validador de llms.txt y llms-full.txt (en Listo para IA) (110ede7)
 - [x] Avisos de Monitoreo a Slack/Teams/Discord/webhook y Reportes para clientes (c09d423)
