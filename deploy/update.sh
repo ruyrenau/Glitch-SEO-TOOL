@@ -6,7 +6,7 @@ set -euo pipefail
 . /etc/gseo.conf
 APP=$BASE/app
 ENVF=$BASE/gseo.env
-BRANCH="${GSEO_BRANCH:-main}"
+BRANCH="${GSEO_BRANCH:-master}"
 as_user() { sudo -u "$CPUSER" -H bash -c "$1"; }
 as_user_env() { sudo -u "$CPUSER" -H bash -c "set -a; . '$ENVF'; set +a; unset NODE_ENV; cd '$APP'; $1"; }
 

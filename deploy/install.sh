@@ -18,7 +18,7 @@ set -euo pipefail
 DOMAIN="${1:-}"
 CPUSER="${2:-}"
 REPO="${GSEO_REPO:-https://github.com/ruyrenau/Glitch-SEO-TOOL.git}"
-BRANCH="${GSEO_BRANCH:-main}"
+BRANCH="${GSEO_BRANCH:-master}"
 ADMIN_USER="${GSEO_ADMIN:-ruyrenau}"
 
 say() { printf '\n\033[1;35m▶ %s\033[0m\n' "$1"; }
