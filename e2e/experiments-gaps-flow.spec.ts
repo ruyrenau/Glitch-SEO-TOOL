@@ -64,3 +64,17 @@ test('Menú por secciones y Overview como tablero de todos los módulos', async 
   await crawl.getByRole('button', { name: 'Empezar →' }).click();
   await expect(page.getByRole('button', { name: 'Iniciar crawl' })).toBeVisible();
 });
+
+test('WordPress: descargar el plugin G.SEO – SEO', async ({ page }) => {
+  await login(page);
+  const api = 'http://localhost:4000';
+  const { id } = await (await page.request.post(`${api}/api/v1/sites`, { data: { name: 'WP Plugin Flow', domain: 'wpplugin.example.com', canonicalUrl: 'https://wpplugin.example.com' } })).json();
+  await page.goto('/');
+  await page.getByLabel('Sitio activo').selectOption(id);
+  await page.getByRole('navigation').getByRole('button', { name: 'WordPress', exact: true }).click();
+  await expect(page.getByText('Plugin G.SEO – SEO para WordPress')).toBeVisible();
+  await expect(page.getByText('Conecta WordPress arriba para ver si el plugin está instalado.')).toBeVisible();
+  const dl = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Descargar plugin (.zip)' }).click();
+  expect((await dl).suggestedFilename()).toBe('gseo-seo.zip');
+});

@@ -46,6 +46,10 @@ export interface MockWordPress {
   /** Mirrors docs/wordpress/glitch-agents.php: the catalog option, /.well-known/agent.json, the catalog and MCP. */
   enableAgentsPlugin: () => void;
   agentCatalog: () => unknown;
+  /** Replaces Yoast with the G.SEO – SEO plugin (docs/wordpress/gseo-seo): its fields, status, settings and redirects. */
+  enableGseoPlugin: () => void;
+  gseoSettings: Record<string, unknown>;
+  gseoRedirects: Map<number, { source: string; target: string; code: number }>;
   close: () => Promise<void>;
 }
 
@@ -66,11 +70,17 @@ export async function startMockWordPress(): Promise<MockWordPress> {
   let redirection = false;
   let agents = false;
   let agentOption = '';
+  let gseo = false;
+  const gseoSettings: Record<string, unknown> = { output: true, llms_txt: '' };
+  const gseoRedirects = new Map<number, { source: string; target: string; code: number }>();
+  let gseoNext = 1;
   const redirects: MockWordPress['redirects'] = [];
   let base = '';
   const media = new Map<number, { id: number; source_url: string; alt_text: string; modified_gmt: string }>();
   let frozen: Map<string, string> | null = null;
   const YOAST = ['_yoast_wpseo_title', '_yoast_wpseo_metadesc', '_glitch_schema_jsonld'];
+  const GSEO = ['_gseo_title', '_gseo_description', '_gseo_canonical', '_gseo_noindex', '_gseo_nofollow', '_gseo_og_image', '_glitch_schema_jsonld'];
+  const metaKeys = () => (gseo ? GSEO : YOAST);
 
   const view = (p: MockPost) => ({
     id: p.id,
@@ -133,14 +143,14 @@ export async function startMockWordPress(): Promise<MockWordPress> {
         }
         const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
         const imgs = (p.imageIds ?? []).map(id => media.get(id)).filter(Boolean).map(m => `<img src="${m!.source_url}" alt="${esc(m!.alt_text)}">`).join('');
-        const desc = p.meta?._yoast_wpseo_metadesc;
-        const html = `<!doctype html><html lang="es"><head><title>${esc(p.meta?._yoast_wpseo_title || p.title)} – Mock WP</title>${desc ? `<meta name="description" content="${esc(desc)}">` : ''}${p.meta?._glitch_schema_jsonld ? `<script type="application/ld+json">${p.meta._glitch_schema_jsonld.replace(/</g, '\\u003c')}</script>` : ''}</head><body><h1>${esc(p.title)}</h1>${imgs}<p>${p.content}</p></body></html>`;
+        const desc = gseo ? p.meta?._gseo_description : p.meta?._yoast_wpseo_metadesc;
+        const html = `<!doctype html><html lang="es"><head><title>${esc((gseo ? p.meta?._gseo_title : p.meta?._yoast_wpseo_title) || p.title)} – Mock WP</title>${desc ? `<meta name="description" content="${esc(desc)}">` : ''}${p.meta?._glitch_schema_jsonld ? `<script type="application/ld+json">${p.meta._glitch_schema_jsonld.replace(/</g, '\\u003c')}</script>` : ''}</head><body><h1>${esc(p.title)}</h1>${imgs}<p>${p.content}</p></body></html>`;
         const key = u.pathname;
         if (frozen && !frozen.has(key)) frozen.set(key, html);
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         return res.end(frozen ? frozen.get(key) : html);
       }
-      if (route === '/') return send(200, { name: 'Mock WP', namespaces: ['oembed/1.0', 'wp/v2', 'yoast/v1', ...(redirection ? ['redirection/v1'] : [])] });
+      if (route === '/') return send(200, { name: 'Mock WP', namespaces: ['oembed/1.0', 'wp/v2', ...(gseo ? ['gseo-seo/v1'] : ['yoast/v1']), ...(redirection ? ['redirection/v1'] : [])] });
       const expected = 'Basic ' + Buffer.from(`${username}:${appPassword.replace(/\s+/g, '')}`).toString('base64');
       if (req.headers.authorization !== expected) return send(401, { code: 'rest_not_logged_in', message: 'You are not currently logged in.' });
       if (route === '/wp/v2/users/me') return send(200, { id: 2, name: 'Editor', capabilities: { edit_posts: true } });
@@ -150,6 +160,22 @@ export async function startMockWordPress(): Promise<MockWordPress> {
         const input2 = JSON.parse(body || '{}');
         if (agents && typeof input2.gseo_agent_catalog === 'string') agentOption = input2.gseo_agent_catalog;
         return send(200, { title: 'Mock WP', ...(agents ? { gseo_agent_catalog: agentOption } : {}) });
+      }
+      if (route.startsWith('/gseo-seo/v1/')) {
+        if (!gseo) return send(404, { code: 'rest_no_route', message: 'No route was found matching the URL and request method.' });
+        if (route === '/gseo-seo/v1/status') return send(200, { plugin: 'gseo-seo', version: '1.0.0', active: gseoSettings.output !== false, output: gseoSettings.output !== false, conflicts: [], sitemap: `${base}/wp-sitemap.xml`, llms_txt: gseoSettings.llms_txt ? `${base}/llms.txt` : null, public: true, robots_file: false });
+        if (route === '/gseo-seo/v1/settings') {
+          if (req.method !== 'GET') Object.assign(gseoSettings, JSON.parse(body || '{}'));
+          return send(200, gseoSettings);
+        }
+        if (route === '/gseo-seo/v1/redirects' && req.method === 'POST') {
+          const r = JSON.parse(body || '{}');
+          const id = gseoNext++;
+          gseoRedirects.set(id, { source: r.source, target: r.target, code: r.code ?? 301 });
+          return send(201, { id });
+        }
+        const rd = /^\/gseo-seo\/v1\/redirects\/(\d+)$/.exec(route);
+        if (rd && req.method === 'DELETE') return gseoRedirects.delete(Number(rd[1])) ? send(200, { deleted: true }) : send(404, { code: 'gseo_not_found', message: 'No existe esa redirección.' });
       }
       if (route.startsWith('/redirection/v1/') && !redirection) return send(404, { code: 'rest_no_route', message: 'No route was found matching the URL and request method.' });
       if (route === '/redirection/v1/group') return send(200, { items: [{ id: 1, name: 'Redirections', module_id: 1 }] });
@@ -193,7 +219,7 @@ export async function startMockWordPress(): Promise<MockWordPress> {
         const p = posts.get(Number(m[1]));
         if (!p) return send(404, { code: 'rest_post_invalid_id', message: 'Invalid post ID.' });
         if (req.method === 'POST' && input.meta) {
-          const bad = Object.keys(input.meta).filter(k => !YOAST.includes(k));
+          const bad = Object.keys(input.meta).filter(k => !metaKeys().includes(k));
           if (bad.length) return send(400, { code: 'rest_invalid_param', message: `Invalid meta: ${bad.join(',')}` });
           p.meta = { ...(p.meta ?? {}), ...input.meta };
         }
@@ -238,6 +264,13 @@ export async function startMockWordPress(): Promise<MockWordPress> {
     freezeHtml: on => (frozen = on ? new Map() : null),
     enableRedirection: () => (redirection = true),
     enableAgentsPlugin: () => (agents = true),
+    enableGseoPlugin: () => {
+      gseo = true;
+      // The plugin exposes its own fields instead of Yoast's.
+      for (const p of posts.values()) p.meta = { _gseo_title: p.meta?._yoast_wpseo_title ?? '', _gseo_description: p.meta?._yoast_wpseo_metadesc ?? '', _glitch_schema_jsonld: p.meta?._glitch_schema_jsonld ?? '' };
+    },
+    gseoSettings,
+    gseoRedirects,
     agentCatalog: () => (agentOption ? JSON.parse(agentOption) : null),
     redirects,
     close: () => new Promise(r => server.close(() => r()))

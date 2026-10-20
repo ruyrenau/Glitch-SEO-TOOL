@@ -52,9 +52,9 @@ describe('Listo para IA', () => {
     expect(b.summary.priority[0]).toBe(blog.url); // demand and a low score → first to fix
     expect(b.summary.byCheck[0]).toHaveProperty('label');
     expect(b.signals.robots.bots.length).toBeGreaterThan(5);
-    expect(await prisma.aiReadinessPage.count()).toBe(3);
+    expect(await prisma.aiReadinessPage.count({ where: { crawlRun: { siteId } } })).toBe(3);
     await app.inject(`/api/v1/sites/${siteId}/ai-readiness`);
-    expect(await prisma.aiReadinessPage.count()).toBe(3); // stored, not recomputed
+    expect(await prisma.aiReadinessPage.count({ where: { crawlRun: { siteId } } })).toBe(3); // stored, not recomputed
   });
 });
 

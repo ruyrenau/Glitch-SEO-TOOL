@@ -34,11 +34,11 @@ function valueOf(item: WpSeoItem, field: SeoField, metaKey?: string | null): str
 
 function metaKeyFor(item: WpSeoItem, field: SeoField): string | null {
   if (field === 'schemaJsonLd') {
-    if (!(GLITCH_SCHEMA_KEY in item.meta)) throw new WorkflowError('SCHEMA_META_NOT_EXPOSED', 'Para publicar el JSON-LD instala la versión 2 del mu-plugin docs/wordpress/glitch-seo-meta.php (copia el archivo a wp-content/mu-plugins/).', 400);
+    if (!(GLITCH_SCHEMA_KEY in item.meta)) throw new WorkflowError('SCHEMA_META_NOT_EXPOSED', 'Para publicar el JSON-LD instala el plugin G.SEO – SEO (sección WordPress), o la versión 2 o superior del mu-plugin glitch-seo-meta.php.', 400);
     return GLITCH_SCHEMA_KEY;
   }
   if (field !== 'seoTitle' && field !== 'metaDescription') return null;
-  if (!item.metaProvider) throw new WorkflowError('META_NOT_EXPOSED', 'No se puede editar: el sitio no tiene Yoast SEO ni Rank Math activos, o sus campos no están expuestos por la API (instala docs/wordpress/glitch-seo-meta.php como mu-plugin).', 400);
+  if (!item.metaProvider) throw new WorkflowError('META_NOT_EXPOSED', 'No se puede editar: el sitio no tiene un plugin de SEO cuyos campos se puedan editar por la API. Instala el plugin G.SEO – SEO (sección WordPress), o con Yoast SEO / Rank Math el mu-plugin glitch-seo-meta.php.', 400);
   const k = SEO_META_KEYS[item.metaProvider];
   return field === 'seoTitle' ? k.title : k.description;
 }

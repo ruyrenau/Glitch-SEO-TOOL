@@ -408,20 +408,25 @@ const SECTIONS: Section[] = [
     icon: Send,
     title: 'WordPress',
     status: 'ready',
-    what: 'Conecta el sitio con WordPress mediante su API REST y una contraseña de aplicación, para enviar páginas aprobadas como borradores.',
+    what: 'Conecta el sitio con WordPress mediante su API REST y una contraseña de aplicación, para enviar páginas aprobadas como borradores. Aquí también descargas el plugin G.SEO – SEO, que le da al sitio su propio SEO y deja que G.SEO lo controle.',
     why: 'Lleva el contenido aprobado a WordPress sin copiar y pegar, y sin riesgo de publicar algo por accidente.',
     steps: [
       'En WordPress: Usuarios → Perfil → Contraseñas de aplicación. Crea una para un usuario que pueda editar entradas.',
       'Aquí: escribe la URL del sitio (https), el usuario y la contraseña de aplicación, y pulsa "Guardar y probar".',
-      'Si dice "Conectado", ya puedes enviar páginas desde "Contenido programático".'
+      'Si dice "Conectado", ya puedes enviar páginas desde "Contenido programático".',
+      'Plugin G.SEO – SEO: pulsa "Descargar plugin (.zip)". En WordPress ve a Plugins → Añadir nuevo → Subir plugin, elige el archivo, instala y activa. Revisa Ajustes → G.SEO y aquí pulsa "Comprobar".',
+      'Con el plugin activo: Cambios SEO edita sus títulos y metas, Arquitectura y Consolidación crean las 301 en él, Entidades publica su JSON-LD y Listo para IA publica el llms.txt con un clic.',
+      'Para probar con una copia local del sitio (http://): agrega su dominio a CRAWL_ALLOW_PRIVATE_HOSTS en el .env de G.SEO local (por ejemplo glitchcreativo.local) y reinicia.'
     ],
     read: [
       ['Solo borradores', 'La herramienta nunca publica ni borra, y no toca entradas que ya no sean borrador.'],
       ['Conflicto', 'Si alguien editó el borrador en WordPress después del último envío, verás qué se perdería y tendrás que confirmar para sobrescribir.'],
-      ['Restaurar versión anterior', 'Antes de cada actualización se guarda una copia del borrador remoto; puedes devolverlo a esa versión.']
+      ['Restaurar versión anterior', 'Antes de cada actualización se guarda una copia del borrador remoto; puedes devolverlo a esa versión.'],
+      ['Plugin G.SEO – SEO', 'Títulos con plantilla (%title% %sep% %sitename%), meta descripción (automática si falta), canonical, noindex/nofollow por página, Open Graph y X, JSON-LD (Organización y WebSite en la portada, o el grafo de Entidades), sitemap de WordPress sin páginas noindex, robots.txt con bloqueo opcional de bots de entrenamiento de IA, llms.txt, redirecciones 301/302/410 y registro de 404 con botón "Redirigir".'],
+      ['En pausa', 'Si el sitio tiene Yoast, Rank Math, All in One SEO, SEOPress o The SEO Framework activos, el plugin no imprime nada en el <head> para no duplicar etiquetas. Redirecciones, llms.txt y 404 sí funcionan.']
     ],
     tips: ['La contraseña se guarda cifrada y nunca se vuelve a mostrar completa.', 'Para probar sin un WordPress propio, ejecuta "pnpm wp:local" en una terminal.'],
-    limits: ['Solo entradas (posts). Aún no maneja páginas de WordPress, imágenes, imagen destacada ni campos de Yoast o Rank Math.']
+    limits: ['El envío de contenido programático crea entradas (posts) en borrador.', 'El plugin todavía no importa los datos de Yoast o Rank Math, ni tiene migas de pan o bloques FAQ (siguientes etapas).', 'Si existe un archivo robots.txt físico en el servidor, WordPress lo sirve tal cual y los ajustes de robots del plugin no se aplican.']
   },
   {
     id: 'users',

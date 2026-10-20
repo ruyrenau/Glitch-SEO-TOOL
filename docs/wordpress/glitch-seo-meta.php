@@ -4,7 +4,7 @@
  * Description: Exposes Yoast SEO and Rank Math title/description fields in the WordPress REST API
  *              so G.SEO can read and update them, and prints the entity graph (JSON-LD) that G.SEO
  *              publishes for each post or page. Only users who can edit the post can write.
- * Version:     2
+ * Version:     3
  * Install:     copy to wp-content/mu-plugins/glitch-seo-meta.php (must-use plugins load automatically).
  */
 add_action('init', function () {
@@ -32,7 +32,8 @@ add_action('init', function () {
 // Prints the stored graph. It is decoded and re-encoded so only valid JSON is output, and "<" is escaped
 // (JSON_HEX_TAG) so the content can never close the <script> tag.
 add_action('wp_head', function () {
-    if (!is_singular()) {
+    // The G.SEO – SEO plugin prints the same graph itself: never twice.
+    if (!is_singular() || defined('GSEO_SEO_VERSION')) {
         return;
     }
     $raw = get_post_meta(get_queried_object_id(), '_glitch_schema_jsonld', true);

@@ -88,6 +88,8 @@ import {
   aiReadinessReport,
   latestAgentAudit,
   listExperiments,
+  gseoPluginInfo,
+  publishLlmsTxt,
   siteDashboard,
   latestContentGap,
   gapKeywordSuggestions,
@@ -179,6 +181,7 @@ import { validateJsonLd, validateSchema, CATALOG } from '@glitch/schema-engine';
 import { renderTemplate, computeJaccardSimilarity, evaluateQualityGate } from '@glitch/content-engine';
 import { fetchCruxHistory, CruxError, type CruxHistory } from '@glitch/performance';
 import { registerAuth } from './auth';
+import { zipFolder } from './zip';
 import { enqueue, cancelJob, retryJob, listJobs, queueHealth, setSiteSchedule, getSiteSchedule, setVitalsSchedule, describeCron, closeProducer, uploadDir } from '@glitch/jobs';
 
 export class ApiError extends Error {
@@ -832,6 +835,22 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     if (!PLUGIN_FILES.has(file)) throw new ApiError(404, 'NOT_FOUND', 'Archivo no disponible.');
     const full = path.resolve(__dirname, '../../../docs/wordpress', file);
     return reply.header('content-type', 'application/x-php; charset=utf-8').header('content-disposition', `attachment; filename="${file}"`).send(await fs.promises.readFile(full, 'utf8'));
+  });
+  /** The G.SEO – SEO plugin as a .zip for Plugins → Add New → Upload Plugin. */
+  app.get('/api/v1/downloads/plugin/gseo-seo.zip', async (_req, reply) => {
+    const zip = zipFolder(path.resolve(__dirname, '../../../docs/wordpress/gseo-seo'), 'gseo-seo');
+    return reply.header('content-type', 'application/zip').header('content-disposition', 'attachment; filename="gseo-seo.zip"').send(zip);
+  });
+  app.get('/api/v1/sites/:id/wordpress/seo-plugin', async req => {
+    const { id } = idParam.parse(req.params);
+    await requireSite(id);
+    return gseoPluginInfo(id);
+  });
+  app.post('/api/v1/sites/:id/wordpress/llms', async req => {
+    const { id } = idParam.parse(req.params);
+    const b = z.object({ llms: z.string().min(1).max(2_000_000), full: z.string().max(2_000_000).nullable().optional() }).strict().parse(req.body);
+    await requireSite(id);
+    return publishLlmsTxt(id, b, req.auth!.user.id);
   });
 
   // Agentes: navigation audit (Chrome) and the catalog for agents (agent.json + catalog + MCP in WordPress).

@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Download, XCircle, AlertTriangle, Info } from 'lucide-react';
-import { API_URL, apiGet, fmt } from '@/lib/api';
+import { CheckCircle2, Download, XCircle, AlertTriangle, Info, Send } from 'lucide-react';
+import { API_URL, apiGet, apiSend, fmt } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { Badge, Button, Card, Empty, ErrorBox, Skeleton, inputCls } from './ui';
 
 interface Check { id: string; label: string; ok: boolean; severity: 'error' | 'warn' | 'info'; detail: string }
@@ -28,6 +29,22 @@ export function LlmsTxtPanel({ siteId, hasCrawl }: { siteId: string; hasCrawl: b
   const [perSection, setPerSection] = useState(25);
   const [fullPages, setFullPages] = useState(30);
   const [summary, setSummary] = useState('');
+  const { can } = useAuth();
+  const [published, setPublished] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const publish = async () => {
+    if (!g) return;
+    setPublishing(true);
+    setError(null);
+    try {
+      const r = await apiSend<{ url: string }>('POST', `/api/v1/sites/${siteId}/wordpress/llms`, { llms: g.text });
+      setPublished(r.url);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setPublishing(false);
+    }
+  };
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -98,11 +115,13 @@ export function LlmsTxtPanel({ siteId, hasCrawl }: { siteId: string; hasCrawl: b
                   <p className="text-slate-500">{fmt(g.links)} enlaces en {fmt(g.sections)} secciones{g.skipped ? ` · ${fmt(g.skipped)} páginas no entraron por el límite` : ''}.</p>
                   <pre aria-label="Vista previa del llms.txt" className="font-mono text-[11px] whitespace-pre-wrap break-words bg-slate-50 dark:bg-slate-900 p-2 rounded max-h-80 overflow-auto">{g.text}</pre>
                   <div className="flex flex-wrap items-end gap-3">
+                    <Button onClick={publish} disabled={publishing || !can('wordpress:send')}><Send className="w-3.5 h-3.5" aria-hidden /> {publishing ? 'Publicando…' : 'Publicar en WordPress'}</Button>
                     <Button variant="secondary" onClick={() => dl('llms')}><Download className="w-3.5 h-3.5" aria-hidden /> Descargar llms.txt</Button>
                     <label>Páginas en llms-full.txt <select aria-label="Páginas en llms-full.txt" className={inputCls} value={fullPages} onChange={e => setFullPages(Number(e.target.value))}>{[10, 30, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
                     <Button variant="secondary" onClick={() => dl('full')}><Download className="w-3.5 h-3.5" aria-hidden /> Descargar llms-full.txt</Button>
                   </div>
-                  <p className="text-slate-500">Revisa el texto, súbelo a la raíz del sitio (en WordPress con un plugin de archivos o por FTP) y vuelve aquí para validarlo.</p>
+                  {published && <p role="status" className="text-emerald-700 dark:text-emerald-400">Publicado en <a className="underline" href={published} target="_blank" rel="noreferrer">{published}</a>. Vuelve a cargar esta sección para validarlo.</p>}
+                  <p className="text-slate-500">Revisa el texto y pulsa "Publicar en WordPress" (necesita el plugin G.SEO – SEO), o descárgalo y súbelo a la raíz del sitio por FTP.</p>
                 </>
               )}
             </>

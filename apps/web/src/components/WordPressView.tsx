@@ -5,6 +5,7 @@ import { PlugZap, Trash2 } from 'lucide-react';
 import { apiGet, apiSend, fmtDate } from '@/lib/api';
 import type { WpConnection, GoFn } from '@/lib/types';
 import { Badge, Button, Card, ErrorBox, Skeleton, inputCls } from './ui';
+import { GseoPluginCard } from './GseoPluginCard';
 
 export function WordPressView({ siteId, go }: { siteId: string; go: GoFn }) {
   const [conn, setConn] = useState<WpConnection | null | undefined>(undefined);
@@ -105,6 +106,8 @@ export function WordPressView({ siteId, go }: { siteId: string; go: GoFn }) {
           <ErrorBox error={error} />
         </div>
       </Card>
+
+      <GseoPluginCard siteId={siteId} refreshKey={conn?.lastTestAt ?? conn?.status} />
 
       {cats && (
         <Card title="Categorías en WordPress">

@@ -276,7 +276,7 @@ export async function pushRedirectsToWordPress(siteId: string, rules: Array<{ fr
   const c = await prisma.wordPressConnection.findUnique({ where: { siteId } });
   if (!c) throw new WorkflowError('NO_CONNECTION', 'Conecta WordPress para este sitio primero.', 400);
   const client = new WordPressSeoClient({ baseUrl: c.endpointUrl, username: c.username, appPassword: decryptSecret(c.appPasswordEnc), allowHosts: allowHosts() });
-  if (!(await client.hasRedirectionPlugin())) throw new WorkflowError('NO_REDIRECTION_PLUGIN', 'No se encontró el plugin "Redirection" en WordPress. Instálalo y actívalo (es gratuito), o exporta las reglas para .htaccess o Nginx.', 400);
+  if (!(await client.hasRedirectionPlugin())) throw new WorkflowError('NO_REDIRECTION_PLUGIN', 'No se encontró dónde crear redirecciones en WordPress: instala el plugin G.SEO – SEO (sección WordPress) o el plugin "Redirection", o exporta las reglas para .htaccess o Nginx.', 400);
   const results = [];
   for (const r of rules.slice(0, 500)) {
     if (!r.from.startsWith('/') || r.from === r.to) {

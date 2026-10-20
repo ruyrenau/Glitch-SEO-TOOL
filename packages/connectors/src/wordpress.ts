@@ -88,7 +88,11 @@ export class WordPressClient {
     return this.request<T>('POST', path, { body });
   }
 
-  private async request<T>(method: 'GET' | 'POST', path: string, opts: { query?: Record<string, string | number>; body?: unknown; auth?: boolean } = {}): Promise<T> {
+  protected del<T>(path: string): Promise<T> {
+    return this.request<T>('DELETE', path);
+  }
+
+  private async request<T>(method: 'GET' | 'POST' | 'DELETE', path: string, opts: { query?: Record<string, string | number>; body?: unknown; auth?: boolean } = {}): Promise<T> {
     const url = this.url(path, opts.query);
     await assertSafeUrl(url, { allowHosts: this.cfg.allowHosts });
     const maxRetries = this.cfg.maxRetries ?? 3;
@@ -220,12 +224,28 @@ export function lineDiff(before: string[], after: string[], max = 2000): DiffLin
 // ---------------------------------------------------------------------------
 
 export type SeoTarget = 'post' | 'page';
-export type SeoMetaProvider = 'yoast' | 'rankmath';
+export type SeoMetaProvider = 'yoast' | 'rankmath' | 'gseo';
 
 export const SEO_META_KEYS: Record<SeoMetaProvider, { title: string; description: string }> = {
   yoast: { title: '_yoast_wpseo_title', description: '_yoast_wpseo_metadesc' },
-  rankmath: { title: 'rank_math_title', description: 'rank_math_description' }
+  rankmath: { title: 'rank_math_title', description: 'rank_math_description' },
+  // G.SEO – SEO plugin (docs/wordpress/gseo-seo)
+  gseo: { title: '_gseo_title', description: '_gseo_description' }
 };
+/** REST namespace of the G.SEO – SEO plugin. */
+export const GSEO_PLUGIN_NS = 'gseo-seo/v1';
+
+export interface GseoPluginStatus {
+  plugin: 'gseo-seo';
+  version: string;
+  active: boolean;
+  output: boolean;
+  conflicts: string[];
+  sitemap: string;
+  llms_txt: string | null;
+  public: boolean;
+  robots_file: boolean;
+}
 /** JSON-LD graph printed in <head> by docs/wordpress/glitch-seo-meta.php (v2). */
 export const GLITCH_SCHEMA_KEY = '_glitch_schema_jsonld';
 const ALLOWED_META = new Set([...Object.values(SEO_META_KEYS).flatMap(k => [k.title, k.description]), GLITCH_SCHEMA_KEY]);
@@ -277,14 +297,40 @@ export interface SeoFieldUpdate {
 }
 
 export class WordPressSeoClient extends WordPressClient {
-  private active: Promise<SeoMetaProvider | null> | null = null;
+  private ns: Promise<string[]> | null = null;
 
-  /** The SEO plugin actually running, from the REST namespaces it registers (yoast/v1, rankmath/v1). */
-  activeSeoPlugin(): Promise<SeoMetaProvider | null> {
-    this.active ??= this.get<{ namespaces?: string[] }>('/', {})
-      .then(r => (r.namespaces?.includes('yoast/v1') ? 'yoast' : r.namespaces?.includes('rankmath/v1') ? 'rankmath' : null))
-      .catch(() => null);
-    return this.active;
+  /** REST namespaces the site registers (one request, cached). */
+  namespaces(): Promise<string[]> {
+    this.ns ??= this.get<{ namespaces?: string[] }>('/', {})
+      .then(r => r.namespaces ?? [])
+      .catch(() => []);
+    return this.ns;
+  }
+
+  /**
+   * The SEO plugin actually running, from the REST namespaces it registers. Yoast and Rank Math win:
+   * while one of them is active the G.SEO plugin stays passive and does not print its fields.
+   */
+  async activeSeoPlugin(): Promise<SeoMetaProvider | null> {
+    const n = await this.namespaces();
+    return n.includes('yoast/v1') ? 'yoast' : n.includes('rankmath/v1') ? 'rankmath' : n.includes(GSEO_PLUGIN_NS) ? 'gseo' : null;
+  }
+
+  /** Status of the G.SEO – SEO plugin, or null when it is not installed. */
+  async gseoPluginStatus(): Promise<GseoPluginStatus | null> {
+    if (!(await this.namespaces()).includes(GSEO_PLUGIN_NS)) return null;
+    return this.get<GseoPluginStatus>(`/${GSEO_PLUGIN_NS}/status`, {});
+  }
+
+  /** Changes settings of the G.SEO – SEO plugin (needs an administrator). Unknown keys are ignored by the plugin. */
+  async updateGseoSettings(settings: Record<string, string | boolean>): Promise<Record<string, unknown>> {
+    return this.post<Record<string, unknown>>(`/${GSEO_PLUGIN_NS}/settings`, settings);
+  }
+
+  /** Where redirects can be created: the G.SEO plugin first, then the Redirection plugin. */
+  async redirectBackend(): Promise<'gseo' | 'redirection' | null> {
+    const n = await this.namespaces();
+    return n.includes(GSEO_PLUGIN_NS) ? 'gseo' : n.includes('redirection/v1') ? 'redirection' : null;
   }
 
   /** Finds the post or page whose permalink is `url` (matched by slug, then by link). */
@@ -351,14 +397,17 @@ export class WordPressSeoClient extends WordPressClient {
     await this.post(`/wp/v2/${type === 'post' ? 'posts' : 'pages'}/${id}`, { content: raw });
   }
 
-  /** Whether the Redirection plugin (redirection/v1) is active and reachable. */
+  /** Whether redirects can be created (G.SEO plugin or Redirection plugin active and reachable). */
   async hasRedirectionPlugin(): Promise<boolean> {
-    const r = await this.get<{ namespaces?: string[] }>('/', {}).catch(() => null);
-    return !!r?.namespaces?.includes('redirection/v1');
+    return (await this.redirectBackend()) !== null;
   }
 
-  /** Creates a 301 in the Redirection plugin (first group, usually "Redirections"). */
+  /** Creates a 301 in the G.SEO plugin, or in the Redirection plugin (first group, usually "Redirections"). */
   async createRedirect(fromPath: string, to: string): Promise<{ id: number }> {
+    if ((await this.redirectBackend()) === 'gseo') {
+      const r = await this.post<{ id: number }>(`/${GSEO_PLUGIN_NS}/redirects`, { source: fromPath, target: to, code: 301, note: 'G.SEO' });
+      return { id: r.id };
+    }
     const groups = await this.get<{ items?: Array<{ id: number; name: string; module_id?: number }> }>('/redirection/v1/group', { per_page: 50 });
     const group = (groups.items ?? []).find(g => (g.module_id ?? 1) === 1) ?? groups.items?.[0];
     if (!group) throw new WordPressError(0, 'NO_REDIRECT_GROUP', 'El plugin Redirection no tiene grupos; abre Herramientas → Redirection en WordPress una vez para crearlos.');
@@ -384,6 +433,10 @@ export class WordPressSeoClient extends WordPressClient {
 
   /** Deletes a redirect created through the Redirection plugin (bulk endpoint of redirection/v1). */
   async deleteRedirect(id: number): Promise<void> {
+    if ((await this.redirectBackend()) === 'gseo') {
+      await this.del(`/${GSEO_PLUGIN_NS}/redirects/${id}`);
+      return;
+    }
     await this.post('/redirection/v1/bulk/redirect/delete', { items: [id] });
   }
 

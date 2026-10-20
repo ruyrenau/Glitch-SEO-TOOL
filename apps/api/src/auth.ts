@@ -65,6 +65,7 @@ const RULES: Array<[RegExp, RegExp, Permission]> = [
   [/^POST$/, /^\/api\/v1\/sites\/:id\/agents\/audit$/, 'seo:operate'],
   [/^PUT$/, /^\/api\/v1\/sites\/:id\/agents\/catalog$/, 'content:edit'],
   [/^POST$/, /^\/api\/v1\/sites\/:id\/agents\/catalog\/publish$/, 'wordpress:send'],
+  [/^POST$/, /^\/api\/v1\/sites\/:id\/wordpress\/llms$/, 'wordpress:send'],
   // Content gaps spend SerpAPI credit (operation); briefs may spend AI credit.
   [/^POST$/, /^\/api\/v1\/sites\/:id\/content-gaps$/, 'seo:operate'],
   [/^POST$/, /^\/api\/v1\/content-gaps\/:id\/briefs$/, 'content:edit'],
