@@ -115,6 +115,7 @@ as_user_env "pnpm --filter @glitch/db exec prisma generate >/dev/null"
 as_user_env "NODE_ENV=production pnpm build >/dev/null"
 as_user_env "pnpm --filter @glitch/db exec prisma migrate deploy"
 SEED_OUT=$(as_user_env "pnpm --silent db:seed" 2>&1 | tail -n 3 || true)
+as_user "git -C '$APP' rev-parse --short HEAD > '$BASE/.built-commit'"
 
 say "6/7 Servicios (arrancan solos al reiniciar el servidor), con límites para no afectar tus sitios"
 NODE=$(command -v node)

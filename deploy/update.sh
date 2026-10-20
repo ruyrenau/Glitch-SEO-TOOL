@@ -15,12 +15,15 @@ echo "▶ Respaldo antes de actualizar"
 as_user /usr/local/bin/gseo-backup
 
 echo "▶ Descargando la última versión"
+# Compare with the last version that BUILT successfully (not just downloaded): an interrupted
+# update must be finished by the next one. --force rebuilds anyway.
+MARK=$BASE/.built-commit
+BUILT=$(cat "$MARK" 2>/dev/null || echo "ninguna")
 as_user "git -C '$APP' fetch --quiet origin '$BRANCH'"
-BEFORE=$(as_user "git -C '$APP' rev-parse --short HEAD")
 as_user "git -C '$APP' reset --quiet --hard 'origin/$BRANCH'"
 AFTER=$(as_user "git -C '$APP' rev-parse --short HEAD")
-[ "$BEFORE" = "$AFTER" ] && { echo "Ya tienes la última versión ($AFTER)."; exit 0; }
-echo "$BEFORE → $AFTER"
+if [ "$BUILT" = "$AFTER" ] && [ "${1:-}" != "--force" ]; then echo "Ya tienes la última versión ($AFTER)."; exit 0; fi
+echo "$BUILT → $AFTER"
 
 echo "▶ Compilando (unos minutos)"
 as_user_env "pnpm install --frozen-lockfile --prod=false --reporter=silent"
@@ -31,6 +34,7 @@ as_user_env "pnpm --filter @glitch/db exec prisma migrate deploy"
 install -m 755 "$APP/deploy/backup.sh" /usr/local/bin/gseo-backup
 install -m 750 "$APP/deploy/update.sh" /usr/local/bin/gseo-update
 
+as_user "echo $AFTER > '$MARK'"
 echo "▶ Reiniciando"
 systemctl restart gseo-api gseo-worker gseo-web
 sleep 5
