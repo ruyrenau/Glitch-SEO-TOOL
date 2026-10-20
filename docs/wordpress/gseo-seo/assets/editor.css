@@ -1,0 +1,51 @@
+/* G.SEO editor panel (works in the block editor and the classic editor). */
+#gseo-app { font-size: 13px; }
+#gseo-app .gseo-tabs { display: flex; gap: 0; border-bottom: 1px solid #dcdcde; margin: -6px -12px 12px; padding: 0 12px; flex-wrap: wrap; }
+#gseo-app .gseo-tab { background: none; border: 1px solid transparent; border-bottom: none; padding: 8px 14px; cursor: pointer; font-size: 13px; color: #2271b1; display: flex; align-items: center; gap: 6px; margin-bottom: -1px; border-radius: 4px 4px 0 0; }
+#gseo-app .gseo-tab[aria-selected="true"] { background: #fff; border-color: #dcdcde; color: #1d2327; font-weight: 600; }
+#gseo-app .gseo-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: #c3c4c7; flex: none; }
+#gseo-app .gseo-dot.good { background: #00a32a; } #gseo-app .gseo-dot.ok { background: #dba617; } #gseo-app .gseo-dot.bad { background: #d63638; }
+#gseo-app [data-panel] { display: none; } #gseo-app [data-panel].active { display: block; }
+#gseo-app .gseo-field { margin: 0 0 16px; }
+#gseo-app .gseo-field > label, #gseo-app .gseo-label { font-weight: 600; display: block; margin-bottom: 6px; }
+#gseo-app input[type=text], #gseo-app input[type=url], #gseo-app textarea, #gseo-app select { width: 100%; max-width: 100%; }
+#gseo-app .gseo-help { color: #646970; font-size: 12px; margin-top: 4px; }
+#gseo-app .gseo-vars { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 0; }
+#gseo-app .gseo-vars button { font-size: 11px; border: 1px solid #c3c4c7; background: #f6f7f7; border-radius: 12px; padding: 2px 10px; cursor: pointer; }
+#gseo-app .gseo-bar { height: 4px; background: #f0f0f1; border-radius: 2px; margin-top: 6px; overflow: hidden; }
+#gseo-app .gseo-bar span { display: block; height: 100%; width: 0; background: #d63638; transition: width .15s; }
+#gseo-app .gseo-bar span.good { background: #00a32a; } #gseo-app .gseo-bar span.ok { background: #dba617; }
+#gseo-app .gseo-preview-mode { display: flex; gap: 16px; margin-bottom: 8px; }
+#gseo-app .gseo-serp { border: 1px solid #dcdcde; border-radius: 8px; padding: 14px 16px; background: #fff; font-family: arial, sans-serif; max-width: 600px; margin-bottom: 16px; }
+#gseo-app .gseo-serp.mobile { max-width: 380px; box-shadow: 0 1px 6px rgba(32,33,36,.18); border: 0; }
+#gseo-app .gseo-serp .site { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+#gseo-app .gseo-serp .fav { width: 26px; height: 26px; border-radius: 50%; background: #f1f3f4; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+#gseo-app .gseo-serp .fav img { width: 18px; height: 18px; }
+#gseo-app .gseo-serp .name { font-size: 14px; color: #202124; line-height: 1.2; }
+#gseo-app .gseo-serp .url { font-size: 12px; color: #4d5156; line-height: 1.3; }
+#gseo-app .gseo-serp .t { font-size: 20px; color: #1a0dab; line-height: 1.3; margin: 2px 0 4px; }
+#gseo-app .gseo-serp.mobile .t { font-size: 18px; }
+#gseo-app .gseo-serp .d { font-size: 14px; color: #4d5156; line-height: 1.58; }
+#gseo-app .gseo-serp .d .date { color: #70757a; }
+#gseo-app .gseo-serp b { font-weight: 700; color: #202124; }
+#gseo-app .gseo-results h4 { margin: 14px 0 6px; font-size: 13px; }
+#gseo-app .gseo-results ul { margin: 0; }
+#gseo-app .gseo-results li { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 7px; line-height: 1.45; }
+#gseo-app .gseo-results li .gseo-dot { margin-top: 4px; }
+#gseo-app .gseo-results li strong { font-weight: 600; }
+#gseo-app .gseo-stats { display: flex; gap: 18px; flex-wrap: wrap; background: #f6f7f7; border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; }
+#gseo-app .gseo-stats div { font-size: 12px; color: #50575e; } #gseo-app .gseo-stats b { display: block; font-size: 16px; color: #1d2327; }
+#gseo-app .gseo-social { border: 1px solid #dcdcde; border-radius: 8px; overflow: hidden; max-width: 520px; background: #fff; margin: 6px 0 14px; }
+#gseo-app .gseo-social .img { aspect-ratio: 1.91 / 1; background: #f0f0f1 center / cover no-repeat; display: flex; align-items: center; justify-content: center; color: #8c8f94; font-size: 12px; }
+#gseo-app .gseo-social .body { padding: 10px 12px; background: #f2f3f5; }
+#gseo-app .gseo-social.x { border-radius: 16px; } #gseo-app .gseo-social.x .body { background: #fff; }
+#gseo-app .gseo-social .host { font-size: 12px; color: #606770; text-transform: uppercase; }
+#gseo-app .gseo-social .st { font-weight: 600; font-size: 15px; color: #1d2129; margin: 2px 0; }
+#gseo-app .gseo-social .sd { font-size: 13px; color: #606770; }
+#gseo-app .gseo-img-row { display: flex; gap: 6px; }
+#gseo-app .gseo-img-row input { flex: 1; }
+#gseo-app details summary { cursor: pointer; font-weight: 600; margin-bottom: 10px; }
+#gseo-app .gseo-checks label { font-weight: 400; display: block; margin: 4px 0; }
+.column-gseo { width: 80px; }
+.column-gseo .gseo-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: #c3c4c7; margin-right: 4px; vertical-align: middle; }
+.column-gseo .gseo-dot.good { background: #00a32a; } .column-gseo .gseo-dot.ok { background: #dba617; } .column-gseo .gseo-dot.bad { background: #d63638; }

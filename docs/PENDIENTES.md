@@ -19,7 +19,7 @@ Lista viva de lo que falta. Al terminar algo, se marca con [x] y se anota el com
 
 ## Plataforma
 - [ ] **Alojar G.SEO en un VPS** (Docker, Nginx, HTTPS, PostgreSQL, respaldos; verificación de la app de Google para usuarios externos).
-- [ ] **Plugin de WordPress G.SEO – SEO**: importador de Yoast/Rank Math (falta de la etapa 1), etapa 2 (panel en el editor con análisis y sugerencias con IA), etapa 3 (migas de pan, bloques FAQ/HowTo, contenido pilar, edición masiva).
+- [ ] **Plugin de WordPress G.SEO – SEO**: importador de Yoast/Rank Math, sugerencias con IA en el editor (keyword relacionadas, reescribir título/descripción), keyphrases relacionadas, bloques FAQ/HowTo, contenido pilar con sugerencias de enlaces, edición masiva, verificación de buscadores (Google/Bing), limpieza del <head>.
 - [ ] Enviar a Slack/Teams las explicaciones de SERP (hoy solo en pantalla y en "En declive").
 
 ## Google Analytics (GA4), fase 2
@@ -29,6 +29,7 @@ Lista viva de lo que falta. Al terminar algo, se marca con [x] y se anota el com
 - [ ] Sección de GA4 en los Reportes para clientes.
 
 ## Hecho recientemente
+- [x] Plugin v1.2: panel tipo Yoast en el editor (SEO, Legibilidad en español con Fernández-Huerta, Schema, Social), schema automático por página con migas de pan, SEO de categorías, redirección automática al cambiar slug, columna SEO; conexión con G.SEO en un clic
 - [x] Plugin G.SEO – SEO etapa 1 (metas, canonical, robots, OG, JSON-LD, sitemap, robots.txt con bloqueo de bots de IA, llms.txt, redirecciones, 404) conectado con Cambios SEO, Arquitectura, Consolidación y Listo para IA; instalado en el VPS (seo.glitchcreativo.com) con instalador para cPanel
 - [x] Comparar crawls (cualquier par, redirecciones, resumen, CSV), Experimentos SEO con grupo de control (Search Console), Brechas de contenido frente a competidores con briefs (SerpAPI + Claude) y tendencia de CrUX
 - [x] Agentes de IA: navegación de agentes con Chrome (controles, etiquetas, ventanas, captcha, precios, tareas) y catálogo para agentes en WordPress (agent.json, catálogo, servidor MCP de solo lectura, plugin glitch-agents.php)

@@ -214,3 +214,31 @@ add_action('template_redirect', function () {
         }
     }
 }, 99);
+
+// When the URL of a published page changes (slug or parent), the old address redirects to the new one.
+add_action('post_updated', function ($post_id, $after, $before) {
+    global $wpdb;
+    if (!gseo_seo_get('auto_redirect_slug') || $before->post_status !== 'publish' || $after->post_status !== 'publish' || wp_is_post_revision($post_id)) {
+        return;
+    }
+    $type = get_post_type_object($after->post_type);
+    if (!$type || !$type->public || $after->post_type === 'attachment') {
+        return;
+    }
+    $old = get_permalink($before);
+    $new = get_permalink($after);
+    if (!$old || !$new || $old === $new) {
+        return;
+    }
+    $old_path = gseo_seo_normalize_source($old);
+    $new_path = gseo_seo_normalize_source($new);
+    if ($old_path === '' || $old_path === '/' || $old_path === $new_path) {
+        return;
+    }
+    $t = gseo_seo_tables();
+    // Going back to an earlier address: drop the redirect that now points away from it.
+    $wpdb->delete($t['redirects'], array('source' => $new_path));
+    // No chains: redirects that pointed to the old address now point to the new one.
+    $wpdb->update($t['redirects'], array('target' => $new), array('target' => $old));
+    gseo_seo_save_redirect($old_path, $new, 301, 'Cambio de URL: ' . wp_html_excerpt(get_the_title($after), 120, '…'));
+}, 10, 3);

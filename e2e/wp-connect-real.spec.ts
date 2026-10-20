@@ -30,7 +30,8 @@ test('Conexión de un clic: desde el plugin, aprobar en WordPress y volver conec
   await login(page);
   await page.goto(href!);
   await expect(page.getByText(/quiere conectarse/)).toBeVisible();
-  await expect(page.getByLabel('Sitio de G.SEO para esta conexión')).toHaveValue('new');
+  // It proposes the G.SEO site with the same domain when there is one; here we connect it as a new site.
+  await page.getByLabel('Sitio de G.SEO para esta conexión').selectOption('new');
   await page.getByRole('button', { name: 'Continuar a WordPress' }).click();
 
   // WordPress's own approval screen.

@@ -131,6 +131,8 @@ function gseo_seo_settings_page()
             gseo_seo_field('org_logo', 'Logo de la organización', 'url');
             gseo_seo_field('org_same_as', 'Perfiles oficiales (sameAs)', 'textarea', 'Una URL por línea: Facebook, Instagram, LinkedIn, Google Business, Wikidata…');
             gseo_seo_field('log_404', 'Registro de 404', 'checkbox', 'Guardar las direcciones que no existen (pestaña Errores 404)');
+            gseo_seo_field('auto_redirect_slug', 'Redirigir al cambiar la URL', 'checkbox', 'Si cambias el slug de una página publicada, crear una redirección 301 de la dirección vieja a la nueva');
+            gseo_seo_field('breadcrumb_home', 'Migas de pan: texto de inicio', 'text', 'Para el schema BreadcrumbList y el shortcode [gseo_breadcrumbs], que puedes poner en tu tema.');
             gseo_seo_field('remove_data', 'Al eliminar el plugin', 'checkbox', 'Borrar también títulos, descripciones, redirecciones y ajustes (si no, se conservan por si lo vuelves a instalar)');
         } elseif ($tab === 'index') {
             gseo_seo_field('noindex_search', 'Resultados de búsqueda interna', 'checkbox', 'noindex (recomendado)');
@@ -216,83 +218,7 @@ function gseo_seo_settings_page()
     echo '</div>';
 }
 
-// --- SEO box in the editor (classic and block editor) -------------------------------------------
-
-add_action('add_meta_boxes', function () {
-    foreach (get_post_types(array('public' => true), 'names') as $type) {
-        if ($type !== 'attachment') {
-            add_meta_box('gseo-seo-box', 'G.SEO', 'gseo_seo_meta_box', $type, 'normal', 'high');
-        }
-    }
-});
-
-function gseo_seo_meta_box($post)
-{
-    wp_nonce_field('gseo_seo_box', 'gseo_seo_box_nonce');
-    $v = function ($k) use ($post) {
-        return (string) get_post_meta($post->ID, $k, true);
-    };
-    $placeholder = gseo_seo_render_template(gseo_seo_get('title_post'), get_the_title($post));
-    ?>
-    <style>
-      #gseo-seo-box .gseo-row{margin:0 0 12px}#gseo-seo-box label{font-weight:600;display:block;margin-bottom:4px}
-      #gseo-seo-box input[type=text],#gseo-seo-box input[type=url],#gseo-seo-box textarea{width:100%}
-      #gseo-seo-box .gseo-count{font-size:12px;color:#646970}#gseo-seo-box .gseo-count.bad{color:#b32d2e}
-      #gseo-serp{border:1px solid #dcdcde;border-radius:8px;padding:12px;max-width:600px;margin-bottom:14px;font-family:arial,sans-serif;background:#fff}
-      #gseo-serp .u{font-size:12px;color:#202124}#gseo-serp .t{font-size:18px;color:#1a0dab;margin:2px 0;line-height:1.3}#gseo-serp .d{font-size:13px;color:#4d5156}
-    </style>
-    <div id="gseo-serp" aria-label="Vista previa en Google"><div class="u"><?php echo esc_html(wp_parse_url(get_permalink($post), PHP_URL_HOST) . wp_parse_url(get_permalink($post), PHP_URL_PATH)); ?></div><div class="t"></div><div class="d"></div></div>
-    <div class="gseo-row"><label for="gseo_title">Título SEO</label>
-      <input type="text" id="gseo_title" name="gseo_title" value="<?php echo esc_attr($v('_gseo_title')); ?>" placeholder="<?php echo esc_attr($placeholder); ?>" />
-      <span class="gseo-count" data-for="gseo_title" data-max="60"></span> <span class="gseo-count">Puedes usar %sitename% y %sep%.</span></div>
-    <div class="gseo-row"><label for="gseo_description">Meta descripción</label>
-      <textarea id="gseo_description" name="gseo_description" rows="3" placeholder="<?php echo esc_attr(gseo_seo_get('auto_description') ? 'Vacío = el extracto o el inicio del contenido' : ''); ?>"><?php echo esc_textarea($v('_gseo_description')); ?></textarea>
-      <span class="gseo-count" data-for="gseo_description" data-max="155"></span></div>
-    <details><summary style="cursor:pointer;font-weight:600">Avanzado</summary>
-      <div class="gseo-row" style="margin-top:10px"><label for="gseo_canonical">URL canónica</label><input type="url" id="gseo_canonical" name="gseo_canonical" value="<?php echo esc_attr($v('_gseo_canonical')); ?>" placeholder="Vacío = esta misma página" /></div>
-      <div class="gseo-row"><label for="gseo_og_image">Imagen para compartir</label><input type="url" id="gseo_og_image" name="gseo_og_image" value="<?php echo esc_attr($v('_gseo_og_image')); ?>" placeholder="Vacío = la imagen destacada" /></div>
-      <div class="gseo-row"><label style="font-weight:400"><input type="checkbox" name="gseo_noindex" value="1" <?php checked($v('_gseo_noindex'), '1'); ?> /> No mostrar en Google (noindex) y quitar del sitemap</label>
-        <label style="font-weight:400"><input type="checkbox" name="gseo_nofollow" value="1" <?php checked($v('_gseo_nofollow'), '1'); ?> /> No seguir los enlaces de esta página (nofollow)</label></div>
-    </details>
-    <script>
-    (function(){
-      var site=<?php echo wp_json_encode(get_bloginfo('name')); ?>, sep=<?php echo wp_json_encode((string) gseo_seo_get('separator')); ?>;
-      var t=document.getElementById('gseo_title'), d=document.getElementById('gseo_description');
-      function render(){
-        var title=(t.value||t.placeholder).replace(/%sitename%/g,site).replace(/%sep%/g,sep).replace(/%title%/g,t.placeholder);
-        document.querySelector('#gseo-serp .t').textContent=title;
-        document.querySelector('#gseo-serp .d').textContent=d.value||d.placeholder;
-        document.querySelectorAll('#gseo-seo-box .gseo-count[data-for]').forEach(function(c){
-          var el=document.getElementById(c.dataset.for), n=(el.value||'').length, max=+c.dataset.max;
-          c.textContent=n+' / '+max+' caracteres'; c.classList.toggle('bad', n>max);
-        });
-      }
-      t.addEventListener('input',render); d.addEventListener('input',render); render();
-    })();
-    </script>
-    <?php
-}
-
-add_action('save_post', function ($post_id) {
-    if (!isset($_POST['gseo_seo_box_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['gseo_seo_box_nonce'])), 'gseo_seo_box')) {
-        return;
-    }
-    if ((defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) || wp_is_post_revision($post_id) || !current_user_can('edit_post', $post_id)) {
-        return;
-    }
-    $text = array('gseo_title' => '_gseo_title', 'gseo_description' => '_gseo_description');
-    foreach ($text as $field => $key) {
-        $val = isset($_POST[$field]) ? sanitize_text_field(wp_unslash($_POST[$field])) : '';
-        $val === '' ? delete_post_meta($post_id, $key) : update_post_meta($post_id, $key, $val);
-    }
-    foreach (array('gseo_canonical' => '_gseo_canonical', 'gseo_og_image' => '_gseo_og_image') as $field => $key) {
-        $val = isset($_POST[$field]) ? esc_url_raw(wp_unslash($_POST[$field])) : '';
-        $val === '' ? delete_post_meta($post_id, $key) : update_post_meta($post_id, $key, $val);
-    }
-    foreach (array('gseo_noindex' => '_gseo_noindex', 'gseo_nofollow' => '_gseo_nofollow') as $field => $key) {
-        empty($_POST[$field]) ? delete_post_meta($post_id, $key) : update_post_meta($post_id, $key, '1');
-    }
-});
+// The SEO box in the editor lives in includes/editor.php.
 
 /** Application passwords that G.SEO holds for the current user (created by the one-click connection). */
 function gseo_seo_app_connections()

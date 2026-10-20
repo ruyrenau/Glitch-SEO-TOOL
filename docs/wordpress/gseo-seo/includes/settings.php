@@ -13,6 +13,16 @@ const GSEO_SEO_META = array(
     '_gseo_noindex'        => 'boolean',
     '_gseo_nofollow'       => 'boolean',
     '_gseo_og_image'       => 'string',
+    '_gseo_focus_kw'       => 'string',
+    '_gseo_og_title'       => 'string',
+    '_gseo_og_description' => 'string',
+    '_gseo_tw_title'       => 'string',
+    '_gseo_tw_description' => 'string',
+    '_gseo_tw_image'       => 'string',
+    '_gseo_schema_page'    => 'string',
+    '_gseo_schema_article' => 'string',
+    '_gseo_seo_score'      => 'string',
+    '_gseo_read_score'     => 'string',
     '_glitch_schema_jsonld' => 'string', // entity graph published by G.SEO (Entidades y E-E-A-T)
 );
 
@@ -47,6 +57,8 @@ function gseo_seo_defaults()
         'log_404'            => true,
         'remove_data'        => false,
         'app_url'            => 'https://seo.glitchcreativo.com',
+        'auto_redirect_slug' => true,
+        'breadcrumb_home'    => 'Inicio',
     );
 }
 
@@ -138,7 +150,7 @@ add_action('init', function () {
                 'type'              => $kind,
                 'single'            => true,
                 'show_in_rest'      => true,
-                'sanitize_callback' => $kind === 'boolean' ? 'rest_sanitize_boolean' : ($key === '_glitch_schema_jsonld' ? 'gseo_seo_sanitize_jsonld' : ($key === '_gseo_canonical' || $key === '_gseo_og_image' ? 'esc_url_raw' : 'sanitize_text_field')),
+                'sanitize_callback' => $kind === 'boolean' ? 'rest_sanitize_boolean' : ($key === '_glitch_schema_jsonld' ? 'gseo_seo_sanitize_jsonld' : (in_array($key, array('_gseo_canonical', '_gseo_og_image', '_gseo_tw_image'), true) ? 'esc_url_raw' : 'sanitize_text_field')),
                 'auth_callback'     => function ($allowed, $meta_key, $post_id) {
                     return current_user_can('edit_post', $post_id);
                 },

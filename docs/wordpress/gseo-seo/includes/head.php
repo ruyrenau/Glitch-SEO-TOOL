@@ -60,6 +60,11 @@ function gseo_seo_title()
     if (is_404()) {
         return gseo_seo_render_template(gseo_seo_get('title_archive'), 'Página no encontrada');
     }
+    $term = gseo_seo_current_term();
+    if ($term) {
+        $custom = trim((string) get_term_meta($term->term_id, '_gseo_title', true));
+        return gseo_seo_render_template($custom !== '' ? $custom : gseo_seo_get('title_archive'), $term->name);
+    }
     if (is_archive()) {
         return gseo_seo_render_template(gseo_seo_get('title_archive'), wp_strip_all_tags(get_the_archive_title()));
     }
@@ -89,6 +94,10 @@ function gseo_seo_description()
         return (string) (gseo_seo_get('home_description') !== '' ? gseo_seo_get('home_description') : get_bloginfo('description'));
     }
     if (is_category() || is_tag() || is_tax()) {
+        $custom = trim((string) get_term_meta(get_queried_object_id(), '_gseo_description', true));
+        if ($custom !== '') {
+            return $custom;
+        }
         $d = trim(wp_strip_all_tags(term_description()));
         return $d === '' ? '' : wp_html_excerpt($d, 155, '…');
     }
@@ -156,7 +165,8 @@ add_action('wp', function () {
             || (is_attachment() && gseo_seo_get('noindex_attachment'))
             || (is_author() && gseo_seo_get('noindex_author'))
             || (is_date() && gseo_seo_get('noindex_date'))
-            || (is_paged() && gseo_seo_get('noindex_paged'));
+            || (is_paged() && gseo_seo_get('noindex_paged'))
+            || ((is_category() || is_tag() || is_tax()) && get_term_meta(get_queried_object_id(), '_gseo_noindex', true));
         if ($noindex) {
             $robots['noindex'] = true;
             unset($robots['max-image-preview']);
@@ -189,8 +199,8 @@ function gseo_seo_print_head()
     $og = array(
         'og:locale'    => get_locale(),
         'og:type'      => $is_article ? 'article' : 'website',
-        'og:title'     => $title,
-        'og:description' => $desc,
+        'og:title'     => ($id && get_post_meta($id, '_gseo_og_title', true) !== '') ? (string) get_post_meta($id, '_gseo_og_title', true) : $title,
+        'og:description' => ($id && get_post_meta($id, '_gseo_og_description', true) !== '') ? (string) get_post_meta($id, '_gseo_og_description', true) : $desc,
         'og:url'       => $canonical,
         'og:site_name' => get_bloginfo('name'),
         'og:image'     => $image,
@@ -204,7 +214,18 @@ function gseo_seo_print_head()
             echo '<meta property="' . esc_attr($property) . '" content="' . esc_attr($content) . "\" />\n";
         }
     }
-    echo '<meta name="twitter:card" content="' . ($image !== '' ? 'summary_large_image' : 'summary') . "\" />\n";
+    // X falls back to the Open Graph tags; only what differs is printed.
+    $tw = array(
+        'twitter:title'       => $id ? (string) get_post_meta($id, '_gseo_tw_title', true) : '',
+        'twitter:description' => $id ? (string) get_post_meta($id, '_gseo_tw_description', true) : '',
+        'twitter:image'       => $id ? (string) get_post_meta($id, '_gseo_tw_image', true) : '',
+    );
+    echo '<meta name="twitter:card" content="' . ($image !== '' || $tw['twitter:image'] !== '' ? 'summary_large_image' : 'summary') . "\" />\n";
+    foreach ($tw as $name => $content) {
+        if ($content !== '') {
+            echo '<meta name="' . esc_attr($name) . '" content="' . esc_attr($content) . "\" />\n";
+        }
+    }
     if (gseo_seo_get('twitter_site') !== '') {
         echo '<meta name="twitter:site" content="@' . esc_attr(ltrim((string) gseo_seo_get('twitter_site'), '@')) . "\" />\n";
     }
@@ -212,7 +233,7 @@ function gseo_seo_print_head()
     echo "<!-- /G.SEO -->\n\n";
 }
 
-/** The entity graph G.SEO published for this page, or a basic Organization + WebSite graph on the home page. */
+/** The entity graph G.SEO published for this page, or the automatic graph (includes/schema.php). */
 function gseo_seo_print_schema($id)
 {
     $data = null;
@@ -221,19 +242,8 @@ function gseo_seo_print_schema($id)
         $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
         $data = is_array($decoded) ? $decoded : null;
     }
-    if (!$data && is_front_page()) {
-        $org = array('@type' => 'Organization', '@id' => home_url('/#organization'), 'name' => gseo_seo_get('org_name') !== '' ? gseo_seo_get('org_name') : get_bloginfo('name'), 'url' => home_url('/'));
-        if (gseo_seo_get('org_logo') !== '') {
-            $org['logo'] = gseo_seo_get('org_logo');
-        }
-        $same = array_values(array_filter(array_map('trim', preg_split('/\s+/', (string) gseo_seo_get('org_same_as')))));
-        if ($same) {
-            $org['sameAs'] = array_map('esc_url_raw', $same);
-        }
-        $data = array('@context' => 'https://schema.org', '@graph' => array(
-            $org,
-            array('@type' => 'WebSite', '@id' => home_url('/#website'), 'url' => home_url('/'), 'name' => get_bloginfo('name'), 'publisher' => array('@id' => home_url('/#organization'))),
-        ));
+    if (!$data && !is_404()) {
+        $data = gseo_seo_schema_graph($id);
     }
     if ($data) {
         // JSON_HEX_TAG escapes "<" so the content can never close the <script> tag.
