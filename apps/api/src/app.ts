@@ -88,6 +88,8 @@ import {
   aiReadinessReport,
   latestAgentAudit,
   listExperiments,
+  wpConnectAuthorizeUrl,
+  wpConnectFinish,
   gseoPluginInfo,
   publishLlmsTxt,
   siteDashboard,
@@ -218,9 +220,16 @@ function csvEscape(v: unknown): string {
 /** JSON can't serialize BigInt; convert at the edge. */
 const jsonSafe = <T>(v: T): T => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? Number(x) : x)));
 
+/** Hides values of sensitive query parameters in a URL (for logs). */
+export const redactUrl = (url: string) => url.replace(/([?&](?:password|code|state|token|key|app_password)=)[^&#]*/gi, '$1[oculto]');
+
 export async function buildApp(opts: { logger?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({
-    logger: opts.logger ?? { level: config.LOG_LEVEL },
+    logger: opts.logger ?? {
+      level: config.LOG_LEVEL,
+      // Secrets that arrive in query strings (WordPress authorization, OAuth codes) never reach the logs.
+      serializers: { req: (r: { method: string; url: string; ip?: string }) => ({ method: r.method, url: redactUrl(r.url), remoteAddress: r.ip }) }
+    },
     genReqId: req => (typeof req.headers['x-correlation-id'] === 'string' ? req.headers['x-correlation-id'].slice(0, 64) : crypto.randomUUID()),
     bodyLimit: 5 * 1024 * 1024,
     // Behind Apache/Nginx on the same server (TRUST_PROXY=1): the visitor's IP comes from X-Forwarded-For,
@@ -836,6 +845,35 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     const full = path.resolve(__dirname, '../../../docs/wordpress', file);
     return reply.header('content-type', 'application/x-php; charset=utf-8').header('content-disposition', `attachment; filename="${file}"`).send(await fs.promises.readFile(full, 'utf8'));
   });
+  /**
+   * One-click connection: returns WordPress's "Authorize Application" URL for a site of this workspace
+   * (the site is created when the WordPress is new to G.SEO).
+   */
+  app.post('/api/v1/wordpress/connect/start', async (req, reply) => {
+    const b = z.object({ url: z.string().url().max(500), siteId: z.string().uuid().optional() }).strict().parse(req.body);
+    const wp = new URL(b.url);
+    let siteId = b.siteId;
+    if (siteId) await requireSite(siteId);
+    else {
+      const lim = await workspaceLimits(req.auth!.workspaceId);
+      if (lim.maxSites !== null && lim.sites >= lim.maxSites) throw new ApiError(400, 'SITE_LIMIT', `Este espacio admite hasta ${lim.maxSites} sitios. Archiva uno o pide al administrador que suba el límite.`);
+      const host = wp.hostname.toLowerCase();
+      siteId = (await createSite({ name: host.replace(/^www\./, ''), domain: host, canonicalUrl: `${wp.origin}/`, workspaceId: req.auth!.workspaceId }, req.auth!.user.id)).id;
+    }
+    return reply.send({ siteId, authorizeUrl: await wpConnectAuthorizeUrl(siteId, req.auth!.user.id, `${wp.origin}${wp.pathname}`) });
+  });
+  /** WordPress sends the browser back here with site_url, user_login and password (or nothing when rejected). */
+  app.get('/api/v1/wordpress/connect/callback', async (req, reply) => {
+    const q = z.object({ state: z.string().max(2000), site_url: z.string().max(500).optional(), user_login: z.string().max(200).optional(), password: z.string().max(200).optional() }).passthrough().parse(req.query);
+    const back = (params: Record<string, string>) => reply.redirect(`${webOrigin()}/?${new URLSearchParams({ nav: 'wordpress', ...params })}`);
+    try {
+      const r = await wpConnectFinish({ state: q.state, siteUrl: q.site_url, userLogin: q.user_login, password: q.password });
+      return back({ wp: 'connected', site: r.siteId });
+    } catch (e) {
+      return back({ wp: 'error', message: (e as Error).message });
+    }
+  });
+
   /** The G.SEO – SEO plugin as a .zip for Plugins → Add New → Upload Plugin. */
   app.get('/api/v1/downloads/plugin/gseo-seo.zip', async (_req, reply) => {
     const zip = zipFolder(path.resolve(__dirname, '../../../docs/wordpress/gseo-seo'), 'gseo-seo');

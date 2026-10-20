@@ -411,8 +411,8 @@ const SECTIONS: Section[] = [
     what: 'Conecta el sitio con WordPress mediante su API REST y una contraseña de aplicación, para enviar páginas aprobadas como borradores. Aquí también descargas el plugin G.SEO – SEO, que le da al sitio su propio SEO y deja que G.SEO lo controle.',
     why: 'Lleva el contenido aprobado a WordPress sin copiar y pegar, y sin riesgo de publicar algo por accidente.',
     steps: [
-      'En WordPress: Usuarios → Perfil → Contraseñas de aplicación. Crea una para un usuario que pueda editar entradas.',
-      'Aquí: escribe la URL del sitio (https), el usuario y la contraseña de aplicación, y pulsa "Guardar y probar".',
+      'Con un clic (recomendado): escribe la URL del sitio y pulsa "Conectar con un clic", o desde el plugin en WordPress: Ajustes → G.SEO → Estado → "Conectar con G.SEO". WordPress te pide aprobar a G.SEO, crea una contraseña de aplicación solo para él y regresas conectado. Necesita un G.SEO en HTTPS (el del servidor).',
+      'Manual: en WordPress, Usuarios → Perfil → Contraseñas de aplicación; crea una para un usuario que pueda editar entradas. Aquí escribe la URL, el usuario y la contraseña, y pulsa "Guardar y probar (manual)".',
       'Si dice "Conectado", ya puedes enviar páginas desde "Contenido programático".',
       'Plugin G.SEO – SEO: pulsa "Descargar plugin (.zip)". En WordPress ve a Plugins → Añadir nuevo → Subir plugin, elige el archivo, instala y activa. Revisa Ajustes → G.SEO y aquí pulsa "Comprobar".',
       'Con el plugin activo: Cambios SEO edita sus títulos y metas, Arquitectura y Consolidación crean las 301 en él, Entidades publica su JSON-LD y Listo para IA publica el llms.txt con un clic.',

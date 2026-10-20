@@ -40,6 +40,10 @@ function gseo_seo_current_post_id()
 function gseo_seo_title()
 {
     $id = gseo_seo_current_post_id();
+    // A static front page uses the home template unless that page has its own SEO title.
+    if (is_front_page() && (!$id || trim((string) get_post_meta($id, '_gseo_title', true)) === '')) {
+        return gseo_seo_render_template(gseo_seo_get('title_home'), get_bloginfo('name'));
+    }
     if ($id) {
         $custom = trim((string) get_post_meta($id, '_gseo_title', true));
         if ($custom !== '') {
@@ -65,6 +69,9 @@ function gseo_seo_title()
 function gseo_seo_description()
 {
     $id = gseo_seo_current_post_id();
+    if (is_front_page() && (!$id || trim((string) get_post_meta($id, '_gseo_description', true)) === '') && gseo_seo_get('home_description') !== '') {
+        return (string) gseo_seo_get('home_description');
+    }
     if ($id) {
         $custom = trim((string) get_post_meta($id, '_gseo_description', true));
         if ($custom !== '') {

@@ -6,8 +6,9 @@ import { apiGet, apiSend, fmtDate } from '@/lib/api';
 import type { WpConnection, GoFn } from '@/lib/types';
 import { Badge, Button, Card, ErrorBox, Skeleton, inputCls } from './ui';
 import { GseoPluginCard } from './GseoPluginCard';
+import { startWpConnect } from './WpConnectCard';
 
-export function WordPressView({ siteId, go }: { siteId: string; go: GoFn }) {
+export function WordPressView({ siteId, go, notice }: { siteId: string; go: GoFn; notice?: { kind: 'connected' | 'rejected' | 'error'; message?: string } | null }) {
   const [conn, setConn] = useState<WpConnection | null | undefined>(undefined);
   const [form, setForm] = useState({ endpointUrl: '', username: '', appPassword: '' });
   const [error, setError] = useState<unknown>(null);
@@ -69,15 +70,35 @@ export function WordPressView({ siteId, go }: { siteId: string; go: GoFn }) {
     }
   };
 
+  const oneClick = async () => {
+    setError(null);
+    if (!/^https?:\/\//.test(form.endpointUrl)) {
+      setError(new Error('Escribe primero la URL del sitio WordPress (https://…).'));
+      return;
+    }
+    setBusy(true);
+    try {
+      await startWpConnect(form.endpointUrl, siteId);
+    } catch (err) {
+      setError(err);
+      setBusy(false);
+    }
+  };
+
   if (conn === undefined && !error) return <Skeleton rows={4} />;
   return (
     <div className="space-y-6">
+      {notice && (
+        <p role="status" className={`text-xs p-3 rounded-xl border ${notice.kind === 'connected' ? 'border-emerald-300 text-emerald-800 dark:text-emerald-300' : 'border-amber-300 text-amber-800 dark:text-amber-300'}`}>
+          {notice.kind === 'connected' ? '✅ WordPress quedó conectado y probado.' : notice.kind === 'rejected' ? 'Cancelaste la aprobación en WordPress; no se conectó nada.' : `No se pudo conectar: ${notice.message ?? 'error desconocido'}`}
+        </p>
+      )}
       <Card
         title="Conexión con WordPress"
         actions={conn && <Badge tone={conn.status === 'ok' ? 'good' : conn.status === 'error' ? 'bad' : 'warn'}>{conn.status === 'ok' ? 'conectado' : conn.status === 'error' ? 'error' : 'sin probar'}</Badge>}
       >
         <p className="text-xs text-slate-600 dark:text-slate-400 mb-4">
-          Usa una <strong>contraseña de aplicación</strong> (Usuarios → Perfil → Contraseñas de aplicación) de un usuario con permiso para editar entradas. Se guarda cifrada (AES-256-GCM) y
+          <strong>Conectar con un clic:</strong> escribe la URL del sitio y WordPress te pedirá aprobar a G.SEO (también desde el plugin: Ajustes → G.SEO → Estado → "Conectar con G.SEO"). Manual: usa una <strong>contraseña de aplicación</strong> (Usuarios → Perfil → Contraseñas de aplicación) de un usuario con permiso para editar entradas. Se guarda cifrada (AES-256-GCM) y
           nunca se devuelve completa. Se exige HTTPS. La herramienta solo crea y edita <strong>borradores</strong>: no publica, no borra y no modifica entradas que ya no sean borrador.
         </p>
         <form onSubmit={save} className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -94,7 +115,8 @@ export function WordPressView({ siteId, go }: { siteId: string; go: GoFn }) {
             <input type="password" autoComplete="new-password" required={!conn} className={inputCls} value={form.appPassword} onChange={e => setForm({ ...form, appPassword: e.target.value })} />
           </label>
           <div className="md:col-span-3 flex flex-wrap gap-2">
-            <Button type="submit" disabled={busy}><PlugZap className="w-3.5 h-3.5" aria-hidden /> Guardar y probar</Button>
+            <Button type="button" disabled={busy} onClick={oneClick}><PlugZap className="w-3.5 h-3.5" aria-hidden /> Conectar con un clic</Button>
+            <Button type="submit" variant="secondary" disabled={busy}>Guardar y probar (manual)</Button>
             {conn && <Button type="button" variant="secondary" disabled={busy} onClick={test}>Probar de nuevo</Button>}
             {conn && <Button type="button" variant="secondary" onClick={remove}><Trash2 className="w-3.5 h-3.5" aria-hidden /> Borrar conexión</Button>}
           </div>

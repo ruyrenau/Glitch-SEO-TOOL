@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       G.SEO – SEO
  * Description:       SEO del sitio sin depender de nada externo: títulos, meta descripciones, canonical, robots, Open Graph, datos estructurados, sitemaps, robots.txt, llms.txt, redirecciones y registro de 404. Se controla desde aquí o a distancia desde G.SEO.
- * Version:           1.0.0
+ * Version:           1.1.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Glitch Creativo
@@ -14,8 +14,10 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('GSEO_SEO_VERSION', '1.0.0');
+define('GSEO_SEO_VERSION', '1.1.0');
 define('GSEO_SEO_DB_VERSION', '1');
+/** Same id G.SEO sends to wp-admin/authorize-application.php (GSEO_WP_APP_ID). */
+define('GSEO_SEO_APP_ID', '6f1d3c2a-8b4e-4f5a-9c7d-2e1b0a9f8c3d');
 define('GSEO_SEO_FILE', __FILE__);
 define('GSEO_SEO_DIR', plugin_dir_path(__FILE__));
 

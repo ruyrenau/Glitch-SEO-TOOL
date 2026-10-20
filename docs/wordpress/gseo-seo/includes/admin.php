@@ -210,8 +210,8 @@ function gseo_seo_settings_page()
         $row('robots.txt', $s['robots_file'] ? '⚠️ Archivo físico (los ajustes de G.SEO no se aplican)' : '✅ Generado por WordPress + G.SEO');
         $row('Sitemap', '<a href="' . esc_url($s['sitemap']) . '" target="_blank" rel="noopener">' . esc_html($s['sitemap']) . '</a>');
         $row('llms.txt', $s['llms_txt'] ? '<a href="' . esc_url($s['llms_txt']) . '" target="_blank" rel="noopener">' . esc_html($s['llms_txt']) . '</a>' : 'Sin publicar');
-        $row('Conectar con G.SEO', 'En G.SEO → WordPress, usa la dirección de este sitio, tu usuario y una <a href="' . esc_url(admin_url('profile.php#application-passwords-section')) . '">contraseña de aplicación</a>. G.SEO podrá editar títulos, metas, redirecciones y llms.txt.');
         echo '</tbody></table>';
+        gseo_seo_connect_box();
     }
     echo '</div>';
 }
@@ -293,3 +293,47 @@ add_action('save_post', function ($post_id) {
         empty($_POST[$field]) ? delete_post_meta($post_id, $key) : update_post_meta($post_id, $key, '1');
     }
 });
+
+/** Application passwords that G.SEO holds for the current user (created by the one-click connection). */
+function gseo_seo_app_connections()
+{
+    if (!class_exists('WP_Application_Passwords')) {
+        return array();
+    }
+    $out = array();
+    foreach (WP_Application_Passwords::get_user_application_passwords(get_current_user_id()) as $p) {
+        if ((isset($p['app_id']) && $p['app_id'] === GSEO_SEO_APP_ID) || (isset($p['name']) && $p['name'] === 'G.SEO')) {
+            $out[] = $p;
+        }
+    }
+    return $out;
+}
+
+function gseo_seo_connect_box()
+{
+    $app = untrailingslashit((string) gseo_seo_get('app_url'));
+    $conns = gseo_seo_app_connections();
+    $available = function_exists('wp_is_application_passwords_available') && wp_is_application_passwords_available();
+    echo '<h2 style="margin-top:2em">Conexión con G.SEO</h2>';
+    echo '<p>Con la conexión, G.SEO edita títulos y metas, crea redirecciones y publica llms.txt en este sitio. WordPress te pedirá aprobarla y creará una contraseña de aplicación solo para G.SEO, que puedes revocar cuando quieras.</p>';
+    if ($conns) {
+        foreach ($conns as $c) {
+            $used = !empty($c['last_used']) ? sprintf('último uso %s', wp_date('j M Y, H:i', (int) $c['last_used'])) : 'aún sin usar';
+            echo '<p>✅ <strong>Conectado</strong> como ' . esc_html(wp_get_current_user()->user_login) . ' · creada ' . esc_html(wp_date('j M Y', (int) $c['created'])) . ' · ' . esc_html($used) . '</p>';
+        }
+        echo '<p><a href="' . esc_url(admin_url('profile.php#application-passwords-section')) . '">Revocar o ver contraseñas de aplicación</a></p>';
+    }
+    if (!$available) {
+        echo '<p class="notice notice-warning" style="padding:8px">Las contraseñas de aplicación están desactivadas en este sitio (necesitan HTTPS, o algún plugin de seguridad las bloquea). Sin ellas G.SEO no puede conectarse.</p>';
+        return;
+    }
+    echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
+    wp_nonce_field('gseo_seo_save');
+    echo '<input type="hidden" name="action" value="gseo_seo_save" /><input type="hidden" name="tab" value="status" />';
+    echo '<p><label>Dirección de G.SEO <input type="url" name="gseo[app_url]" value="' . esc_attr($app) . '" class="regular-text" /></label> ';
+    submit_button('Guardar', 'secondary', 'submit', false);
+    echo '</p></form>';
+    $go = $app . '/?' . http_build_query(array('nav' => 'wordpress', 'wpconnect' => home_url('/')));
+    echo '<p><a class="button button-primary button-hero" href="' . esc_url($go) . '">' . ($conns ? 'Volver a conectar con G.SEO' : 'Conectar con G.SEO') . '</a></p>';
+    echo '<p class="description">Se abre G.SEO (inicia sesión si hace falta), eliges a qué sitio corresponde y apruebas en WordPress. Solo funciona con un G.SEO en HTTPS, como el de tu servidor.</p>';
+}

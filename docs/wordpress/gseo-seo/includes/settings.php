@@ -46,6 +46,7 @@ function gseo_seo_defaults()
         'llms_full_txt'      => '',
         'log_404'            => true,
         'remove_data'        => false,
+        'app_url'            => 'https://seo.glitchcreativo.com',
     );
 }
 
@@ -79,7 +80,7 @@ function gseo_seo_sanitize($input, $base = null)
         $v = $input[$key];
         if (is_bool($default)) {
             $out[$key] = filter_var($v, FILTER_VALIDATE_BOOLEAN);
-        } elseif (in_array($key, array('default_og_image', 'org_logo'), true)) {
+        } elseif (in_array($key, array('default_og_image', 'org_logo', 'app_url'), true)) {
             $out[$key] = esc_url_raw((string) $v);
         } elseif (in_array($key, array('llms_txt', 'llms_full_txt'), true)) {
             $out[$key] = substr(str_replace("\r\n", "\n", wp_check_invalid_utf8((string) $v)), 0, 2000000);

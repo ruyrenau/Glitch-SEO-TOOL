@@ -1,0 +1,10 @@
+{
+  "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+  "preferredVersions": { "php": "8.3", "wp": "latest" },
+  "steps": [
+    { "step": "defineWpConfigConsts", "consts": { "WP_ENVIRONMENT_TYPE": "local", "WP_DEBUG": true, "WP_DEBUG_LOG": "/wordpress/wp-content/debug.log", "WP_DEBUG_DISPLAY": false } },
+    { "step": "setSiteOptions", "options": { "blogname": "Glitch Creativo", "blogdescription": "Agencia de diseño y SEO", "permalink_structure": "/%postname%/", "blog_public": "1" } },
+    { "step": "activatePlugin", "pluginPath": "gseo-seo/gseo-seo.php" },
+    { "step": "runPHP", "code": "<?php require '/wordpress/wp-load.php';\n$p = wp_insert_post(array('post_title' => 'Servicios de SEO', 'post_name' => 'servicios', 'post_type' => 'page', 'post_status' => 'publish', 'post_content' => '<p>Hacemos auditorías SEO técnicas para negocios en Puebla y todo México. Revisamos velocidad, indexación y contenido.</p>'));\n$b = wp_insert_post(array('post_title' => 'Guía de SEO local', 'post_name' => 'guia-seo-local', 'post_status' => 'publish', 'post_content' => '<p>El SEO local ayuda a que te encuentren en Google Maps.</p>'));\n$h = wp_insert_post(array('post_title' => 'Página oculta', 'post_name' => 'oculta', 'post_type' => 'page', 'post_status' => 'publish', 'post_content' => 'x'));\nupdate_post_meta($h, '_gseo_noindex', '1');\nflush_rewrite_rules();\n$pw = WP_Application_Passwords::create_new_application_password(1, array('name' => 'gseo-test'));\nfile_put_contents('/wordpress/test-info.json', json_encode(array('page' => $p, 'post' => $b, 'hidden' => $h, 'app_password' => $pw[0])));\necho 'ok';" }
+  ]
+}

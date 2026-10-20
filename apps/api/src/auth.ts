@@ -175,7 +175,7 @@ function clearFailures(ip: string, username: string) {
 
 // The client report link is public on purpose: the unguessable token is the credential.
 // The Google OAuth callback is authenticated by its signed state (see gscFinishOAuth), not by the session cookie.
-const PUBLIC = [/^\/health(\/|$)/, /^\/docs(\/|$)/, /^\/api\/v1\/auth\/(login|config|register|forgot|reset)$/, /^\/api\/v1\/auth\/tickets\/[\w-]+$/, /^\/api\/v1\/public\/invitations\/[\w-]+(\/accept)?$/, /^\/api\/v1\/public\/reports\/[\w-]+$/, /^\/api\/v1\/gsc\/oauth\/callback$/];
+const PUBLIC = [/^\/health(\/|$)/, /^\/docs(\/|$)/, /^\/api\/v1\/auth\/(login|config|register|forgot|reset)$/, /^\/api\/v1\/auth\/tickets\/[\w-]+$/, /^\/api\/v1\/public\/invitations\/[\w-]+(\/accept)?$/, /^\/api\/v1\/public\/reports\/[\w-]+$/, /^\/api\/v1\/gsc\/oauth\/callback$/, /^\/api\/v1\/wordpress\/connect\/callback$/];
 const ALLOWED_WHILE_CHANGING_PASSWORD = /^\/api\/v1\/auth\/(me|password|logout)$/;
 
 export async function registerAuth(app: FastifyInstance) {

@@ -46,6 +46,7 @@ import { AuthorityView } from '@/components/AuthorityView';
 import { AgentsView } from '@/components/AgentsView';
 import { ExperimentsView } from '@/components/ExperimentsView';
 import { GapsView } from '@/components/GapsView';
+import { WpConnectCard } from '@/components/WpConnectCard';
 import { AiVisibilityView } from '@/components/AiVisibilityView';
 import { SettingsView } from '@/components/SettingsView';
 import { SeoChangesView } from '@/components/SeoChangesView';
@@ -118,10 +119,21 @@ function Dashboard() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [gscNotice, setGscNotice] = useState<{ kind: 'connected' | 'error'; message?: string } | null>(null);
+  // From the WordPress plugin: /?nav=wordpress&wpconnect=<site>; back from WordPress: &wp=connected|rejected|error
+  const [wpConnect, setWpConnect] = useState<string | null>(null);
+  const [wpNotice, setWpNotice] = useState<{ kind: 'connected' | 'rejected' | 'error'; message?: string; site?: string } | null>(null);
   // Back from Google's consent screen: /?nav=gsc&gsc=connected|error&message=…
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const back = q.get('nav');
+    if (back === 'wordpress') {
+      setNav('wordpress');
+      const target = q.get('wpconnect');
+      if (target && /^https?:\/\//.test(target)) setWpConnect(target);
+      const kind = q.get('wp');
+      if (kind === 'connected' || kind === 'rejected' || kind === 'error') setWpNotice({ kind, message: q.get('message') ?? undefined, site: q.get('site') ?? undefined });
+      window.history.replaceState(null, '', window.location.pathname);
+    }
     if (back === 'gsc' || back === 'ga4') {
       setNav(back);
       const kind = q.get('gsc');
@@ -173,6 +185,10 @@ function Dashboard() {
   useEffect(() => {
     loadSites();
   }, [loadSites]);
+  useEffect(() => {
+    if (wpNotice?.kind === 'connected' && wpNotice.site && sites?.some(s => s.id === wpNotice.site)) selectSite(wpNotice.site);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wpNotice, sites]);
 
   const selectSite = (id: string) => {
     setSiteId(id);
@@ -378,6 +394,7 @@ function Dashboard() {
 
           <div className="p-4 md:p-6 space-y-6 flex-1">
             {error ? <ErrorBox error={error} /> : null}
+            {wpConnect && <WpConnectCard url={wpConnect} onDone={() => setWpConnect(null)} />}
             {sites === null ? (
               <Skeleton rows={4} />
             ) : needsSite && !siteId ? (
@@ -402,7 +419,7 @@ function Dashboard() {
                 {nav === 'aiready' && <AiReadinessView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'contentaudit' && <ContentAuditView key={siteId} siteId={siteId} go={go} />}
                 {nav === 'programmatic' && <ContentView key={siteId} siteId={siteId} go={go} />}
-                {nav === 'wordpress' && <WordPressView key={siteId} siteId={siteId} go={go} />}
+                {nav === 'wordpress' && <WordPressView key={siteId} siteId={siteId} go={go} notice={wpNotice} />}
                 {nav === 'explorer' && <ExplorerView key={`${siteId}-${explorerPreset?.n ?? 0}`} siteId={siteId} initial={explorerPreset ?? undefined} detailExtra={d => <SeoEditPanel siteId={siteId} detail={d} goChanges={() => go('seochanges')} />} />}
                 {nav === 'seochanges' && <SeoChangesView key={siteId} siteId={siteId} />}
                 {nav === 'geo' && <AiVisibilityView key={siteId} siteId={siteId} go={go} />}

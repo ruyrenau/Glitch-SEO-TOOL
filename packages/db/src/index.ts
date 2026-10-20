@@ -32,3 +32,4 @@ export * from './experiment-service';
 export * from './gap-service';
 export * from './dashboard-service';
 export * from './gseo-plugin-service';
+export * from './wp-connect-service';
